@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
-  Truck,
   Phone,
   Mail,
   Clock,
@@ -80,19 +79,7 @@ export function Footer() {
                 />
               ) : footerLogoLoading ? (
                 <div className="h-24 w-[200px] bg-gray-800 rounded-lg animate-pulse" />
-              ) : (
-                <>
-                  <div className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-2 shadow-lg shadow-red-900/20">
-                    <Truck className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-red-500" style={{ fontSize: "1.25rem", fontWeight: 800 }}>Carretão</span>
-                      <span className="text-white" style={{ fontSize: "1.25rem", fontWeight: 800 }}> Auto Peças</span>
-                    </div>
-                  </div>
-                </>
-              )}
+              ) : null}
             </div>
             <p className="text-gray-400 mb-5 leading-relaxed" style={{ fontSize: "0.85rem" }}>
               Especialistas em peças para caminhões. Qualidade, garantia e entrega rápida para todo o Brasil.
