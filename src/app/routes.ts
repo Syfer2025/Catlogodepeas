@@ -26,4 +26,12 @@ export const router = createBrowserRouter([
       })),
     HydrateFallback: () => null,
   },
+  {
+    path: "/admin/reset-password",
+    lazy: () =>
+      import("./pages/admin/AdminResetPasswordPage").then((m) => ({
+        Component: m.AdminResetPasswordPage,
+      })),
+    HydrateFallback: () => null,
+  },
 ]);

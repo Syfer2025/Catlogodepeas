@@ -25,6 +25,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Seed ───
 export const seedData = () => request<{ seeded: boolean }>("/seed", { method: "POST" });
 
+// ─── Auth ───
+export const forgotPassword = (email: string) =>
+  request<{ sent: boolean }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      redirectTo: `${window.location.origin}/admin/reset-password`,
+    }),
+  });
+
 // ─── Products ───
 export const getProducts = () => request<Product[]>("/products");
 export const getProduct = (id: string) => request<Product>(`/products/${id}`);

@@ -113,6 +113,38 @@ app.get(`${BASE}/auth/me`, async (c) => {
   }
 });
 
+// Password recovery — sends reset email using Supabase SDK
+app.post(`${BASE}/auth/forgot-password`, async (c) => {
+  try {
+    const { email, redirectTo } = await c.req.json();
+    if (!email) {
+      return c.json({ error: "Email é obrigatório." }, 400);
+    }
+
+    // Use the provided redirectTo or fall back to the known production URL
+    const finalRedirect = redirectTo || "https://cafe-puce-47800704.figma.site/admin/reset-password";
+    console.log("Forgot-password request for:", email, "redirectTo:", finalRedirect);
+
+    // Use the Supabase SDK's resetPasswordForEmail — it handles
+    // redirect_to correctly for both implicit and PKCE flows
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: finalRedirect,
+    });
+
+    if (error) {
+      console.log("Forgot-password SDK error:", error.message);
+      // Return success anyway to prevent email enumeration attacks
+    } else {
+      console.log("Forgot-password email sent successfully for:", email);
+    }
+
+    return c.json({ sent: true });
+  } catch (e) {
+    console.log("Forgot-password exception:", e);
+    return c.json({ error: `Erro interno no envio de recuperação: ${e}` }, 500);
+  }
+});
+
 // ═══════════════════════════════════════
 // ─── PRODUCTS ─────────────────────────
 // ═══════════════════════════════════════

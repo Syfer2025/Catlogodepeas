@@ -6,7 +6,6 @@ import {
   Layers,
   MessageSquare,
   Settings,
-  Wrench,
   ExternalLink,
   Menu,
   X,
@@ -26,6 +25,8 @@ import { AdminAttributes } from "./AdminAttributes";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 
+const ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
+
 type Tab = "dashboard" | "products" | "categories" | "messages" | "attributes" | "settings";
 
 const navItems: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
@@ -42,6 +43,12 @@ export function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Logo state
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+    try { return localStorage.getItem(ADMIN_LOGO_CACHE_KEY); } catch { return null; }
+  });
+  const [logoLoading, setLogoLoading] = useState(true);
 
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -72,6 +79,22 @@ export function AdminPage() {
       }
     };
     checkSession();
+  }, []);
+
+  // Fetch header logo
+  useEffect(() => {
+    api.getLogo()
+      .then((data) => {
+        if (data?.hasLogo && data.url) {
+          setLogoUrl(data.url);
+          try { localStorage.setItem(ADMIN_LOGO_CACHE_KEY, data.url); } catch {}
+        } else {
+          setLogoUrl(null);
+          try { localStorage.removeItem(ADMIN_LOGO_CACHE_KEY); } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLogoLoading(false));
   }, []);
 
   // Seed data on first load & get unread count (only when authenticated)
@@ -191,18 +214,25 @@ export function AdminPage() {
       >
         {/* Logo */}
         <div className="p-5 border-b border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-red-600 rounded-lg p-2">
-              <Wrench className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div>
-                <span className="text-red-500" style={{ fontSize: "1.05rem", fontWeight: 700 }}>Auto</span>
-                <span className="text-white" style={{ fontSize: "1.05rem", fontWeight: 700 }}>Parts</span>
-              </div>
-              <p className="text-gray-500" style={{ fontSize: "0.6rem", marginTop: "-2px" }}>Painel Administrativo</p>
-            </div>
-          </div>
+          <Link to="/" className="flex items-center gap-2.5 min-w-0">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Carretão Auto Peças"
+                className="h-10 w-auto max-w-[180px] object-contain"
+                onError={() => {
+                  setLogoUrl(null);
+                  try { localStorage.removeItem(ADMIN_LOGO_CACHE_KEY); } catch {}
+                }}
+                decoding="async"
+              />
+            ) : logoLoading ? (
+              <div className="h-10 w-[140px] bg-gray-800 rounded-lg animate-pulse" />
+            ) : null}
+            <span className="text-gray-500 border-l border-gray-700 pl-2.5 shrink-0" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Admin
+            </span>
+          </Link>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-gray-400 hover:text-white">
             <X className="w-5 h-5" />
           </button>
