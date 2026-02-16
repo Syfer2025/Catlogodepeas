@@ -27,23 +27,32 @@ const UNIDADES = [
   { nome: "Varzea Grande-MT", tel: "(65) 2193-8550", href: "tel:+556521938550" },
 ];
 
+const LOGO_CACHE_KEY = "carretao_header_logo_url";
+
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileContactOpen, setMobileContactOpen] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+    // Instant display from cache — no flash
+    try { return localStorage.getItem(LOGO_CACHE_KEY); } catch { return null; }
+  });
+  const [logoLoading, setLogoLoading] = useState(true);
 
   useEffect(() => {
     api.getLogo()
       .then((data) => {
         if (data?.hasLogo && data.url) {
-          // Add cache-buster to avoid stale cached 404s
-          const sep = data.url.includes("?") ? "&" : "?";
-          setLogoUrl(`${data.url}${sep}v=${Date.now()}`);
+          setLogoUrl(data.url);
+          try { localStorage.setItem(LOGO_CACHE_KEY, data.url); } catch {}
+        } else {
+          setLogoUrl(null);
+          try { localStorage.removeItem(LOGO_CACHE_KEY); } catch {}
         }
       })
       .catch((err) => {
         console.error("Header logo fetch error:", err);
-      });
+      })
+      .finally(() => setLogoLoading(false));
   }, []);
 
   return (
@@ -58,11 +67,17 @@ export function Header() {
                 src={logoUrl}
                 alt="Carretão Auto Peças"
                 className="h-14 w-auto max-w-[220px] object-contain"
-                onError={() => setLogoUrl(null)}
+                onError={() => {
+                  setLogoUrl(null);
+                  try { localStorage.removeItem(LOGO_CACHE_KEY); } catch {}
+                }}
                 width={220}
                 height={56}
                 decoding="async"
               />
+            ) : logoLoading ? (
+              /* Skeleton placeholder while loading — prevents text flash */
+              <div className="h-14 w-[180px] bg-gray-100 rounded-lg animate-pulse" />
             ) : (
               <>
                 <div className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-2 shadow-sm group-hover:shadow-md transition-shadow">

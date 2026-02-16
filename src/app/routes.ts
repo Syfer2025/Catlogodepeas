@@ -24,5 +24,6 @@ export const router = createBrowserRouter([
       import("./pages/admin/AdminPage").then((m) => ({
         Component: m.AdminPage,
       })),
+    HydrateFallback: () => null,
   },
 ]);

@@ -7,7 +7,6 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  ZoomIn,
   X,
   Tag,
   Info,
@@ -40,6 +39,7 @@ export function ProductDetailPage() {
   const [isZooming, setIsZooming] = useState(false);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const mainImageRef = useRef<HTMLDivElement>(null);
+  const thumbnailsRef = useRef<HTMLDivElement>(null);
 
   // Attributes state
   const [attributes, setAttributes] = useState<Record<string, string | string[]> | null>(null);
@@ -145,6 +145,19 @@ export function ProductDetailPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [lightboxOpen, goToPrev, goToNext]);
 
+  // Auto-scroll thumbnails to keep active one visible
+  useEffect(() => {
+    const container = thumbnailsRef.current;
+    if (!container) return;
+    const activeThumb = container.children[activeIndex] as HTMLElement | undefined;
+    if (!activeThumb) return;
+    const thumbLeft = activeThumb.offsetLeft;
+    const thumbWidth = activeThumb.offsetWidth;
+    const containerWidth = container.clientWidth;
+    const scrollTarget = thumbLeft - containerWidth / 2 + thumbWidth / 2;
+    container.scrollTo({ left: scrollTarget, behavior: "smooth" });
+  }, [activeIndex]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -201,20 +214,20 @@ export function ProductDetailPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Product Details */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
-            {/* Image Gallery */}
-            <div className="bg-white flex flex-col">
+        {/* Product Details — dual scroll: images sticky, info scrolls */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10 items-start">
+          {/* Image Gallery — sticky on desktop */}
+          <div className="lg:sticky lg:top-[130px] lg:self-start">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {/* Main image */}
-              <div className="relative flex items-center justify-center min-h-[300px] lg:min-h-[450px] p-4">
+              <div className="group/gallery relative flex items-center justify-center min-h-[300px] lg:min-h-[450px] p-4">
                 {imagesLoading ? (
                   <Loader2 className="w-10 h-10 text-gray-300 animate-spin" />
                 ) : hasImages && !mainImgError ? (
                   <>
                     <div
                       ref={mainImageRef}
-                      className="relative w-full h-full flex items-center justify-center overflow-hidden cursor-zoom-in bg-white border border-gray-200 rounded-lg"
+                      className="relative w-full h-full flex items-center justify-center overflow-hidden cursor-zoom-in bg-white rounded-lg"
                       style={{ minHeight: "280px" }}
                       onMouseEnter={() => setIsZooming(true)}
                       onMouseLeave={() => setIsZooming(false)}
@@ -238,35 +251,42 @@ export function ProductDetailPage() {
                         onError={() => setMainImgError(true)}
                       />
                     </div>
-                    <button
-                      onClick={() => setLightboxOpen(true)}
-                      className="absolute top-4 right-4 bg-white/80 hover:bg-white border border-gray-200 rounded-lg p-2 text-gray-500 hover:text-red-600 transition-colors shadow-sm z-10"
-                    >
-                      <ZoomIn className="w-4 h-4" />
-                    </button>
                     {images.length > 1 && (
                       <>
                         <button
                           onClick={goToPrev}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-gray-200 rounded-full p-2 text-gray-500 hover:text-red-600 transition-colors shadow-sm"
+                          className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-20 flex items-center justify-center bg-gradient-to-r from-black/5 to-transparent hover:from-black/15 text-gray-400 hover:text-red-600 transition-all duration-200 opacity-0 group-hover/gallery:opacity-100 rounded-r-xl"
+                          aria-label="Imagem anterior"
                         >
                           <ChevronLeft className="w-5 h-5" />
                         </button>
                         <button
                           onClick={goToNext}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-gray-200 rounded-full p-2 text-gray-500 hover:text-red-600 transition-colors shadow-sm"
+                          className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-20 flex items-center justify-center bg-gradient-to-l from-black/5 to-transparent hover:from-black/15 text-gray-400 hover:text-red-600 transition-all duration-200 opacity-0 group-hover/gallery:opacity-100 rounded-l-xl"
+                          aria-label="Proxima imagem"
                         >
                           <ChevronRight className="w-5 h-5" />
                         </button>
                       </>
                     )}
                     {images.length > 1 && (
-                      <span
-                        className="absolute bottom-4 right-4 bg-black/60 text-white px-2.5 py-1 rounded-full"
-                        style={{ fontSize: "0.72rem" }}
-                      >
-                        {activeIndex + 1} / {images.length}
-                      </span>
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                        {images.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setActiveIndex(idx);
+                              setMainImgError(false);
+                            }}
+                            className={`rounded-full transition-all duration-200 ${
+                              idx === activeIndex
+                                ? "w-6 h-2 bg-red-500"
+                                : "w-2 h-2 bg-gray-300 hover:bg-gray-400"
+                            }`}
+                            aria-label={`Ir para imagem ${idx + 1}`}
+                          />
+                        ))}
+                      </div>
                     )}
                   </>
                 ) : (
@@ -279,38 +299,60 @@ export function ProductDetailPage() {
                 )}
               </div>
 
-              {/* Thumbnails */}
+              {/* Thumbnails with navigation arrows */}
               {hasImages && images.length > 1 && (
-                <div className="px-4 pb-4">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {images.map((img, idx) => (
-                      <button
-                        key={img.name}
-                        onClick={() => {
-                          setActiveIndex(idx);
-                          setMainImgError(false);
-                        }}
-                        className={`shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all duration-200 ${
-                          idx === activeIndex
-                            ? "border-red-500 shadow-md ring-1 ring-red-300"
-                            : "border-gray-200 hover:border-red-300 opacity-70 hover:opacity-100"
-                        }`}
-                      >
-                        <img
-                          src={img.url}
-                          alt={`Miniatura ${img.number}`}
-                          className="w-full h-full object-contain p-1 bg-white"
-                          loading="lazy"
-                        />
-                      </button>
-                    ))}
+                <div className="px-2 pb-4">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={goToPrev}
+                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      aria-label="Miniatura anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div
+                      className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar"
+                      ref={thumbnailsRef}
+                      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                    >
+                      {images.map((img, idx) => (
+                        <button
+                          key={img.name}
+                          onClick={() => {
+                            setActiveIndex(idx);
+                            setMainImgError(false);
+                          }}
+                          className={`shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all duration-200 ${
+                            idx === activeIndex
+                              ? "border-red-500 shadow-md ring-1 ring-red-300"
+                              : "border-gray-200 hover:border-red-300 opacity-70 hover:opacity-100"
+                          }`}
+                        >
+                          <img
+                            src={img.url}
+                            alt={`Miniatura ${img.number}`}
+                            className="w-full h-full object-contain p-1 bg-white"
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={goToNext}
+                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      aria-label="Proxima miniatura"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Info + Attributes */}
-            <div className="p-6 lg:p-8 flex flex-col border-l border-gray-100">
+          {/* Info + Attributes — scrolls freely */}
+          <div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden p-6 lg:p-8 flex flex-col">
               {/* SKU badge + actions */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -379,7 +421,7 @@ export function ProductDetailPage() {
                   <span style={{ fontSize: "0.85rem" }}>Carregando especificacoes...</span>
                 </div>
               ) : attrEntries.length > 0 ? (
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1">
                   {/* Section header */}
                   <div className="flex items-center gap-2 mb-3">
                     <Tag className="w-4 h-4 text-red-600" />
@@ -395,7 +437,7 @@ export function ProductDetailPage() {
                   </div>
 
                   {/* Attributes table */}
-                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[380px] overflow-y-auto">
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
                     {attrEntries.map(([key, value], idx) => (
                       <div
                         key={key}

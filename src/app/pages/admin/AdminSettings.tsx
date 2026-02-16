@@ -485,7 +485,7 @@ function LogoUploadSection() {
     e.target.value = "";
   };
 
-  const displayUrl = previewUrl || (logo?.hasLogo ? `${logo.url}?t=${Date.now()}` : null);
+  const displayUrl = previewUrl || (logo?.hasLogo && logo?.url ? logo.url : null);
 
   return (
     <div>
@@ -775,7 +775,7 @@ function FooterLogoUploadSection() {
     e.target.value = "";
   };
 
-  const displayUrl = previewUrl || (logo?.hasLogo ? `${logo.url}?t=${Date.now()}` : null);
+  const displayUrl = previewUrl || (logo?.hasLogo && logo?.url ? logo.url : null);
 
   return (
     <div>

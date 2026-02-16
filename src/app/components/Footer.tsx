@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import * as api from "../services/api";
 
+const FOOTER_LOGO_CACHE_KEY = "carretao_footer_logo_url";
+
 const UNIDADES = [
   { nome: "Matriz / Televendas", tel: "0800 643 1170", href: "tel:08006431170" },
   { nome: "Maringá-PR", tel: "(44) 3123-3000", href: "tel:+554431233000" },
@@ -32,14 +34,24 @@ const QUICK_LINKS = [
 ];
 
 export function Footer() {
-  const [footerLogoUrl, setFooterLogoUrl] = useState<string | null>(null);
+  const [footerLogoUrl, setFooterLogoUrl] = useState<string | null>(() => {
+    try { return localStorage.getItem(FOOTER_LOGO_CACHE_KEY); } catch { return null; }
+  });
+  const [footerLogoLoading, setFooterLogoLoading] = useState(true);
 
   useEffect(() => {
     api.getFooterLogo()
       .then((data) => {
-        if (data?.hasLogo && data.url) setFooterLogoUrl(data.url);
+        if (data?.hasLogo && data.url) {
+          setFooterLogoUrl(data.url);
+          try { localStorage.setItem(FOOTER_LOGO_CACHE_KEY, data.url); } catch {}
+        } else {
+          setFooterLogoUrl(null);
+          try { localStorage.removeItem(FOOTER_LOGO_CACHE_KEY); } catch {}
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setFooterLogoLoading(false));
   }, []);
 
   return (
@@ -57,12 +69,17 @@ export function Footer() {
                   src={footerLogoUrl}
                   alt="Carretão Auto Peças"
                   className="h-24 w-auto max-w-[300px] object-contain"
-                  onError={() => setFooterLogoUrl(null)}
+                  onError={() => {
+                    setFooterLogoUrl(null);
+                    try { localStorage.removeItem(FOOTER_LOGO_CACHE_KEY); } catch {}
+                  }}
                   loading="lazy"
                   decoding="async"
                   width={300}
                   height={96}
                 />
+              ) : footerLogoLoading ? (
+                <div className="h-24 w-[200px] bg-gray-800 rounded-lg animate-pulse" />
               ) : (
                 <>
                   <div className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-2 shadow-lg shadow-red-900/20">

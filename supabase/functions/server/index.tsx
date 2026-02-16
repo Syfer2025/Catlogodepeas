@@ -2151,26 +2151,42 @@ app.post(`${BASE}/produtos/meta/bulk`, async (c) => {
 
 const ASSETS_BUCKET = "make-b7b07654-assets";
 
-// Ensure assets bucket exists (idempotent)
+// Ensure assets bucket exists AND is public (idempotent)
 (async () => {
   try {
     const { data: buckets } = await supabaseAdmin.storage.listBuckets();
     const exists = buckets?.some((b: any) => b.name === ASSETS_BUCKET);
     if (!exists) {
       await supabaseAdmin.storage.createBucket(ASSETS_BUCKET, { public: true });
-      console.log(`Created bucket: ${ASSETS_BUCKET}`);
+      console.log(`Created public bucket: ${ASSETS_BUCKET}`);
+    } else {
+      // Force bucket to be public even if it was created private before
+      await supabaseAdmin.storage.updateBucket(ASSETS_BUCKET, { public: true });
+      console.log(`Ensured bucket is public: ${ASSETS_BUCKET}`);
     }
   } catch (e) {
     console.log("Error ensuring assets bucket:", e);
   }
 })();
 
-// GET /logo — get current logo URL (public)
+// GET /logo — get current logo URL (public, with signed URL for robustness)
 app.get(`${BASE}/logo`, async (c) => {
   try {
-    const meta = await kv.get("site_logo");
-    if (!meta) return c.json({ hasLogo: false, url: null });
-    return c.json({ hasLogo: true, ...meta });
+    const meta: any = await kv.get("site_logo");
+    if (!meta || !meta.filename) return c.json({ hasLogo: false, url: null });
+
+    // Generate a signed URL (works even if bucket is accidentally private)
+    let url = meta.url;
+    try {
+      const { data: signedData } = await supabaseAdmin.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(meta.filename, 86400); // 24h
+      if (signedData?.signedUrl) url = signedData.signedUrl;
+    } catch (_e) {
+      console.log("Signed URL fallback failed for logo, using stored public URL");
+    }
+
+    return c.json({ hasLogo: true, ...meta, url });
   } catch (e) {
     console.log("Error fetching logo:", e);
     return c.json({ error: `Erro ao buscar logo: ${e}` }, 500);
@@ -2212,13 +2228,13 @@ app.post(`${BASE}/logo/upload`, async (c) => {
 
     const arrayBuffer = await file.arrayBuffer();
 
-    // Remove any old logo files first
+    // Remove any old header logo files (all possible extensions)
+    // NOTE: Do NOT use .list() with prefix — Supabase Storage doesn't support prefix filtering,
+    // so it would return ALL files and delete footer-logo too!
     try {
-      const { data: existing } = await supabaseAdmin.storage.from(ASSETS_BUCKET).list("", { prefix: "logo." });
-      if (existing && existing.length > 0) {
-        const toRemove = existing.map((f: any) => f.name);
-        await supabaseAdmin.storage.from(ASSETS_BUCKET).remove(toRemove);
-      }
+      const oldExts = ["avif", "png", "jpg", "webp", "svg"];
+      const toRemove = oldExts.map((ext) => `logo.${ext}`);
+      await supabaseAdmin.storage.from(ASSETS_BUCKET).remove(toRemove);
     } catch {
       // Ignore cleanup errors
     }
@@ -2279,13 +2295,25 @@ app.delete(`${BASE}/logo`, async (c) => {
 // ─── FOOTER LOGO (Site Assets) ────────
 // ═══════════════════════════════════════
 
-// GET /footer-logo — public
+// GET /footer-logo — public (with signed URL for robustness)
 app.get(`${BASE}/footer-logo`, async (c) => {
   console.log("GET /footer-logo called");
   try {
-    const meta = await kv.get("site_footer_logo");
-    if (!meta) return c.json({ hasLogo: false, url: null });
-    return c.json({ hasLogo: true, ...meta });
+    const meta: any = await kv.get("site_footer_logo");
+    if (!meta || !meta.filename) return c.json({ hasLogo: false, url: null });
+
+    // Generate a signed URL (works even if bucket is accidentally private)
+    let url = meta.url;
+    try {
+      const { data: signedData } = await supabaseAdmin.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(meta.filename, 86400); // 24h
+      if (signedData?.signedUrl) url = signedData.signedUrl;
+    } catch (_e) {
+      console.log("Signed URL fallback failed for footer logo, using stored public URL");
+    }
+
+    return c.json({ hasLogo: true, ...meta, url });
   } catch (e: any) {
     console.log("Error fetching footer logo:", e);
     return c.json({ error: `Erro ao buscar logo do rodape: ${e}` }, 500);
@@ -2319,12 +2347,12 @@ app.post(`${BASE}/footer-logo/upload`, async (c) => {
     const filename = `footer-logo.${ext}`;
     const arrayBuffer = await file.arrayBuffer();
 
-    // Cleanup old footer logo files
+    // Remove any old footer logo files (all possible extensions)
+    // NOTE: Do NOT use .list() with prefix — Supabase Storage doesn't support prefix filtering
     try {
-      const { data: existing } = await supabaseAdmin.storage.from(ASSETS_BUCKET).list("", { prefix: "footer-logo." });
-      if (existing && existing.length > 0) {
-        await supabaseAdmin.storage.from(ASSETS_BUCKET).remove(existing.map((f: any) => f.name));
-      }
+      const oldExts = ["avif", "png", "jpg", "webp", "svg"];
+      const toRemove = oldExts.map((ext) => `footer-logo.${ext}`);
+      await supabaseAdmin.storage.from(ASSETS_BUCKET).remove(toRemove);
     } catch (_e) { /* ignore */ }
 
     const { error: uploadErr } = await supabaseAdmin.storage
