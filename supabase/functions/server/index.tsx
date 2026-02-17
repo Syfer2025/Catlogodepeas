@@ -13,6 +13,12 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// Supabase anon client (for operations that trigger built-in emails, e.g. signUp confirmation)
+const supabaseAnon = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!
+);
+
 // Helper: verify auth token and return user id
 async function getAuthUserId(request: Request): Promise<string | null> {
   // Check X-User-Token first (used when Authorization carries the anon key),
@@ -113,35 +119,544 @@ app.get(`${BASE}/auth/me`, async (c) => {
   }
 });
 
-// Password recovery — sends reset email using Supabase SDK
+// ─── Password Recovery (polling last_sign_in_at) ───
+// GoTrue's OTP verification is broken in this project, and the Edge Functions
+// Gateway blocks unauthenticated GET requests (401), so we can't use a server
+// callback to capture redirect tokens either.
+//
+// New approach:
+// 1. Record the user's current last_sign_in_at before sending the email
+// 2. Send recovery email — GoTrue's {{ .ConfirmationURL }} link works fine
+// 3. When the user clicks the link GoTrue verifies it and creates a session,
+//    which updates last_sign_in_at
+// 4. The frontend polls /auth/recovery-status — server detects the change
+// 5. Password is changed via admin API (admin.updateUserById)
+
+// Step 1: Send recovery email
 app.post(`${BASE}/auth/forgot-password`, async (c) => {
   try {
-    const { email, redirectTo } = await c.req.json();
+    const { email } = await c.req.json();
+
     if (!email) {
       return c.json({ error: "Email é obrigatório." }, 400);
     }
 
-    // Use the provided redirectTo or fall back to the known production URL
-    const finalRedirect = redirectTo || "https://cafe-puce-47800704.figma.site/admin/reset-password";
-    console.log("Forgot-password request for:", email, "redirectTo:", finalRedirect);
+    const recoveryId = crypto.randomUUID();
+    console.log("Forgot-password: sending for:", email, "rid:", recoveryId);
 
-    // Use the Supabase SDK's resetPasswordForEmail — it handles
-    // redirect_to correctly for both implicit and PKCE flows
+    // Look up user to get their current last_sign_in_at
+    let userId: string | null = null;
+    let lastSignInBefore: string | null = null;
+    try {
+      const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+      if (listErr) {
+        console.log("Forgot-password: listUsers error:", listErr.message);
+      }
+      const user = users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      userId = user?.id || null;
+      lastSignInBefore = user?.last_sign_in_at || null;
+      console.log("Forgot-password: userId:", userId, "lastSignInBefore:", lastSignInBefore);
+    } catch (lookupErr) {
+      console.log("Forgot-password: user lookup error:", lookupErr);
+    }
+
+    await kv.set(`recovery:${recoveryId}`, JSON.stringify({
+      email,
+      userId,
+      lastSignInBefore,
+      status: "pending",
+      created_at: Date.now(),
+    }));
+
+    // Send recovery email — redirect goes to the Figma site (we don't need
+    // to capture the tokens; we detect the click via last_sign_in_at)
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: finalRedirect,
+      redirectTo: "https://cafe-puce-47800704.figma.site/admin/reset-password",
     });
 
     if (error) {
-      console.log("Forgot-password SDK error:", error.message);
-      // Return success anyway to prevent email enumeration attacks
+      console.log("Forgot-password error:", error.message);
     } else {
-      console.log("Forgot-password email sent successfully for:", email);
+      console.log("Forgot-password: email sent, rid:", recoveryId);
     }
 
-    return c.json({ sent: true });
+    // Always respond with sent: true (don't reveal if email exists)
+    return c.json({ sent: true, recoveryId });
   } catch (e) {
     console.log("Forgot-password exception:", e);
-    return c.json({ error: `Erro interno no envio de recuperação: ${e}` }, 500);
+    return c.json({ error: `Erro interno: ${e}` }, 500);
+  }
+});
+
+// Step 2: Frontend polls this to check if the link was clicked.
+// We detect the click by comparing last_sign_in_at before and after.
+app.post(`${BASE}/auth/recovery-status`, async (c) => {
+  try {
+    const { rid } = await c.req.json();
+    if (!rid) return c.json({ status: "not_found" });
+
+    const raw = await kv.get(`recovery:${rid}`);
+    if (!raw) return c.json({ status: "not_found" });
+
+    const data = JSON.parse(raw as string);
+
+    // Expire after 1 hour
+    if (Date.now() - data.created_at > 3600000) {
+      await kv.del(`recovery:${rid}`);
+      return c.json({ status: "expired" });
+    }
+
+    // Already verified? Return immediately
+    if (data.status === "verified") {
+      return c.json({ status: "verified" });
+    }
+
+    // No userId means the email didn't match a user — keep showing pending
+    // (don't reveal if the email exists)
+    if (!data.userId) {
+      return c.json({ status: "pending" });
+    }
+
+    // Check if last_sign_in_at changed
+    try {
+      const { data: { user }, error: getErr } = await supabaseAdmin.auth.admin.getUserById(data.userId);
+      if (getErr || !user) {
+        console.log("Recovery-status: getUserById error:", getErr?.message);
+        return c.json({ status: "pending" });
+      }
+
+      const currentSignIn = user.last_sign_in_at;
+      console.log("Recovery-status poll: before=", data.lastSignInBefore, " current=", currentSignIn);
+
+      // Detect change: either there was no previous sign-in and now there is,
+      // or the timestamp has changed
+      const changed =
+        (!data.lastSignInBefore && currentSignIn) ||
+        (data.lastSignInBefore && currentSignIn && currentSignIn !== data.lastSignInBefore);
+
+      if (changed) {
+        console.log("Recovery-status: link clicked detected! Marking as verified.");
+        await kv.set(`recovery:${rid}`, JSON.stringify({
+          ...data,
+          status: "verified",
+          verified_at: Date.now(),
+        }));
+        return c.json({ status: "verified" });
+      }
+    } catch (pollErr) {
+      console.log("Recovery-status: poll error:", pollErr);
+    }
+
+    return c.json({ status: "pending" });
+  } catch (e) {
+    console.log("Recovery-status exception:", e);
+    return c.json({ status: "error" });
+  }
+});
+
+// Step 3: Set new password via admin API (after verification)
+app.post(`${BASE}/auth/reset-password`, async (c) => {
+  try {
+    const { rid, newPassword } = await c.req.json();
+    if (!rid || !newPassword) {
+      return c.json({ error: "Dados incompletos." }, 400);
+    }
+    if (newPassword.length < 6) {
+      return c.json({ error: "A senha deve ter pelo menos 6 caracteres." }, 400);
+    }
+
+    const raw = await kv.get(`recovery:${rid}`);
+    if (!raw) {
+      return c.json({ error: "Recuperação não encontrada ou expirada." }, 404);
+    }
+
+    const data = JSON.parse(raw as string);
+
+    if (data.status !== "verified") {
+      return c.json({ error: "Recuperação ainda não verificada." }, 403);
+    }
+
+    if (!data.userId) {
+      return c.json({ error: "Usuário não identificado." }, 400);
+    }
+
+    // Expire after 1 hour
+    if (Date.now() - data.created_at > 3600000) {
+      await kv.del(`recovery:${rid}`);
+      return c.json({ error: "Recuperação expirada." }, 410);
+    }
+
+    // Update password via admin API
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
+      password: newPassword,
+    });
+
+    if (updateErr) {
+      console.log("Reset-password: updateUserById error:", updateErr.message);
+      return c.json({ error: `Erro ao redefinir senha: ${updateErr.message}` }, 500);
+    }
+
+    // Clean up
+    await kv.del(`recovery:${rid}`);
+    console.log("Reset-password: password updated for userId:", data.userId);
+
+    return c.json({ ok: true });
+  } catch (e) {
+    console.log("Reset-password exception:", e);
+    return c.json({ error: `Erro interno: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── USER AUTH (public user accounts) ─
+// ═══════════════════════════════════════
+
+// Signup for regular site users
+app.post(`${BASE}/auth/user/signup`, async (c) => {
+  try {
+    const { email, password, name, phone, cpf } = await c.req.json();
+
+    if (!email || !password) {
+      return c.json({ error: "Email e senha são obrigatórios." }, 400);
+    }
+    if (password.length < 6) {
+      return c.json({ error: "A senha deve ter pelo menos 6 caracteres." }, 400);
+    }
+
+    // Check if user already exists
+    try {
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+      const existing = users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      if (existing) {
+        return c.json({ error: "Este email já está cadastrado. Faça login." }, 409);
+      }
+    } catch (lookupErr) {
+      console.log("User signup: lookup error:", lookupErr);
+    }
+
+    // Check for duplicate CPF across existing user profiles
+    if (cpf) {
+      try {
+        const cpfClean = cpf.replace(/\D/g, "");
+        if (cpfClean.length === 11) {
+          const profiles = await kv.getByPrefix("user_profile:");
+          const cpfTaken = profiles?.some((raw: any) => {
+            try {
+              const p = typeof raw === "string" ? JSON.parse(raw) : raw;
+              const existingCpf = (p.cpf || "").replace(/\D/g, "");
+              return existingCpf === cpfClean;
+            } catch { return false; }
+          });
+          if (cpfTaken) {
+            return c.json({ error: "Este CPF já está cadastrado em outra conta." }, 409);
+          }
+        }
+      } catch (cpfLookupErr) {
+        console.log("User signup: CPF lookup error:", cpfLookupErr);
+      }
+    }
+
+    // Use signUp via anon client so Supabase sends the confirmation email automatically
+    const { data, error } = await supabaseAnon.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: name || "",
+          phone: phone || "",
+          role: "user",
+        },
+        emailRedirectTo: "https://cafe-puce-47800704.figma.site/conta",
+      },
+    });
+
+    if (error) {
+      console.log("User signup error:", error.message);
+      return c.json({ error: `Erro ao criar conta: ${error.message}` }, 400);
+    }
+
+    if (!data.user?.id) {
+      console.log("User signup: no user returned");
+      return c.json({ error: "Erro inesperado ao criar conta." }, 500);
+    }
+
+    // Store user profile in KV for additional data
+    await kv.set(`user_profile:${data.user.id}`, JSON.stringify({
+      id: data.user.id,
+      email: data.user.email,
+      name: name || "",
+      phone: phone || "",
+      cpf: cpf || "",
+      created_at: new Date().toISOString(),
+    }));
+
+    console.log("User signup: created user:", data.user.id, email, "- confirmation email sent");
+    return c.json({
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        name: name || "",
+      },
+      emailConfirmationRequired: true,
+    }, 201);
+  } catch (e) {
+    console.log("User signup exception:", e);
+    return c.json({ error: `Erro interno no cadastro: ${e}` }, 500);
+  }
+});
+
+// Get user profile (requires auth)
+app.get(`${BASE}/auth/user/me`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Token inválido ou expirado." }, 401);
+    }
+    const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (error || !user) {
+      return c.json({ error: "Usuário não encontrado." }, 401);
+    }
+
+    // Get extended profile from KV
+    let profile: any = {};
+    try {
+      const raw = await kv.get(`user_profile:${userId}`);
+      if (raw) {
+        profile = typeof raw === "string" ? JSON.parse(raw) : raw;
+      }
+    } catch {}
+
+    return c.json({
+      id: user.id,
+      email: user.email,
+      name: user.user_metadata?.name || profile.name || "",
+      phone: user.user_metadata?.phone || profile.phone || "",
+      role: user.user_metadata?.role || "user",
+      cpf: profile.cpf || "",
+      address: profile.address || "",
+      city: profile.city || "",
+      state: profile.state || "",
+      cep: profile.cep || "",
+      created_at: user.created_at,
+    });
+  } catch (e) {
+    console.log("User me exception:", e);
+    return c.json({ error: `Erro ao buscar perfil: ${e}` }, 500);
+  }
+});
+
+// Update user profile (requires auth)
+app.put(`${BASE}/auth/user/profile`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Token inválido ou expirado." }, 401);
+    }
+
+    const body = await c.req.json();
+    const { name, phone, cpf, address, city, state, cep } = body;
+
+    // Update user_metadata in Supabase Auth
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        name: name || "",
+        phone: phone || "",
+        role: "user",
+      },
+    });
+
+    if (updateErr) {
+      console.log("User profile update auth error:", updateErr.message);
+      return c.json({ error: `Erro ao atualizar perfil: ${updateErr.message}` }, 500);
+    }
+
+    // Update KV profile
+    let existing: any = {};
+    try {
+      const raw = await kv.get(`user_profile:${userId}`);
+      if (raw) {
+        existing = typeof raw === "string" ? JSON.parse(raw) : raw;
+      }
+    } catch {}
+
+    const updatedProfile = {
+      ...existing,
+      id: userId,
+      name: name || "",
+      phone: phone || "",
+      cpf: cpf || "",
+      address: address || "",
+      city: city || "",
+      state: state || "",
+      cep: cep || "",
+      updated_at: new Date().toISOString(),
+    };
+
+    await kv.set(`user_profile:${userId}`, JSON.stringify(updatedProfile));
+    console.log("User profile updated:", userId);
+
+    return c.json({ ok: true, profile: updatedProfile });
+  } catch (e) {
+    console.log("User profile update exception:", e);
+    return c.json({ error: `Erro ao atualizar perfil: ${e}` }, 500);
+  }
+});
+
+// User password change (requires auth)
+app.post(`${BASE}/auth/user/change-password`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Token inválido ou expirado." }, 401);
+    }
+
+    const { newPassword } = await c.req.json();
+    if (!newPassword || newPassword.length < 6) {
+      return c.json({ error: "A nova senha deve ter pelo menos 6 caracteres." }, 400);
+    }
+
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+
+    if (updateErr) {
+      console.log("User change-password error:", updateErr.message);
+      return c.json({ error: `Erro ao alterar senha: ${updateErr.message}` }, 500);
+    }
+
+    console.log("User password changed:", userId);
+    return c.json({ ok: true });
+  } catch (e) {
+    console.log("User change-password exception:", e);
+    return c.json({ error: `Erro ao alterar senha: ${e}` }, 500);
+  }
+});
+
+// User forgot password (recovery email)
+app.post(`${BASE}/auth/user/forgot-password`, async (c) => {
+  try {
+    const { email } = await c.req.json();
+
+    if (!email) {
+      return c.json({ error: "Email é obrigatório." }, 400);
+    }
+
+    const recoveryId = crypto.randomUUID();
+    console.log("User forgot-password: sending for:", email, "rid:", recoveryId);
+
+    let userId: string | null = null;
+    let lastSignInBefore: string | null = null;
+    try {
+      const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+      if (listErr) console.log("User forgot-password: listUsers error:", listErr.message);
+      const user = users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      userId = user?.id || null;
+      lastSignInBefore = user?.last_sign_in_at || null;
+    } catch (lookupErr) {
+      console.log("User forgot-password: user lookup error:", lookupErr);
+    }
+
+    await kv.set(`recovery:${recoveryId}`, JSON.stringify({
+      email,
+      userId,
+      lastSignInBefore,
+      status: "pending",
+      created_at: Date.now(),
+      type: "user",
+    }));
+
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://cafe-puce-47800704.figma.site/conta/redefinir-senha",
+    });
+
+    if (error) {
+      console.log("User forgot-password error:", error.message);
+    } else {
+      console.log("User forgot-password: email sent, rid:", recoveryId);
+    }
+
+    return c.json({ sent: true, recoveryId });
+  } catch (e) {
+    console.log("User forgot-password exception:", e);
+    return c.json({ error: `Erro interno: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── ADMIN: CLIENTS ───────────────────
+// ═══════════════════════════════════════
+
+// List all registered clients (requires admin auth)
+app.get(`${BASE}/auth/admin/clients`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) {
+      return c.json({ error: "Não autorizado." }, 401);
+    }
+
+    // Fetch all user profiles from KV
+    const profilesRaw = await kv.getByPrefix("user_profile:");
+    const profiles: any[] = [];
+
+    if (Array.isArray(profilesRaw)) {
+      for (const raw of profilesRaw) {
+        try {
+          const p = typeof raw === "string" ? JSON.parse(raw) : raw;
+          profiles.push(p);
+        } catch {
+          // skip invalid entries
+        }
+      }
+    }
+
+    // Enrich with Supabase Auth data (email_confirmed_at, last_sign_in_at)
+    let authUsers: any[] = [];
+    try {
+      const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+      if (!listErr && users) {
+        authUsers = users;
+      }
+    } catch (e) {
+      console.log("Admin clients: listUsers error:", e);
+    }
+
+    // Build auth lookup map by id
+    const authMap = new Map<string, any>();
+    for (const u of authUsers) {
+      authMap.set(u.id, u);
+    }
+
+    // Merge profile data with auth data
+    const clients = profiles.map((p: any) => {
+      const authUser = authMap.get(p.id);
+      return {
+        id: p.id,
+        email: authUser?.email || p.email || "",
+        name: p.name || authUser?.user_metadata?.name || "",
+        phone: p.phone || "",
+        cpf: p.cpf || "",
+        address: p.address || "",
+        city: p.city || "",
+        state: p.state || "",
+        cep: p.cep || "",
+        created_at: p.created_at || authUser?.created_at || "",
+        email_confirmed: !!authUser?.email_confirmed_at,
+        last_sign_in: authUser?.last_sign_in_at || null,
+      };
+    });
+
+    // Sort by created_at descending (newest first)
+    clients.sort((a: any, b: any) => {
+      const da = new Date(a.created_at).getTime() || 0;
+      const db = new Date(b.created_at).getTime() || 0;
+      return db - da;
+    });
+
+    console.log("Admin clients: returning", clients.length, "clients");
+    return c.json({ clients, total: clients.length });
+  } catch (e) {
+    console.log("Admin clients exception:", e);
+    return c.json({ error: `Erro ao buscar clientes: ${e}` }, 500);
   }
 });
 
@@ -2427,6 +2942,1401 @@ app.delete(`${BASE}/footer-logo`, async (c) => {
   } catch (e: any) {
     console.log("Error deleting footer logo:", e);
     return c.json({ error: `Erro ao excluir logo do rodape: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── API SIGE — INTEGRACAO REAL ──────
+// ═══════════════════════════════════════
+
+// POST /sige/save-config — save SIGE API configuration (baseUrl, email, password)
+app.post(`${BASE}/sige/save-config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const { baseUrl, email, password } = await c.req.json();
+    if (!baseUrl || !email || !password) {
+      return c.json({ error: "URL base, email e senha sao obrigatorios." }, 400);
+    }
+    const normalizedUrl = baseUrl.trim().replace(/\/+$/, "");
+    await kv.set("sige_api_config", JSON.stringify({
+      baseUrl: normalizedUrl, email: email.trim(), password,
+      updatedAt: new Date().toISOString(), updatedBy: userId,
+    }));
+    console.log("SIGE save-config: saved for user", userId, "baseUrl:", normalizedUrl);
+    return c.json({ success: true });
+  } catch (e) {
+    console.log("Error saving SIGE config:", e);
+    return c.json({ error: `Erro ao salvar configuracao: ${e}` }, 500);
+  }
+});
+
+// GET /sige/config — get saved config (password masked)
+app.get(`${BASE}/sige/config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const raw = await kv.get("sige_api_config");
+    if (!raw) return c.json({});
+    const config = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return c.json({
+      baseUrl: config.baseUrl || "", email: config.email || "",
+      hasPassword: !!config.password, updatedAt: config.updatedAt || null,
+    });
+  } catch (e) {
+    console.log("Error getting SIGE config:", e);
+    return c.json({ error: `Erro ao buscar configuracao: ${e}` }, 500);
+  }
+});
+
+// POST /sige/connect — authenticate with SIGE API (POST baseUrl/auth)
+app.post(`${BASE}/sige/connect`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ error: "Configuracao SIGE nao encontrada. Salve a URL base, email e senha primeiro." }, 400);
+    const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+    if (!config.baseUrl || !config.email || !config.password) {
+      return c.json({ error: "Configuracao incompleta. Preencha URL base, email e senha." }, 400);
+    }
+    const authUrl = `${config.baseUrl}/auth`;
+    console.log(`SIGE connect: POST ${authUrl} for ${config.email}`);
+    const response = await fetch(authUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: config.email, password: config.password }),
+    });
+    const responseText = await response.text();
+    console.log(`SIGE connect: HTTP ${response.status}, body length: ${responseText.length}`);
+    if (!response.ok) {
+      let errorMsg = `SIGE retornou HTTP ${response.status}`;
+      try {
+        const errData = JSON.parse(responseText);
+        if (errData.message) errorMsg = errData.message;
+        else if (errData.error) errorMsg = errData.error;
+      } catch {}
+      console.log(`SIGE connect: error — ${errorMsg}`);
+      return c.json({ error: errorMsg, httpStatus: response.status }, 502);
+    }
+    let authData: any;
+    try { authData = JSON.parse(responseText); }
+    catch { return c.json({ error: "Resposta invalida da API SIGE (nao e JSON)." }, 502); }
+    const tokenData = {
+      token: authData.token || authData.access_token || authData.accessToken || "",
+      refreshToken: authData.refreshToken || authData.refresh_token || "",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      rawResponse: authData,
+    };
+    await kv.set("sige_api_token", JSON.stringify(tokenData));
+    console.log("SIGE connect: token stored, expires at", tokenData.expiresAt);
+    return c.json({
+      connected: true, hasToken: !!tokenData.token,
+      hasRefreshToken: !!tokenData.refreshToken,
+      expiresAt: tokenData.expiresAt, responseKeys: Object.keys(authData),
+    });
+  } catch (e) {
+    console.log("SIGE connect exception:", e);
+    return c.json({ error: `Erro ao conectar com SIGE: ${e}` }, 500);
+  }
+});
+
+// POST /sige/refresh-token — refresh SIGE JWT token
+app.post(`${BASE}/sige/refresh-token`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ error: "Configuracao SIGE nao encontrada." }, 400);
+    const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ error: "Nenhum token encontrado. Faca login primeiro." }, 400);
+    const tokenData = typeof rawToken === "string" ? JSON.parse(rawToken) : rawToken;
+    if (!tokenData.refreshToken) {
+      return c.json({ error: "Refresh token nao disponivel. Faca login novamente." }, 400);
+    }
+    const refreshUrl = `${config.baseUrl}/auth/refresh`;
+    console.log(`SIGE refresh-token: POST ${refreshUrl}`);
+    const response = await fetch(refreshUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: tokenData.refreshToken }),
+    });
+    const responseText = await response.text();
+    console.log(`SIGE refresh-token: HTTP ${response.status}`);
+    if (!response.ok) {
+      let errorMsg = `SIGE retornou HTTP ${response.status}`;
+      try {
+        const errData = JSON.parse(responseText);
+        if (errData.message) errorMsg = errData.message;
+        else if (errData.error) errorMsg = errData.error;
+      } catch {}
+      return c.json({ error: errorMsg, httpStatus: response.status }, 502);
+    }
+    let refreshData: any;
+    try { refreshData = JSON.parse(responseText); }
+    catch { return c.json({ error: "Resposta invalida da API SIGE (nao e JSON)." }, 502); }
+    const newTokenData = {
+      token: refreshData.token || refreshData.access_token || refreshData.accessToken || tokenData.token,
+      refreshToken: refreshData.refreshToken || refreshData.refresh_token || tokenData.refreshToken,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      rawResponse: refreshData,
+    };
+    await kv.set("sige_api_token", JSON.stringify(newTokenData));
+    console.log("SIGE refresh-token: new token stored");
+    return c.json({ refreshed: true, hasToken: !!newTokenData.token, expiresAt: newTokenData.expiresAt });
+  } catch (e) {
+    console.log("SIGE refresh-token exception:", e);
+    return c.json({ error: `Erro ao renovar token: ${e}` }, 500);
+  }
+});
+
+// GET /sige/status — get current SIGE connection status
+app.get(`${BASE}/sige/status`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const rawConfig = await kv.get("sige_api_config");
+    const hasConfig = !!rawConfig;
+    let configInfo: any = {};
+    if (rawConfig) {
+      const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+      configInfo = { baseUrl: config.baseUrl, email: config.email, hasPassword: !!config.password };
+    }
+    const rawToken = await kv.get("sige_api_token");
+    let tokenInfo: any = { hasToken: false, expired: true };
+    if (rawToken) {
+      const td = typeof rawToken === "string" ? JSON.parse(rawToken) : rawToken;
+      const expiresAt = new Date(td.expiresAt).getTime();
+      const now = Date.now();
+      tokenInfo = {
+        hasToken: !!td.token, hasRefreshToken: !!td.refreshToken,
+        createdAt: td.createdAt, expiresAt: td.expiresAt,
+        expired: now > expiresAt, expiresInMs: Math.max(0, expiresAt - now),
+      };
+    }
+    return c.json({ configured: hasConfig, ...configInfo, ...tokenInfo });
+  } catch (e) {
+    console.log("SIGE status exception:", e);
+    return c.json({ error: `Erro ao buscar status: ${e}` }, 500);
+  }
+});
+
+// POST /sige/disconnect — clear stored SIGE tokens
+app.post(`${BASE}/sige/disconnect`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    await kv.del("sige_api_token");
+    console.log("SIGE disconnect: token cleared by user", userId);
+    return c.json({ disconnected: true });
+  } catch (e) {
+    console.log("SIGE disconnect exception:", e);
+    return c.json({ error: `Erro ao desconectar: ${e}` }, 500);
+  }
+});
+
+// ─── Helper: make authenticated SIGE API call ───
+async function sigeAuthFetch(method: string, path: string, body?: any): Promise<{ ok: boolean; status: number; data: any }> {
+  const rawConfig = await kv.get("sige_api_config");
+  if (!rawConfig) throw new Error("Configuracao SIGE nao encontrada.");
+  const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+  const rawToken = await kv.get("sige_api_token");
+  if (!rawToken) throw new Error("Token SIGE nao encontrado. Conecte-se primeiro.");
+  const tokenData = typeof rawToken === "string" ? JSON.parse(rawToken) : rawToken;
+  if (!tokenData.token) throw new Error("Token SIGE vazio. Reconecte.");
+  const url = `${config.baseUrl}${path}`;
+  console.log(`SIGE proxy: ${method} ${url}`);
+  const fetchHeaders: any = { "Content-Type": "application/json", "Authorization": `Bearer ${tokenData.token}` };
+  const fetchOpts: any = { method, headers: fetchHeaders };
+  if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, fetchOpts);
+  const responseText = await response.text();
+  console.log(`SIGE proxy: ${method} ${path} => HTTP ${response.status}, ${responseText.length} bytes`);
+  let data: any;
+  try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
+  return { ok: response.ok, status: response.status, data };
+}
+
+// ─── Helper: make PUBLIC (no JWT) SIGE API call ───
+async function sigePublicFetch(method: string, path: string, body?: any): Promise<{ ok: boolean; status: number; data: any }> {
+  const rawConfig = await kv.get("sige_api_config");
+  if (!rawConfig) throw new Error("Configuracao SIGE nao encontrada. Salve a URL base primeiro.");
+  const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+  if (!config.baseUrl) throw new Error("URL base da API SIGE nao configurada.");
+  const url = `${config.baseUrl}${path}`;
+  console.log(`SIGE public proxy: ${method} ${url}`);
+  const fetchHeaders: any = { "Content-Type": "application/json" };
+  const fetchOpts: any = { method, headers: fetchHeaders };
+  if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, fetchOpts);
+  const responseText = await response.text();
+  console.log(`SIGE public proxy: ${method} ${path} => HTTP ${response.status}, ${responseText.length} bytes`);
+  let data: any;
+  try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
+  return { ok: response.ok, status: response.status, data };
+}
+
+// ═══════════════════════════════════════
+// ─── SIGE: USUARIOS ──────────────────
+// ═══════════════════════════════════════
+
+// POST /sige/user/register — criar usuario SEM JWT (registro inicial do zero)
+// Aceita baseUrl opcional no body para nao depender de config previa
+app.post(`${BASE}/sige/user/register`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const { name, email, password, baseUrl: bodyBaseUrl } = await c.req.json();
+    if (!name || !email || !password) return c.json({ error: "Nome, email e senha sao obrigatorios." }, 400);
+
+    // Determine base URL: body param takes priority, then stored config
+    let apiBaseUrl = bodyBaseUrl?.trim();
+    if (!apiBaseUrl) {
+      const rawConfig = await kv.get("sige_api_config");
+      if (rawConfig) {
+        const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+        apiBaseUrl = config.baseUrl;
+      }
+    }
+    if (!apiBaseUrl) return c.json({ error: "URL base da API SIGE nao informada. Informe no campo ou salve na configuracao." }, 400);
+
+    // Normalize: strip trailing slashes
+    apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+
+    // If baseUrl was provided in body, also save/update the config for future use
+    if (bodyBaseUrl?.trim()) {
+      const rawConfig = await kv.get("sige_api_config");
+      const existing = rawConfig ? (typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig) : {};
+      await kv.set("sige_api_config", JSON.stringify({ ...existing, baseUrl: apiBaseUrl, updatedAt: new Date().toISOString() }));
+      console.log("SIGE config: baseUrl saved/updated via register endpoint");
+    }
+
+    // Call SIGE API directly (no JWT)
+    const url = `${apiBaseUrl}/user/create`;
+    console.log(`SIGE register: POST ${url}`);
+    console.log(`SIGE register: body =>`, JSON.stringify({ name, email, password: "***" }));
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const responseText = await response.text();
+    console.log(`SIGE register: POST /user/create => HTTP ${response.status}, body: ${responseText.substring(0, 500)}`);
+    let data: any;
+    try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
+    if (!response.ok) return c.json({ error: data?.message || data?.error || `SIGE HTTP ${response.status}`, sigeStatus: response.status, sigeData: data, attemptedUrl: url }, 502);
+    return c.json(data);
+  } catch (e: any) {
+    console.log("SIGE user/register exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/user/create — proxy to SIGE POST /user/create (requer JWT ativo)
+app.post(`${BASE}/sige/user/create`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const { name, email, password } = await c.req.json();
+    if (!name || !email || !password) return c.json({ error: "Nome, email e senha sao obrigatorios." }, 400);
+    const result = await sigeAuthFetch("POST", "/user/create", { name, email, password });
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE user/create exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// GET /sige/user/me — proxy to SIGE GET /user/me
+app.get(`${BASE}/sige/user/me`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const result = await sigeAuthFetch("GET", "/user/me");
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE user/me exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PATCH /sige/user/reset/:id — proxy to SIGE PATCH /user/reset/{id}
+app.patch(`${BASE}/sige/user/reset/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const { password, newPassword } = await c.req.json();
+    if (!password || !newPassword) return c.json({ error: "Senha atual e nova senha sao obrigatorias." }, 400);
+    const result = await sigeAuthFetch("PATCH", `/user/reset/${id}`, { password, newPassword });
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE user/reset exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: CATEGORIAS ─────────────────
+// ═══════════════════════════════════════
+
+// GET /sige/category — proxy to SIGE GET /category
+app.get(`${BASE}/sige/category`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE category proxy: GET /category${queryString}`);
+    const result = await sigeAuthFetch("GET", `/category${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /category exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/category — proxy to SIGE POST /category
+app.post(`${BASE}/sige/category`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json();
+    const { codCategoria, nomeCategoria, classe } = body;
+    if (!codCategoria || !nomeCategoria || !classe) return c.json({ error: "codCategoria, nomeCategoria e classe sao obrigatorios." }, 400);
+    if (classe !== "S" && classe !== "E") return c.json({ error: "classe deve ser 'S' (Saidas) ou 'E' (Entradas)." }, 400);
+    const result = await sigeAuthFetch("POST", "/category", { codCategoria, nomeCategoria, classe });
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /category exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/category/:id — proxy to SIGE PUT /category/{id}
+app.put(`${BASE}/sige/category/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const { nomeCategoria, classe } = body;
+    if (!nomeCategoria || !classe) return c.json({ error: "nomeCategoria e classe sao obrigatorios." }, 400);
+    if (classe !== "S" && classe !== "E") return c.json({ error: "classe deve ser 'S' (Saidas) ou 'E' (Entradas)." }, 400);
+    const result = await sigeAuthFetch("PUT", `/category/${id}`, { nomeCategoria, classe });
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /category exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /sige/category/:id — proxy to SIGE DELETE /category/{id}
+app.delete(`${BASE}/sige/category/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const result = await sigeAuthFetch("DELETE", `/category/${id}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE DELETE /category exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: CLIENTES ───────────────────
+// ═══════════════════════════════════════
+
+// GET /sige/customer — proxy to SIGE GET /customer (busca com filtros)
+app.get(`${BASE}/sige/customer`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE customer proxy: GET /customer${queryString}`);
+    const result = await sigeAuthFetch("GET", `/customer${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /customer exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// GET /sige/customer/:id — proxy to SIGE GET /customer/{id} (busca por ID)
+app.get(`${BASE}/sige/customer/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE customer proxy: GET /customer/${id}${queryString}`);
+    const result = await sigeAuthFetch("GET", `/customer/${id}${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /customer/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/customer — proxy to SIGE POST /customer (cadastrar)
+app.post(`${BASE}/sige/customer`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json();
+    if (!body.tipoCadastro || !body.nomeCadastro) return c.json({ error: "tipoCadastro e nomeCadastro sao obrigatorios." }, 400);
+    console.log("SIGE customer proxy: POST /customer");
+    const result = await sigeAuthFetch("POST", "/customer", body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /customer exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/customer/:id — proxy to SIGE PUT /customer/{id} (alterar)
+app.put(`${BASE}/sige/customer/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE customer proxy: PUT /customer/${id}`);
+    const result = await sigeAuthFetch("PUT", `/customer/${id}`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /customer/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: CLIENTE ENDERECO ───────────
+// ═══════════════════════════════════════
+
+// GET /sige/customer/:id/address — proxy to SIGE GET /customer/{id}/address
+app.get(`${BASE}/sige/customer/:id/address`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE customer address proxy: GET /customer/${id}/address${queryString}`);
+    const result = await sigeAuthFetch("GET", `/customer/${id}/address${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /customer/:id/address exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/customer/:id/address — proxy to SIGE POST /customer/{id}/address
+app.post(`${BASE}/sige/customer/:id/address`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    if (!body.tipoEndereco) return c.json({ error: "tipoEndereco e obrigatorio." }, 400);
+    console.log(`SIGE customer address proxy: POST /customer/${id}/address`);
+    const result = await sigeAuthFetch("POST", `/customer/${id}/address`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /customer/:id/address exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/customer/:id/address — proxy to SIGE PUT /customer/{id}/address
+app.put(`${BASE}/sige/customer/:id/address`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    if (!body.tipoEndereco) return c.json({ error: "tipoEndereco e obrigatorio." }, 400);
+    console.log(`SIGE customer address proxy: PUT /customer/${id}/address`);
+    const result = await sigeAuthFetch("PUT", `/customer/${id}/address`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /customer/:id/address exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: CLIENTE COMPLEMENTO ────────
+// ═══════════════════════════════════════
+
+// GET /sige/customer/:id/complement — proxy to SIGE GET /customer/{id}/complement
+app.get(`${BASE}/sige/customer/:id/complement`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    console.log(`SIGE customer complement proxy: GET /customer/${id}/complement`);
+    const result = await sigeAuthFetch("GET", `/customer/${id}/complement`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /customer/:id/complement exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/customer/:id/complement — proxy to SIGE POST /customer/{id}/complement
+app.post(`${BASE}/sige/customer/:id/complement`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE customer complement proxy: POST /customer/${id}/complement`);
+    const result = await sigeAuthFetch("POST", `/customer/${id}/complement`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /customer/:id/complement exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/customer/:id/complement — proxy to SIGE PUT /customer/{id}/complement
+app.put(`${BASE}/sige/customer/:id/complement`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE customer complement proxy: PUT /customer/${id}/complement`);
+    const result = await sigeAuthFetch("PUT", `/customer/${id}/complement`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /customer/:id/complement exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: CLIENTE CONTATO ────────────
+// ═══════════════════════════════════════
+
+// GET /sige/customer/:id/contact — proxy to SIGE GET /customer/{id}/contact
+app.get(`${BASE}/sige/customer/:id/contact`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE customer contact proxy: GET /customer/${id}/contact${queryString}`);
+    const result = await sigeAuthFetch("GET", `/customer/${id}/contact${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /customer/:id/contact exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/customer/:id/contact — proxy to SIGE POST /customer/{id}/contact
+app.post(`${BASE}/sige/customer/:id/contact`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    if (!body.nome) return c.json({ error: "nome e obrigatorio no body." }, 400);
+    console.log(`SIGE customer contact proxy: POST /customer/${id}/contact`);
+    const result = await sigeAuthFetch("POST", `/customer/${id}/contact`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /customer/:id/contact exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/customer/:id/contact — proxy to SIGE PUT /customer/{id}/contact?nome=...
+app.put(`${BASE}/sige/customer/:id/contact`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const nome = url.searchParams.get("nome");
+    if (!nome) return c.json({ error: "Query param 'nome' e obrigatorio para identificar o contato a alterar." }, 400);
+    const body = await c.req.json();
+    console.log(`SIGE customer contact proxy: PUT /customer/${id}/contact?nome=${nome}`);
+    const result = await sigeAuthFetch("PUT", `/customer/${id}/contact?nome=${encodeURIComponent(nome)}`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /customer/:id/contact exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO ────────────────────
+// ═══════════════════════════════════════
+
+// GET /sige/product — proxy to SIGE GET /product with query filters
+app.get(`${BASE}/sige/product`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE product proxy: GET /product${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /sige/product — proxy to SIGE POST /product
+app.post(`${BASE}/sige/product`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json();
+    console.log("SIGE product proxy: POST /product");
+    const result = await sigeAuthFetch("POST", "/product", body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /product exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /sige/product/:id — proxy to SIGE PUT /product/{id}
+app.put(`${BASE}/sige/product/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE product proxy: PUT /product/${id}`);
+    const result = await sigeAuthFetch("PUT", `/product/${id}`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /product/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO SALDO ─────────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/product/:id/balance`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE product balance proxy: GET /product/${id}/balance${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product/${id}/balance${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product/:id/balance exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO PCP ───────────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/product/:id/product-control-plan`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE product PCP proxy: GET /product/${id}/product-control-plan${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product/${id}/product-control-plan${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product/:id/product-control-plan exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO PROMOCAO ──────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/product/:id/promotion`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE product promotion proxy: GET /product/${id}/promotion${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product/${id}/promotion${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product/:id/promotion exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO REFERENCIA ────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/product/:id/reference`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE product reference proxy: GET /product/${id}/reference${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product/${id}/reference${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product/:id/reference exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/product/:id/reference`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE product reference proxy: POST /product/${id}/reference`);
+    const result = await sigeAuthFetch("POST", `/product/${id}/reference`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /product/:id/reference exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.put(`${BASE}/sige/product/:id/reference`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE product reference proxy: PUT /product/${id}/reference`);
+    const result = await sigeAuthFetch("PUT", `/product/${id}/reference`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /product/:id/reference exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PRODUTO FICHA TECNICA ─────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/product/:id/technical-sheet`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE technical-sheet proxy: GET /product/${id}/technical-sheet${queryString}`);
+    const result = await sigeAuthFetch("GET", `/product/${id}/technical-sheet${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /product/:id/technical-sheet exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/product/:id/technical-sheet`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE technical-sheet proxy: POST /product/${id}/technical-sheet`);
+    const result = await sigeAuthFetch("POST", `/product/${id}/technical-sheet`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /product/:id/technical-sheet exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.put(`${BASE}/sige/product/:id/technical-sheet`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE technical-sheet proxy: PUT /product/${id}/technical-sheet`);
+    const result = await sigeAuthFetch("PUT", `/product/${id}/technical-sheet`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /product/:id/technical-sheet exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PEDIDOS (ORDERS) ──────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/order`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE order proxy: GET /order${queryString}`);
+    const result = await sigeAuthFetch("GET", `/order${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.get(`${BASE}/sige/order/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    console.log(`SIGE order proxy: GET /order/${id}`);
+    const result = await sigeAuthFetch("GET", `/order/${id}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/order`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json();
+    console.log("SIGE order proxy: POST /order");
+    const result = await sigeAuthFetch("POST", "/order", body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /order exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PEDIDOS OBSERVACAO ────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/order/:id/observation`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    console.log(`SIGE order observation proxy: GET /order/${id}/observation`);
+    const result = await sigeAuthFetch("GET", `/order/${id}/observation`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order/:id/observation exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/order/:id/observation`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE order observation proxy: POST /order/${id}/observation`);
+    const result = await sigeAuthFetch("POST", `/order/${id}/observation`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /order/:id/observation exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.put(`${BASE}/sige/order/:id/observation`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE order observation proxy: PUT /order/${id}/observation`);
+    const result = await sigeAuthFetch("PUT", `/order/${id}/observation`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /order/:id/observation exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PEDIDOS PARCELAMENTO ──────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/order/:id/installment`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    console.log(`SIGE order installment proxy: GET /order/${id}/installment`);
+    const result = await sigeAuthFetch("GET", `/order/${id}/installment`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order/:id/installment exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PEDIDOS ITEMS ─────────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/order-items/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    console.log(`SIGE order-items proxy: GET /order-items/${id}`);
+    const result = await sigeAuthFetch("GET", `/order-items/${id}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order-items/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/order-items/:id`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE order-items proxy: POST /order-items/${id}`);
+    const result = await sigeAuthFetch("POST", `/order-items/${id}`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /order-items/:id exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: PEDIDOS ITEMS TEXT ────────
+// ═══════════════════════════════════════
+
+app.get(`${BASE}/sige/order-items/:id/text`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE order-items text proxy: GET /order-items/${id}/text${queryString}`);
+    const result = await sigeAuthFetch("GET", `/order-items/${id}/text${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /order-items/:id/text exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.post(`${BASE}/sige/order-items/:id/text`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE order-items text proxy: POST /order-items/${id}/text`);
+    const result = await sigeAuthFetch("POST", `/order-items/${id}/text`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE POST /order-items/:id/text exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+app.put(`${BASE}/sige/order-items/:id/text`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    console.log(`SIGE order-items text proxy: PUT /order-items/${id}/text`);
+    const result = await sigeAuthFetch("PUT", `/order-items/${id}/text`, body);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE PUT /order-items/:id/text exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: DEPENDENCIAS (generic GET proxy) ──
+// ═══════════════════════════════════════
+const ALLOWED_DEP_ENDPOINTS = new Set([
+  "area","area-work","branch","brand","country","currency",
+  "balance-v2","division-one","division-two","division-three",
+  "fiscal-classfication","grate","group","group-limit","local-stock",
+  "municipality","payment-condition","promotion","reference","risk",
+  "sequence","situation","type-document","type-moviment","type-register",
+  "unit","list-product","list-product-overview","tracking",
+  "list-price","list-price-items",
+]);
+
+app.get(`${BASE}/sige/dep/:endpoint{.+}`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const fullPath = c.req.path;
+    const prefix = `${BASE}/sige/dep/`;
+    const sigePath = "/" + fullPath.substring(fullPath.indexOf(prefix) + prefix.length);
+    const baseEndpoint = sigePath.split("/")[1]?.split("?")[0];
+    if (!baseEndpoint || !ALLOWED_DEP_ENDPOINTS.has(baseEndpoint)) {
+      return c.json({ error: `Endpoint '${baseEndpoint}' nao permitido.` }, 400);
+    }
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE dep proxy: GET ${sigePath}${queryString}`);
+    const result = await sigeAuthFetch("GET", sigePath + queryString);
+    return c.json({ endpoint: sigePath, sigeStatus: result.status, ok: result.ok, data: result.data }, result.ok ? 200 : 502);
+  } catch (e: any) {
+    console.log("SIGE dep proxy exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── SALDO PÚBLICO (Product Stock via SIGE) ──────────
+// ═══════════════════════════════════════════════════════
+
+// GET /produtos/saldo/:sku — public endpoint to get stock balance from SIGE
+// Uses the stored admin SIGE JWT, no user auth required (only publicAnonKey)
+// Caches in KV for 5 minutes to avoid hammering the SIGE API
+// Strategy: try direct balance call with SKU as codProduto, fall back to search
+app.get(`${BASE}/produtos/saldo/:sku`, async (c) => {
+  try {
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    if (!sku) return c.json({ error: "SKU obrigatorio.", sku: "", found: false, sige: false, quantidade: 0 });
+
+    // Check cache first (5 min TTL)
+    const cacheKey = `sige_balance_${sku}`;
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+      const age = Date.now() - (parsed._cachedAt || 0);
+      if (age < 5 * 60 * 1000) {
+        console.log(`[Saldo] Cache hit for SKU ${sku} (age ${Math.round(age/1000)}s)`);
+        return c.json({ ...parsed, cached: true });
+      }
+    }
+
+    // Check if SIGE is configured and has a token
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ sku, found: false, sige: false, error: "SIGE nao configurado.", quantidade: 0 });
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ sku, found: false, sige: false, error: "SIGE nao conectado.", quantidade: 0 });
+
+    // Helper: parse balance response into structured data
+    function parseBalance(balanceData: any): { totalQtd: number; totalRes: number; totalDisp: number; locais: any[] } {
+      let balanceItems: any[] = [];
+      if (Array.isArray(balanceData)) {
+        balanceItems = balanceData;
+      } else if (balanceData?.data && Array.isArray(balanceData.data)) {
+        balanceItems = balanceData.data;
+      } else if (balanceData?.items && Array.isArray(balanceData.items)) {
+        balanceItems = balanceData.items;
+      } else if (balanceData?.content && Array.isArray(balanceData.content)) {
+        balanceItems = balanceData.content;
+      }
+
+      let totalQtd = 0, totalRes = 0, totalDisp = 0;
+      const locais: any[] = [];
+
+      if (balanceItems.length > 0) {
+        for (const item of balanceItems) {
+          const qtd = Number(item.quantidade || item.qtdSaldo || item.saldo || item.qtd || 0);
+          const res = Number(item.reservado || item.qtdReservado || item.qtdReserva || 0);
+          const disp = Number(item.disponivel || item.qtdDisponivel || 0) || (qtd - res);
+          totalQtd += qtd;
+          totalRes += res;
+          totalDisp += disp;
+          locais.push({
+            local: item.descLocal || item.nomeLocal || item.localEstoque || item.codLocal || "Geral",
+            filial: item.descFilial || item.nomeFilial || item.codFilial || "",
+            quantidade: qtd,
+            reservado: res,
+            disponivel: disp,
+          });
+        }
+      } else if (typeof balanceData === "object" && balanceData !== null && !balanceData.error && !balanceData.message) {
+        totalQtd = Number(balanceData.quantidade || balanceData.qtdSaldo || balanceData.saldo || 0);
+        totalRes = Number(balanceData.reservado || balanceData.qtdReservado || 0);
+        totalDisp = Number(balanceData.disponivel || balanceData.qtdDisponivel || 0) || (totalQtd - totalRes);
+      }
+
+      return { totalQtd, totalRes, totalDisp, locais };
+    }
+
+    // Strategy 1: Direct balance call using SKU as codProduto (most SIGE APIs use codProduto as ID)
+    console.log(`[Saldo] Trying direct balance for codProduto=${sku}`);
+    const directResult = await sigeAuthFetch("GET", `/product/${encodeURIComponent(sku)}/balance`);
+    console.log(`[Saldo] Direct balance for ${sku}: HTTP ${directResult.status}, data keys: ${directResult.data ? Object.keys(directResult.data).join(",") : "null"}`);
+
+    if (directResult.ok && directResult.data) {
+      const { totalQtd, totalRes, totalDisp, locais } = parseBalance(directResult.data);
+      const result = {
+        sku, found: true, sige: true, sigeId: sku,
+        quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+        locais: locais.length > 0 ? locais : undefined,
+        balanceRaw: directResult.data,
+        _cachedAt: Date.now(),
+      };
+      await kv.set(cacheKey, JSON.stringify(result));
+      console.log(`[Saldo] SKU ${sku} (direct): qtd=${totalQtd}, disp=${totalDisp}, reserv=${totalRes}`);
+      return c.json({ ...result, cached: false });
+    }
+
+    // Strategy 2: Search for the product first, then use its ID
+    console.log(`[Saldo] Direct failed, searching SIGE for codProduto=${sku}`);
+    const searchResult = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
+    console.log(`[Saldo] Search result: HTTP ${searchResult.status}, data type: ${typeof searchResult.data}, isArray: ${Array.isArray(searchResult.data)}`);
+
+    if (searchResult.ok && searchResult.data) {
+      let products: any[] = [];
+      const sd = searchResult.data;
+      if (Array.isArray(sd)) products = sd;
+      else if (sd?.data && Array.isArray(sd.data)) products = sd.data;
+      else if (sd?.items && Array.isArray(sd.items)) products = sd.items;
+      else if (sd?.content && Array.isArray(sd.content)) products = sd.content;
+
+      console.log(`[Saldo] Search found ${products.length} products. First keys: ${products[0] ? Object.keys(products[0]).join(",") : "none"}`);
+
+      if (products.length > 0) {
+        const p = products[0];
+        // Try different ID fields
+        const possibleIds = [p.id, p.codProduto, p.codigo, p.cod].filter(Boolean);
+        console.log(`[Saldo] Possible IDs for ${sku}: ${possibleIds.join(", ")}`);
+
+        for (const pid of possibleIds) {
+          if (pid === sku) continue; // Already tried above
+          console.log(`[Saldo] Trying balance with ID ${pid}`);
+          const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pid)}/balance`);
+          if (balRes.ok && balRes.data) {
+            const { totalQtd, totalRes, totalDisp, locais } = parseBalance(balRes.data);
+            const result = {
+              sku, found: true, sige: true, sigeId: pid,
+              descricao: p.descProdutoEst || p.descricao || "",
+              quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+              locais: locais.length > 0 ? locais : undefined,
+              balanceRaw: balRes.data,
+              _cachedAt: Date.now(),
+            };
+            await kv.set(cacheKey, JSON.stringify(result));
+            console.log(`[Saldo] SKU ${sku} (via ID ${pid}): qtd=${totalQtd}, disp=${totalDisp}`);
+            return c.json({ ...result, cached: false });
+          }
+        }
+      }
+    }
+
+    // Nothing worked — cache as not found
+    const notFound = { sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now() };
+    await kv.set(cacheKey, JSON.stringify(notFound));
+    console.log(`[Saldo] SKU ${sku}: not found in SIGE after all strategies`);
+    return c.json({ ...notFound, cached: false });
+  } catch (e: any) {
+    console.log(`[Saldo] Exception for SKU ${c.req.param("sku")}:`, e);
+    return c.json({ error: e.message || `Erro: ${e}`, sku: c.req.param("sku"), found: false, sige: false, quantidade: 0 });
+  }
+});
+
+// POST /produtos/saldos — bulk stock balance for multiple SKUs (admin)
+app.post(`${BASE}/produtos/saldos`, async (c) => {
+  try {
+    const body = await c.req.json();
+    const skus: string[] = body.skus || [];
+    if (!Array.isArray(skus) || skus.length === 0) return c.json({ error: "Array 'skus' obrigatorio.", results: [], total: 0 });
+    if (skus.length > 50) return c.json({ error: "Maximo 50 SKUs por requisicao.", results: [], total: 0 });
+
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ results: skus.map((s: string) => ({ sku: s, found: false, sige: false })), error: "SIGE nao configurado." });
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ results: skus.map((s: string) => ({ sku: s, found: false, sige: false })), error: "SIGE nao conectado." });
+
+    // Helper: parse balance response
+    function parseBal(bd: any): { totalQtd: number; totalRes: number; totalDisp: number } {
+      let items: any[] = [];
+      if (Array.isArray(bd)) items = bd;
+      else if (bd?.data && Array.isArray(bd.data)) items = bd.data;
+      else if (bd?.items && Array.isArray(bd.items)) items = bd.items;
+      else if (bd?.content && Array.isArray(bd.content)) items = bd.content;
+
+      let totalQtd = 0, totalRes = 0, totalDisp = 0;
+      if (items.length > 0) {
+        for (const it of items) {
+          const q = Number(it.quantidade || it.qtdSaldo || it.saldo || it.qtd || 0);
+          const r = Number(it.reservado || it.qtdReservado || it.qtdReserva || 0);
+          totalQtd += q;
+          totalRes += r;
+        }
+        totalDisp = totalQtd - totalRes;
+      } else if (typeof bd === "object" && bd !== null && !bd.error && !bd.message) {
+        totalQtd = Number(bd.quantidade || bd.qtdSaldo || bd.saldo || 0);
+        totalRes = Number(bd.reservado || bd.qtdReservado || 0);
+        totalDisp = totalQtd - totalRes;
+      }
+      return { totalQtd, totalRes, totalDisp };
+    }
+
+    // Process one SKU: cache -> direct balance -> search+balance
+    async function fetchOneSku(sku: string): Promise<any> {
+      const cacheKey = `sige_balance_${sku}`;
+      const cached = await kv.get(cacheKey);
+      if (cached) {
+        const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+        const age = Date.now() - (parsed._cachedAt || 0);
+        if (age < 5 * 60 * 1000) {
+          return { ...parsed, cached: true };
+        }
+      }
+
+      // Strategy 1: Direct balance with SKU as product ID
+      const directRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(sku)}/balance`);
+      if (directRes.ok && directRes.data) {
+        const { totalQtd, totalRes, totalDisp } = parseBal(directRes.data);
+        const r = {
+          sku, found: true, sige: true, sigeId: sku,
+          quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+          _cachedAt: Date.now(),
+        };
+        await kv.set(cacheKey, JSON.stringify(r));
+        return { ...r, cached: false };
+      }
+
+      // Strategy 2: Search first, then balance with found ID
+      const searchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
+      if (searchRes.ok && searchRes.data) {
+        let products: any[] = [];
+        const sd = searchRes.data;
+        if (Array.isArray(sd)) products = sd;
+        else if (sd?.data && Array.isArray(sd.data)) products = sd.data;
+        else if (sd?.items && Array.isArray(sd.items)) products = sd.items;
+        else if (sd?.content && Array.isArray(sd.content)) products = sd.content;
+
+        if (products.length > 0) {
+          const p = products[0];
+          const possibleIds = [p.id, p.codProduto, p.codigo, p.cod].filter((v: any) => v && v !== sku);
+          for (const pid of possibleIds) {
+            const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pid)}/balance`);
+            if (balRes.ok && balRes.data) {
+              const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
+              const r = {
+                sku, found: true, sige: true, sigeId: pid,
+                descricao: p.descProdutoEst || p.descricao || "",
+                quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+                _cachedAt: Date.now(),
+              };
+              await kv.set(cacheKey, JSON.stringify(r));
+              return { ...r, cached: false };
+            }
+          }
+        }
+      }
+
+      const nf = { sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now() };
+      await kv.set(cacheKey, JSON.stringify(nf));
+      return { ...nf, cached: false };
+    }
+
+    // Process in parallel batches of 5
+    const results: any[] = [];
+    const BATCH = 5;
+    for (let i = 0; i < skus.length; i += BATCH) {
+      const batch = skus.slice(i, i + BATCH);
+      const batchResults = await Promise.all(
+        batch.map(async (sku: string) => {
+          try {
+            return await fetchOneSku(sku);
+          } catch (ex: any) {
+            console.log(`[Saldo bulk] Error for SKU ${sku}:`, ex.message);
+            return { sku, found: false, sige: true, quantidade: 0, error: ex.message };
+          }
+        })
+      );
+      results.push(...batchResults);
+    }
+
+    console.log(`[Saldo bulk] Processed ${results.length} SKUs: ${results.filter((r: any) => r.found).length} found, ${results.filter((r: any) => r.cached).length} cached`);
+    return c.json({ results, total: results.length });
+  } catch (e: any) {
+    console.log("[Saldo bulk] Exception:", e);
+    // Always return 200 with structured data so frontend doesn't throw
+    return c.json({ error: e.message || `Erro: ${e}`, results: [], total: 0 });
   }
 });
 

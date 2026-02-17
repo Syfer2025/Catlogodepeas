@@ -27,12 +27,511 @@ export const seedData = () => request<{ seeded: boolean }>("/seed", { method: "P
 
 // ─── Auth ───
 export const forgotPassword = (email: string) =>
-  request<{ sent: boolean }>("/auth/forgot-password", {
+  request<{ sent: boolean; recoveryId?: string }>("/auth/forgot-password", {
     method: "POST",
-    body: JSON.stringify({
-      email,
-      redirectTo: `${window.location.origin}/admin/reset-password`,
-    }),
+    body: JSON.stringify({ email }),
+  });
+
+export const recoveryStatus = (rid: string) =>
+  request<{ status: string }>(
+    "/auth/recovery-status",
+    {
+      method: "POST",
+      body: JSON.stringify({ rid }),
+    }
+  );
+
+export const resetPassword = (rid: string, newPassword: string) =>
+  request<{ ok?: boolean; error?: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ rid, newPassword }),
+  });
+
+// ─── User Auth ───
+
+export const userSignup = (data: { email: string; password: string; name: string; phone?: string; cpf?: string }) =>
+  request<{ user: { id: string; email: string; name: string }; emailConfirmationRequired?: boolean }>("/auth/user/signup", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const userMe = (accessToken: string) =>
+  request<{
+    id: string;
+    email: string;
+    name: string;
+    phone: string;
+    role: string;
+    cpf: string;
+    address: string;
+    city: string;
+    state: string;
+    cep: string;
+    created_at: string;
+  }>("/auth/user/me", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const userUpdateProfile = (
+  accessToken: string,
+  data: {
+    name: string;
+    phone: string;
+    cpf: string;
+    address: string;
+    city: string;
+    state: string;
+    cep: string;
+  }
+) =>
+  request<{ ok: boolean; profile: any }>("/auth/user/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const userChangePassword = (accessToken: string, newPassword: string) =>
+  request<{ ok?: boolean; error?: string }>("/auth/user/change-password", {
+    method: "POST",
+    body: JSON.stringify({ newPassword }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const userForgotPassword = (email: string) =>
+  request<{ sent: boolean; recoveryId?: string }>("/auth/user/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+// ─── Admin: Clients ───
+
+export interface ClientProfile {
+  id: string;
+  email: string;
+  name: string;
+  phone: string;
+  cpf: string;
+  address: string;
+  city: string;
+  state: string;
+  cep: string;
+  created_at: string;
+  email_confirmed: boolean;
+  last_sign_in: string | null;
+}
+
+export const getAdminClients = (accessToken: string) =>
+  request<{ clients: ClientProfile[]; total: number }>("/auth/admin/clients", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── SIGE API ───
+export const sigeSaveConfig = (accessToken: string, config: { baseUrl: string; email: string; password: string }) =>
+  request<{ success: boolean }>("/sige/save-config", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(config),
+  });
+
+export const sigeGetConfig = (accessToken: string) =>
+  request<{ baseUrl?: string; email?: string; hasPassword?: boolean; updatedAt?: string }>("/sige/config", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeConnect = (accessToken: string) =>
+  request<{ connected: boolean; hasToken: boolean; hasRefreshToken: boolean; expiresAt: string; responseKeys: string[] }>("/sige/connect", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeRefreshToken = (accessToken: string) =>
+  request<{ refreshed: boolean; hasToken: boolean; expiresAt: string }>("/sige/refresh-token", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeGetStatus = (accessToken: string) =>
+  request<{
+    configured: boolean; baseUrl?: string; email?: string; hasPassword?: boolean;
+    hasToken: boolean; hasRefreshToken?: boolean; expired: boolean;
+    createdAt?: string; expiresAt?: string; expiresInMs?: number;
+  }>("/sige/status", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeDisconnect = (accessToken: string) =>
+  request<{ disconnected: boolean }>("/sige/disconnect", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── SIGE: Usuarios ───
+export const sigeUserRegister = (accessToken: string, data: { name: string; email: string; password: string; baseUrl?: string }) =>
+  request<any>("/sige/user/register", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeUserCreate = (accessToken: string, data: { name: string; email: string; password: string }) =>
+  request<any>("/sige/user/create", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeUserMe = (accessToken: string) =>
+  request<any>("/sige/user/me", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeUserResetPassword = (accessToken: string, id: string, data: { password: string; newPassword: string }) =>
+  request<any>(`/sige/user/reset/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Dependencias (generic GET proxy) ───
+export const sigeDep = (accessToken: string, endpoint: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<{ endpoint: string; sigeStatus: number; ok: boolean; data: any }>(`/sige/dep/${endpoint}${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+// ─── SIGE: Categorias ───
+export const sigeCategoryGet = (accessToken: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/category${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeCategoryCreate = (accessToken: string, data: { codCategoria: string; nomeCategoria: string; classe: string }) =>
+  request<any>("/sige/category", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCategoryUpdate = (accessToken: string, id: string, data: { nomeCategoria: string; classe: string }) =>
+  request<any>(`/sige/category/${id}`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCategoryDelete = (accessToken: string, id: string) =>
+  request<any>(`/sige/category/${id}`, {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── SIGE: Clientes ───
+export const sigeCustomerSearch = (accessToken: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/customer${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeCustomerGetById = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/customer/${id}${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeCustomerCreate = (accessToken: string, data: any) =>
+  request<any>("/sige/customer", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCustomerUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Cliente Endereco ───
+export const sigeCustomerAddressGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/customer/${id}/address${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeCustomerAddressCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}/address`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCustomerAddressUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}/address`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Cliente Complemento ───
+export const sigeCustomerComplementGet = (accessToken: string, id: string) =>
+  request<any>(`/sige/customer/${id}/complement`, {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeCustomerComplementCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}/complement`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCustomerComplementUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}/complement`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Cliente Contato ───
+export const sigeCustomerContactGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/customer/${id}/contact${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeCustomerContactCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/customer/${id}/contact`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeCustomerContactUpdate = (accessToken: string, id: string, nome: string, data: any) =>
+  request<any>(`/sige/customer/${id}/contact?nome=${encodeURIComponent(nome)}`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Produto ───
+export const sigeProductGet = (accessToken: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeProductCreate = (accessToken: string, data: any) =>
+  request<any>("/sige/product", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeProductUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/product/${id}`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Produto Saldo ───
+export const sigeProductBalanceGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product/${id}/balance${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+// ─── SIGE: Produto PCP ───
+export const sigeProductPcpGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product/${id}/product-control-plan${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+// ─── SIGE: Produto Promocao ───
+export const sigeProductPromotionGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product/${id}/promotion${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+// ─── SIGE: Produto Referencia ───
+export const sigeProductReferenceGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product/${id}/reference${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeProductReferenceCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/product/${id}/reference`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeProductReferenceUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/product/${id}/reference`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Produto Ficha Tecnica ───
+export const sigeProductTechnicalSheetGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/product/${id}/technical-sheet${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeProductTechnicalSheetCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/product/${id}/technical-sheet`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeProductTechnicalSheetUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/product/${id}/technical-sheet`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Pedidos (Orders) ───
+export const sigeOrderSearch = (accessToken: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/order${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeOrderGetById = (accessToken: string, id: string) =>
+  request<any>(`/sige/order/${id}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeOrderCreate = (accessToken: string, data: any) =>
+  request<any>(`/sige/order`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Pedidos Observacao ───
+export const sigeOrderObservationGet = (accessToken: string, id: string) =>
+  request<any>(`/sige/order/${id}/observation`, {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeOrderObservationCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/order/${id}/observation`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeOrderObservationUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/order/${id}/observation`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Pedidos Parcelamento ───
+export const sigeOrderInstallmentGet = (accessToken: string, id: string) =>
+  request<any>(`/sige/order/${id}/installment`, {
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── SIGE: Pedidos Items ───
+export const sigeOrderItemsGet = (accessToken: string, id: string) =>
+  request<any>(`/sige/order-items/${id}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sigeOrderItemsCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/order-items/${id}`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+// ─── SIGE: Pedidos Items Text ───
+export const sigeOrderItemsTextGet = (accessToken: string, id: string, params?: Record<string, string>) => {
+  const cleaned = Object.fromEntries(
+    Object.entries(params || {}).filter(([, v]) => v.trim() !== "")
+  );
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/order-items/${id}/text${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+export const sigeOrderItemsTextCreate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/order-items/${id}/text`, {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
+  });
+
+export const sigeOrderItemsTextUpdate = (accessToken: string, id: string, data: any) =>
+  request<any>(`/sige/order-items/${id}/text`, {
+    method: "PUT",
+    headers: { "X-User-Token": accessToken },
+    body: JSON.stringify(data),
   });
 
 // ─── Products ───
@@ -261,6 +760,41 @@ export const getProductAttributes = (sku: string) => {
   const params = new URLSearchParams({ sku });
   return request<ProductAttributesResponse>(`/produtos/atributos?${params.toString()}`);
 };
+
+// ─── Product Stock Balance (SIGE) ───
+
+export interface ProductBalance {
+  sku: string;
+  found: boolean;
+  sige: boolean;
+  sigeId?: string;
+  descricao?: string;
+  quantidade: number | null;
+  reservado?: number;
+  disponivel?: number;
+  locais?: Array<{
+    local: string;
+    filial: string;
+    quantidade: number;
+    reservado: number;
+    disponivel: number;
+  }>;
+  balanceRaw?: any;
+  balanceError?: string;
+  cached?: boolean;
+  error?: string;
+}
+
+/** Get stock balance for a single product from SIGE (public, cached 5 min) */
+export const getProductBalance = (sku: string) =>
+  request<ProductBalance>(`/produtos/saldo/${encodeURIComponent(sku)}`);
+
+/** Get stock balances for multiple SKUs in bulk (admin) */
+export const getProductBalances = (skus: string[]) =>
+  request<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
+    method: "POST",
+    body: JSON.stringify({ skus }),
+  });
 
 // ─── Product CRUD (Admin) ───
 

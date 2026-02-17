@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import {
   Menu,
   X,
-  Phone,
   Wrench,
   Headset,
   ChevronDown,
@@ -11,10 +10,12 @@ import {
   Clock,
   MessageCircle,
   Building2,
+  User,
 } from "lucide-react";
 import { SearchAutocomplete } from "./SearchAutocomplete";
 import { CategoryMegaMenu, MobileCategoryMenu } from "./CategoryMegaMenu";
 import * as api from "../services/api";
+import { supabase } from "../services/supabaseClient";
 
 const UNIDADES = [
   { nome: "Matriz", tel: "0800 643 1170", href: "tel:08006431170" },
@@ -33,10 +34,10 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileContactOpen, setMobileContactOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    // Instant display from cache — no flash
     try { return localStorage.getItem(LOGO_CACHE_KEY); } catch { return null; }
   });
   const [logoLoading, setLogoLoading] = useState(true);
+  const [userSession, setUserSession] = useState<{ name: string } | null>(null);
 
   useEffect(() => {
     api.getLogo()
@@ -53,6 +54,28 @@ export function Header() {
         console.error("Header logo fetch error:", err);
       })
       .finally(() => setLogoLoading(false));
+
+    // Check user session
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        setUserSession({
+          name: data.session.user.user_metadata?.name || data.session.user.email?.split("@")[0] || "Usuario",
+        });
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUserSession({
+          name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "Usuario",
+        });
+      } else {
+        setUserSession(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
@@ -224,13 +247,39 @@ export function Header() {
             </div>
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          {/* User account — desktop */}
+          <Link
+            to={userSession ? "/minha-conta" : "/conta"}
+            className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-gray-600 hover:text-red-600 hover:bg-red-50/70 transition-all shrink-0"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+            <div className={`rounded-full p-2 transition-colors ${userSession ? "bg-red-100" : "bg-gray-100"}`}>
+              <User className={`w-4.5 h-4.5 ${userSession ? "text-red-600" : "text-gray-500"}`} />
+            </div>
+            <div className="text-left">
+              <p style={{ fontSize: "0.8rem", fontWeight: 600 }} className="leading-tight">
+                {userSession ? userSession.name.split(" ")[0] : "Entrar"}
+              </p>
+              <p style={{ fontSize: "0.65rem" }} className="text-gray-400 leading-tight">
+                {userSession ? "Minha Conta" : "ou Cadastre-se"}
+              </p>
+            </div>
+          </Link>
+
+          {/* Mobile menu button */}
+          <div className="flex items-center gap-1 md:hidden">
+            <Link
+              to={userSession ? "/minha-conta" : "/conta"}
+              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <User className={`w-5 h-5 ${userSession ? "text-red-600" : ""}`} />
+            </Link>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
         {/* Navigation — only Categories */}
@@ -256,6 +305,22 @@ export function Header() {
 
             {/* Mobile Categories (no extra wrapper needed) */}
             <MobileCategoryMenu onNavigate={() => setMobileMenuOpen(false)} />
+
+            {/* User account — mobile */}
+            <div className="border-t border-gray-100 pt-2 mt-2">
+              <Link
+                to={userSession ? "/minha-conta" : "/conta"}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                <div className={`rounded-full p-1.5 ${userSession ? "bg-red-100" : "bg-gray-100"}`}>
+                  <User className={`w-4 h-4 ${userSession ? "text-red-600" : "text-gray-500"}`} />
+                </div>
+                <span className="text-gray-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                  {userSession ? `Ola, ${userSession.name.split(" ")[0]}` : "Entrar ou Cadastrar"}
+                </span>
+              </Link>
+            </div>
 
             {/* Central de Atendimento — mobile */}
             <div className="border-t border-gray-100 pt-3 mt-2">

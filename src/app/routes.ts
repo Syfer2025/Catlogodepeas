@@ -4,6 +4,9 @@ import { HomePage } from "./pages/HomePage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ProductDetailPage } from "./pages/ProductDetailPage";
 import { ContactPage } from "./pages/ContactPage";
+import { UserAuthPage } from "./pages/UserAuthPage";
+import { UserAccountPage } from "./pages/UserAccountPage";
+import { UserResetPasswordPage } from "./pages/UserResetPasswordPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 export const router = createBrowserRouter([
@@ -15,6 +18,9 @@ export const router = createBrowserRouter([
       { path: "catalogo", Component: CatalogPage },
       { path: "produto/:id", Component: ProductDetailPage },
       { path: "contato", Component: ContactPage },
+      { path: "conta", Component: UserAuthPage },
+      { path: "conta/redefinir-senha", Component: UserResetPasswordPage },
+      { path: "minha-conta", Component: UserAccountPage },
       { path: "*", Component: NotFoundPage },
     ],
   },

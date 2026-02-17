@@ -19,6 +19,7 @@ import * as api from "../services/api";
 import type { ProductImage } from "../services/api";
 import { ProductCard } from "../components/ProductCard";
 import type { ProdutoItem } from "../components/ProductCard";
+import { StockBadge } from "../components/StockBadge";
 
 export function ProductDetailPage() {
   const { id } = useParams();
@@ -413,6 +414,11 @@ export function ProductDetailPage() {
                   &rarr;
                 </span>
               </a>
+
+              {/* Stock Balance from SIGE */}
+              <div className="mb-5">
+                <StockBadge sku={product.sku} variant="full" />
+              </div>
 
               {/* Dynamic Attributes */}
               {attrsLoading ? (

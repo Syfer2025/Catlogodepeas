@@ -2,6 +2,8 @@ import { Link } from "react-router";
 import { Package, Hash, Eye } from "lucide-react";
 import { useState } from "react";
 import { getProductMainImageUrl } from "../services/api";
+import type { ProductBalance } from "../services/api";
+import { StockBadge } from "./StockBadge";
 
 export interface ProdutoItem {
   sku: string;
@@ -10,9 +12,11 @@ export interface ProdutoItem {
 
 interface ProductCardProps {
   product: ProdutoItem;
+  /** Pass preloaded balance to avoid individual API calls */
+  balance?: ProductBalance | null;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, balance }: ProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const mainImageUrl = getProductMainImageUrl(product.sku);
 
@@ -64,15 +68,22 @@ export function ProductCard({ product }: ProductCardProps) {
           {product.titulo}
         </h3>
 
-        {/* SKU */}
-        <div className="flex items-center gap-1.5 text-gray-400 mt-auto pt-2 border-t border-gray-50">
-          <Hash className="w-3.5 h-3.5" />
-          <span
-            className="font-mono bg-gray-50 px-2 py-0.5 rounded truncate"
-            style={{ fontSize: "0.73rem" }}
-          >
-            {product.sku}
-          </span>
+        {/* SKU + Stock */}
+        <div className="flex items-center justify-between gap-1.5 text-gray-400 mt-auto pt-2 border-t border-gray-50">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Hash className="w-3.5 h-3.5 shrink-0" />
+            <span
+              className="font-mono bg-gray-50 px-2 py-0.5 rounded truncate"
+              style={{ fontSize: "0.73rem" }}
+            >
+              {product.sku}
+            </span>
+          </div>
+          {balance !== undefined && (
+            <div className="shrink-0" onClick={(e) => e.preventDefault()}>
+              <StockBadge sku={product.sku} variant="compact" preloaded={balance} />
+            </div>
+          )}
         </div>
       </div>
     </Link>

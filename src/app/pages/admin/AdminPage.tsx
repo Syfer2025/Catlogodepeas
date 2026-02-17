@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Loader2,
   Tag,
+  Users,
+  Plug,
 } from "lucide-react";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminProducts } from "./AdminProducts";
@@ -22,12 +24,14 @@ import { AdminMessages } from "./AdminMessages";
 import { AdminSettings } from "./AdminSettings";
 import { AdminLoginPage } from "./AdminLoginPage";
 import { AdminAttributes } from "./AdminAttributes";
+import { AdminClients } from "./AdminClients";
+import { AdminApiSige } from "./AdminApiSige";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 
 const ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
 
-type Tab = "dashboard" | "products" | "categories" | "messages" | "attributes" | "settings";
+type Tab = "dashboard" | "products" | "categories" | "messages" | "attributes" | "clients" | "api-sige" | "settings";
 
 const navItems: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -35,6 +39,8 @@ const navItems: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "categories", label: "Categorias", icon: Layers },
   { id: "messages", label: "Mensagens", icon: MessageSquare },
   { id: "attributes", label: "Atributos", icon: Tag },
+  { id: "clients", label: "Clientes", icon: Users },
+  { id: "api-sige", label: "API SIGE", icon: Plug },
   { id: "settings", label: "Configuracoes", icon: Settings },
 ];
 
@@ -158,6 +164,10 @@ export function AdminPage() {
         return <AdminMessages onUpdate={refreshUnread} />;
       case "attributes":
         return <AdminAttributes />;
+      case "clients":
+        return <AdminClients />;
+      case "api-sige":
+        return <AdminApiSige />;
       case "settings":
         return <AdminSettings />;
     }

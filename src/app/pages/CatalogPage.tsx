@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import * as api from "../services/api";
 import { getProductMainImageUrl } from "../services/api";
+import type { ProductBalance } from "../services/api";
 
 const ITEMS_PER_PAGE = 24;
 
@@ -57,12 +58,16 @@ export function CatalogPage() {
   const [categoryName, setCategoryName] = useState<string | null>(null);
   const [categoryBreadcrumb, setCategoryBreadcrumb] = useState<string[] | null>(null);
 
+  // Stock balances from SIGE (loaded in bulk after products)
+  const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
+
   const searchQuery = searchParams.get("busca") || "";
   const categoriaSlug = searchParams.get("categoria") || "";
 
   const fetchProdutos = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setBalanceMap({}); // Clear balance data for new page/filter
     try {
       const result = await api.getCatalog(page, ITEMS_PER_PAGE, searchQuery, categoriaSlug);
       setProdutos(result.data);
@@ -85,6 +90,21 @@ export function CatalogPage() {
   useEffect(() => {
     fetchProdutos();
   }, [fetchProdutos]);
+
+  // Bulk-load stock balances after products are fetched
+  useEffect(() => {
+    if (produtos.length === 0) return;
+    const skus = produtos.map((p) => p.sku);
+    console.log(`[CatalogPage] Loading balances for ${skus.length} products`);
+    api.getProductBalances(skus)
+      .then((res) => {
+        console.log("[CatalogPage] Balances loaded:", res);
+        const map: Record<string, ProductBalance> = {};
+        for (const b of (res.results || [])) { map[b.sku] = b; }
+        setBalanceMap(map);
+      })
+      .catch((e) => console.error("[CatalogPage] Bulk balance error:", e));
+  }, [produtos]);
 
   const clearSearch = () => {
     const newParams = new URLSearchParams(searchParams);
@@ -339,7 +359,7 @@ export function CatalogPage() {
               {viewMode === "grid" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
                   {produtos.map((produto) => (
-                    <ProductCard key={produto.sku} product={produto} />
+                    <ProductCard key={produto.sku} product={produto} balance={balanceMap[produto.sku]} />
                   ))}
                 </div>
               ) : (

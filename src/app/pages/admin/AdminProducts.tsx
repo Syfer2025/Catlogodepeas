@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
 import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode } from "../../services/api";
+import type { ProductBalance } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { defaultCategoryTree } from "../../data/categoryTree";
 import {
@@ -10,6 +11,7 @@ import {
   Plus, Edit3, Trash2, Save, ImagePlus, Check,
   AlertCircle, CheckCircle2, ChevronDown,
   FileText, Tag, ExternalLink, Camera, PenLine,
+  PackageCheck, PackageX,
 } from "lucide-react";
 
 const ITEMS_PER_PAGE = 20;
@@ -72,6 +74,10 @@ export function AdminProducts() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ sku: string; titulo: string } | null>(null);
   const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
 
+  // Stock balance from SIGE
+  const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
@@ -116,6 +122,21 @@ export function AdminProducts() {
   }, [page, debouncedSearch]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Load stock balances from SIGE (after products load)
+  useEffect(() => {
+    if (produtos.length === 0) return;
+    setBalanceLoading(true);
+    const skus = produtos.map((p) => p.sku);
+    api.getProductBalances(skus)
+      .then((res) => {
+        const map: Record<string, ProductBalance> = {};
+        for (const b of (res.results || [])) { map[b.sku] = b; }
+        setBalanceMap((prev) => ({ ...prev, ...map }));
+      })
+      .catch((e) => console.error("[AdminProducts] Bulk balance error:", e))
+      .finally(() => setBalanceLoading(false));
+  }, [produtos]);
 
   const goToPage = (n: number) => { if (n >= 1 && n <= totalPages) setPage(n); };
 
@@ -246,6 +267,7 @@ export function AdminProducts() {
                   <th className="text-left px-4 py-3 text-gray-500 w-12" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>#</th>
                   <th className="text-left px-4 py-3 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Produto</th>
                   <th className="text-left px-4 py-3 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>SKU</th>
+                  <th className="text-left px-4 py-3 text-gray-500 w-24" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Saldo</th>
                   <th className="text-center px-4 py-3 text-gray-500 w-16" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Visivel</th>
                   <th className="text-right px-4 py-3 text-gray-500 w-28" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Acoes</th>
                 </tr>
@@ -263,6 +285,24 @@ export function AdminProducts() {
                         </div>
                       </td>
                       <td className="px-4 py-3"><span className="font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md inline-block" style={{ fontSize: "0.75rem" }}>{produto.sku}</span></td>
+                      <td className="px-4 py-3">
+                        {balanceLoading && !balanceMap[produto.sku] ? (
+                          <Loader2 className="w-3.5 h-3.5 text-gray-300 animate-spin" />
+                        ) : balanceMap[produto.sku] ? (() => {
+                          const b = balanceMap[produto.sku];
+                          if (!b.sige || !b.found) return <span className="text-gray-300" style={{ fontSize: "0.72rem" }}>—</span>;
+                          const avail = b.disponivel ?? b.quantidade ?? 0;
+                          const reserved = b.reservado ?? 0;
+                          const inStock = avail > 0;
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              {inStock ? <PackageCheck className="w-3.5 h-3.5 text-green-500" /> : <PackageX className="w-3.5 h-3.5 text-red-400" />}
+                              <span className={inStock ? "text-green-700" : "text-red-500"} style={{ fontSize: "0.78rem", fontWeight: 600 }}>{avail}</span>
+                              {reserved > 0 && <span className="text-amber-500" style={{ fontSize: "0.65rem" }}>({reserved} res.)</span>}
+                            </div>
+                          );
+                        })() : <span className="text-gray-300" style={{ fontSize: "0.72rem" }}>—</span>}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => toggleVisibility(produto.sku)} className={`p-1 rounded-md transition-colors ${vis ? "text-green-600 hover:bg-green-50" : "text-gray-400 hover:bg-gray-100"}`}>
                           {vis ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -293,6 +333,17 @@ export function AdminProducts() {
                   <div className="flex-1 min-w-0">
                     <p className="text-gray-800 mb-1.5 line-clamp-2 hover:text-red-600 transition-colors" style={{ fontSize: "0.85rem", fontWeight: 500, lineHeight: 1.4 }}>{produto.titulo}</p>
                     <div className="flex items-center gap-1.5"><Hash className="w-3 h-3 text-gray-400" /><span className="font-mono text-gray-500 bg-gray-50 px-2 py-0.5 rounded" style={{ fontSize: "0.72rem" }}>{produto.sku}</span></div>
+                    {balanceMap[produto.sku]?.found && (() => {
+                      const b = balanceMap[produto.sku];
+                      const avail = b.disponivel ?? b.quantidade ?? 0;
+                      const inStock = avail > 0;
+                      return (
+                        <div className={`flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border w-fit ${inStock ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`} style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-green-500" : "bg-red-500"}`} />
+                          {inStock ? `${avail} em estoque` : "Sem estoque"}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">

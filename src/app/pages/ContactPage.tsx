@@ -80,7 +80,7 @@ export function ContactPage() {
         subject: formData.subject,
         subjectLabel: subjectLabels[formData.subject] || formData.subject,
         message: formData.message,
-      });
+      } as any);
       setSubmitted(true);
       setTimeout(() => {
         setSubmitted(false);

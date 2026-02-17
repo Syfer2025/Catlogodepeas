@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
@@ -122,17 +123,23 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
 
     setForgotLoading(true);
     try {
-      // Call server endpoint that uses service_role_key to trigger recovery email via SMTP
-      const result = await api.forgotPassword(forgotEmail.trim());
+      console.log("[ForgotPassword] Requesting recovery via server for:", forgotEmail.trim());
 
-      if (!result.sent) {
-        setForgotError("Erro ao enviar email. Tente novamente.");
-        return;
+      // Call the server which sends the recovery email via Supabase SDK.
+      // The email template shows {{ .Token }} (6-digit OTP).
+      const result = await api.forgotPassword(forgotEmail.trim());
+      console.log("[ForgotPassword] Server response:", result);
+
+      // Store recoveryId in localStorage (not sessionStorage) so it's
+      // accessible across tabs — the email link may open in a new tab
+      if (result.recoveryId) {
+        localStorage.setItem("recovery_id", result.recoveryId);
+        localStorage.setItem("recovery_email", forgotEmail.trim());
       }
 
       setForgotSuccess(true);
     } catch (err: any) {
-      console.error("Excecao ao enviar email de recuperacao:", err);
+      console.error("Excecao ao solicitar recuperacao:", err);
       if (err.message?.includes("rate limit") || err.message?.includes("429")) {
         setForgotError("Muitas tentativas. Aguarde alguns minutos e tente novamente.");
       } else {
@@ -232,7 +239,7 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
                 >
                   {forgotSuccess
                     ? "Verifique sua caixa de entrada"
-                    : "Enviaremos um link para redefinir sua senha"}
+                    : "Enviaremos um link para seu email"}
                 </p>
               </>
             )}
@@ -360,16 +367,27 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
                     className="text-green-400/70 leading-relaxed"
                     style={{ fontSize: "0.8rem" }}
                   >
-                    Enviamos um link de recuperacao para{" "}
+                    Enviamos um <span className="text-green-300 font-medium">link de verificacao</span> para{" "}
                     <span className="text-green-300 font-medium">
                       {forgotEmail}
                     </span>
-                    . Verifique sua caixa de entrada e a pasta de spam.
+                    . Clique no link do email e depois volte aqui.
                   </p>
                 </div>
+                <Link
+                  to="/admin/reset-password"
+                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl transition-colors"
+                  style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                  onClick={() => {
+                    // recoveryId already in localStorage
+                  }}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Aguardar verificacao
+                </Link>
                 <button
                   onClick={switchToLogin}
-                  className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                  className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mt-3"
                   style={{ fontSize: "0.85rem" }}
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -422,8 +440,8 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
                       className="text-gray-500 mt-2"
                       style={{ fontSize: "0.75rem" }}
                     >
-                      Voce recebera um email com um link para criar uma
-                      nova senha.
+                      Voce recebera um email com um link para verificar sua
+                      identidade e redefinir a senha.
                     </p>
                   </div>
 
