@@ -16,6 +16,7 @@ import {
   Tag,
   Users,
   Plug,
+  CreditCard,
 } from "lucide-react";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminProducts } from "./AdminProducts";
@@ -26,12 +27,14 @@ import { AdminLoginPage } from "./AdminLoginPage";
 import { AdminAttributes } from "./AdminAttributes";
 import { AdminClients } from "./AdminClients";
 import { AdminApiSige } from "./AdminApiSige";
+import { AdminPagHiper } from "./AdminPagHiper";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
+import { ErrorBoundary } from "../../components/ErrorBoundary";
 
 const ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
 
-type Tab = "dashboard" | "products" | "categories" | "messages" | "attributes" | "clients" | "api-sige" | "settings";
+type Tab = "dashboard" | "products" | "categories" | "messages" | "attributes" | "clients" | "api-sige" | "paghiper" | "settings";
 
 const navItems: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -41,6 +44,7 @@ const navItems: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "attributes", label: "Atributos", icon: Tag },
   { id: "clients", label: "Clientes", icon: Users },
   { id: "api-sige", label: "API SIGE", icon: Plug },
+  { id: "paghiper", label: "PagHiper", icon: CreditCard },
   { id: "settings", label: "Configuracoes", icon: Settings },
 ];
 
@@ -168,6 +172,8 @@ export function AdminPage() {
         return <AdminClients />;
       case "api-sige":
         return <AdminApiSige />;
+      case "paghiper":
+        return <AdminPagHiper />;
       case "settings":
         return <AdminSettings />;
     }
@@ -378,7 +384,9 @@ export function AdminPage() {
 
         {/* Page Content */}
         <main className="p-4 lg:p-6">
-          {renderContent()}
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

@@ -3138,25 +3138,97 @@ app.post(`${BASE}/sige/disconnect`, async (c) => {
   }
 });
 
-// ─── Helper: make authenticated SIGE API call ───
+// ─── Helper: re-authenticate with SIGE using stored credentials ───
+async function sigeReLogin(): Promise<string | null> {
+  try {
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return null;
+    const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
+    if (!config.baseUrl || !config.email || !config.password) return null;
+    const authUrl = `${config.baseUrl}/auth`;
+    console.log(`SIGE auto-relogin: POST ${authUrl} for ${config.email}`);
+    const response = await fetch(authUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: config.email, password: config.password }),
+    });
+    if (!response.ok) {
+      console.log(`SIGE auto-relogin: FAILED HTTP ${response.status}`);
+      return null;
+    }
+    const responseText = await response.text();
+    let authData: any;
+    try { authData = JSON.parse(responseText); } catch { return null; }
+    const newToken = authData.token || authData.access_token || authData.accessToken || "";
+    if (!newToken) return null;
+    const newTokenData = {
+      token: newToken,
+      refreshToken: authData.refreshToken || authData.refresh_token || "",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+      rawResponse: authData,
+    };
+    await kv.set("sige_api_token", JSON.stringify(newTokenData));
+    console.log(`SIGE auto-relogin: SUCCESS, new token stored, expires ${newTokenData.expiresAt}`);
+    return newToken;
+  } catch (e) {
+    console.log(`SIGE auto-relogin: exception`, e);
+    return null;
+  }
+}
+
+// ─── Helper: make authenticated SIGE API call (with auto-retry on 401) ───
 async function sigeAuthFetch(method: string, path: string, body?: any): Promise<{ ok: boolean; status: number; data: any }> {
   const rawConfig = await kv.get("sige_api_config");
   if (!rawConfig) throw new Error("Configuracao SIGE nao encontrada.");
   const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
   const rawToken = await kv.get("sige_api_token");
   if (!rawToken) throw new Error("Token SIGE nao encontrado. Conecte-se primeiro.");
-  const tokenData = typeof rawToken === "string" ? JSON.parse(rawToken) : rawToken;
+  let tokenData = typeof rawToken === "string" ? JSON.parse(rawToken) : rawToken;
   if (!tokenData.token) throw new Error("Token SIGE vazio. Reconecte.");
+
+  // Check if token is expired and proactively re-login
+  if (tokenData.expiresAt && new Date(tokenData.expiresAt).getTime() < Date.now()) {
+    console.log(`SIGE proxy: token expired (${tokenData.expiresAt}), attempting auto-relogin...`);
+    const newToken = await sigeReLogin();
+    if (newToken) {
+      tokenData = { ...tokenData, token: newToken };
+    } else {
+      console.log("SIGE proxy: auto-relogin failed, proceeding with expired token");
+    }
+  }
+
   const url = `${config.baseUrl}${path}`;
   console.log(`SIGE proxy: ${method} ${url}`);
-  const fetchHeaders: any = { "Content-Type": "application/json", "Authorization": `Bearer ${tokenData.token}` };
-  const fetchOpts: any = { method, headers: fetchHeaders };
-  if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-    fetchOpts.body = JSON.stringify(body);
-  }
-  const response = await fetch(url, fetchOpts);
+  const buildFetchOpts = (token: string) => {
+    const fetchHeaders: any = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+    const fetchOpts: any = { method, headers: fetchHeaders };
+    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      fetchOpts.body = JSON.stringify(body);
+    }
+    return fetchOpts;
+  };
+
+  const response = await fetch(url, buildFetchOpts(tokenData.token));
   const responseText = await response.text();
   console.log(`SIGE proxy: ${method} ${path} => HTTP ${response.status}, ${responseText.length} bytes`);
+
+  // Auto-retry on 401 (token expired/invalid)
+  if (response.status === 401) {
+    console.log(`SIGE proxy: got 401, attempting auto-relogin and retry...`);
+    const newToken = await sigeReLogin();
+    if (newToken) {
+      console.log(`SIGE proxy: retrying ${method} ${path} with new token`);
+      const retryResponse = await fetch(url, buildFetchOpts(newToken));
+      const retryText = await retryResponse.text();
+      console.log(`SIGE proxy (retry): ${method} ${path} => HTTP ${retryResponse.status}, ${retryText.length} bytes`);
+      let retryData: any;
+      try { retryData = JSON.parse(retryText); } catch { retryData = { rawText: retryText }; }
+      return { ok: retryResponse.ok, status: retryResponse.status, data: retryData };
+    }
+    console.log(`SIGE proxy: auto-relogin failed, returning original 401`);
+  }
+
   let data: any;
   try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
   return { ok: response.ok, status: response.status, data };
@@ -3669,9 +3741,26 @@ app.get(`${BASE}/sige/product/:id/balance`, async (c) => {
     const id = c.req.param("id");
     const url = new URL(c.req.url);
     const queryString = url.search;
+    const debug = url.searchParams.get("debug") === "1";
     console.log(`SIGE product balance proxy: GET /product/${id}/balance${queryString}`);
     const result = await sigeAuthFetch("GET", `/product/${id}/balance${queryString}`);
-    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    if (!result.ok) {
+      console.log(`SIGE balance error for ${id}: HTTP ${result.status}`, JSON.stringify(result.data).slice(0, 500));
+      return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    }
+    const topKeys = result.data && typeof result.data === "object" ? Object.keys(result.data) : [];
+    console.log(`SIGE balance OK for ${id}: topKeys=[${topKeys.join(",")}]`);
+    let itemKeys: string[] = [];
+    if (result.data?.dados && Array.isArray(result.data.dados) && result.data.dados.length > 0) {
+      itemKeys = Object.keys(result.data.dados[0]);
+      console.log(`SIGE balance ${id}: dados[0] keys=[${itemKeys.join(",")}], count=${result.data.dados.length}`);
+    } else if (Array.isArray(result.data) && result.data.length > 0) {
+      itemKeys = Object.keys(result.data[0]);
+      console.log(`SIGE balance ${id}: array[0] keys=[${itemKeys.join(",")}], count=${result.data.length}`);
+    }
+    if (debug) {
+      return c.json({ _raw: result.data, _topKeys: topKeys, _itemKeys: itemKeys, ...result.data });
+    }
     return c.json(result.data);
   } catch (e: any) {
     console.log("SIGE GET /product/:id/balance exception:", e);
@@ -3823,6 +3912,44 @@ app.put(`${BASE}/sige/product/:id/technical-sheet`, async (c) => {
     return c.json(result.data);
   } catch (e: any) {
     console.log("SIGE PUT /product/:id/technical-sheet exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── SIGE: LISTA DE PRECOS ───────────
+// ═══════════════════════════════════════
+
+// GET /sige/list-price — proxy to SIGE GET /list-price
+app.get(`${BASE}/sige/list-price`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE list-price proxy: GET /list-price${queryString}`);
+    const result = await sigeAuthFetch("GET", `/list-price${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /list-price exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// GET /sige/list-price-items — proxy to SIGE GET /list-price-items
+app.get(`${BASE}/sige/list-price-items`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const url = new URL(c.req.url);
+    const queryString = url.search;
+    console.log(`SIGE list-price-items proxy: GET /list-price-items${queryString}`);
+    const result = await sigeAuthFetch("GET", `/list-price-items${queryString}`);
+    if (!result.ok) return c.json({ error: result.data?.message || result.data?.error || `SIGE HTTP ${result.status}`, sigeStatus: result.status, sigeData: result.data }, 502);
+    return c.json(result.data);
+  } catch (e: any) {
+    console.log("SIGE GET /list-price-items exception:", e);
     return c.json({ error: e.message || `Erro: ${e}` }, 500);
   }
 });
@@ -4063,7 +4190,18 @@ app.get(`${BASE}/sige/dep/:endpoint{.+}`, async (c) => {
     const queryString = url.search;
     console.log(`SIGE dep proxy: GET ${sigePath}${queryString}`);
     const result = await sigeAuthFetch("GET", sigePath + queryString);
-    return c.json({ endpoint: sigePath, sigeStatus: result.status, ok: result.ok, data: result.data }, result.ok ? 200 : 502);
+    if (!result.ok) {
+      const sigeMsg = result.data?.message || result.data?.error || "";
+      console.log(`SIGE dep proxy: ${baseEndpoint} failed — SIGE HTTP ${result.status}, msg: ${sigeMsg}`);
+      return c.json({
+        error: sigeMsg || `SIGE retornou HTTP ${result.status} para /${baseEndpoint}`,
+        endpoint: sigePath,
+        sigeStatus: result.status,
+        ok: false,
+        data: result.data,
+      }, result.status === 401 ? 401 : 502);
+    }
+    return c.json({ endpoint: sigePath, sigeStatus: result.status, ok: true, data: result.data });
   } catch (e: any) {
     console.log("SIGE dep proxy exception:", e);
     return c.json({ error: e.message || `Erro: ${e}` }, 500);
@@ -4083,29 +4221,76 @@ app.get(`${BASE}/produtos/saldo/:sku`, async (c) => {
     const sku = decodeURIComponent(c.req.param("sku")).trim();
     if (!sku) return c.json({ error: "SKU obrigatorio.", sku: "", found: false, sige: false, quantidade: 0 });
 
+    const reqUrl = new URL(c.req.url);
+    const forceRefresh = reqUrl.searchParams.get("force") === "1";
+    const debugMode = reqUrl.searchParams.get("debug") === "1";
+    const debugLog: string[] = [];
+    const sigeResponses: any[] = [];
+    const dbg = (msg: string) => { debugLog.push(msg); console.log(msg); };
+
     // Check cache first (5 min TTL)
     const cacheKey = `sige_balance_${sku}`;
-    const cached = await kv.get(cacheKey);
-    if (cached) {
-      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
-      const age = Date.now() - (parsed._cachedAt || 0);
-      if (age < 5 * 60 * 1000) {
-        console.log(`[Saldo] Cache hit for SKU ${sku} (age ${Math.round(age/1000)}s)`);
-        return c.json({ ...parsed, cached: true });
+    if (!forceRefresh) {
+      const cached = await kv.get(cacheKey);
+      if (cached) {
+        const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+        const age = Date.now() - (parsed._cachedAt || 0);
+        // Shorter TTL for "not found" (2 min) vs found (5 min) to retry sooner
+        const ttl = parsed.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+        if (age < ttl) {
+          dbg(`[Saldo] Cache hit for SKU ${sku} (age ${Math.round(age/1000)}s, found=${parsed.found})`);
+          return c.json({ ...parsed, cached: true, ...(debugMode ? { _debug: debugLog } : {}) });
+        }
       }
+    } else {
+      dbg(`[Saldo] Force refresh for SKU ${sku}, bypassing cache`);
     }
 
     // Check if SIGE is configured and has a token
     const rawConfig = await kv.get("sige_api_config");
-    if (!rawConfig) return c.json({ sku, found: false, sige: false, error: "SIGE nao configurado.", quantidade: 0 });
+    if (!rawConfig) return c.json({ sku, found: false, sige: false, error: "SIGE nao configurado.", quantidade: 0, ...(debugMode ? { _debug: debugLog } : {}) });
     const rawToken = await kv.get("sige_api_token");
-    if (!rawToken) return c.json({ sku, found: false, sige: false, error: "SIGE nao conectado.", quantidade: 0 });
+    if (!rawToken) return c.json({ sku, found: false, sige: false, error: "SIGE nao conectado.", quantidade: 0, ...(debugMode ? { _debug: debugLog } : {}) });
+
+    // Helper: extract numeric value from item by trying multiple field names
+    const QTD_FIELDS = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","qtdSaldoFisico","vlSaldo","vlrSaldo"];
+    const RES_FIELDS = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+    const DISP_FIELDS = ["disponivel","qtdDisponivel","saldoDisponivel","qtdDisp","vlDisponivel"];
+    function tryFields(item: any, fields: string[]): number {
+      for (const k of fields) {
+        if (item[k] !== undefined && item[k] !== null && item[k] !== "") {
+          const v = Number(item[k]);
+          if (!isNaN(v) && v !== 0) return v;
+        }
+      }
+      return 0;
+    }
+    function tryFieldsIncZero(item: any, fields: string[]): number {
+      for (const k of fields) {
+        if (item[k] !== undefined && item[k] !== null && item[k] !== "") {
+          const v = Number(item[k]);
+          if (!isNaN(v)) return v;
+        }
+      }
+      return 0;
+    }
+    // Fallback: find first numeric field > 0 (not an id/code/page field)
+    function autoDetectQtd(item: any): number {
+      const skipPatterns = /^(cod|id|num|pagina|qtdRegistro|qtdPagina|grade|divisao|unidade)/i;
+      for (const [k, v] of Object.entries(item)) {
+        if (typeof v === "number" && v > 0 && !skipPatterns.test(k)) return v;
+        if (typeof v === "string" && !isNaN(Number(v)) && Number(v) > 0 && !skipPatterns.test(k)) return Number(v);
+      }
+      return 0;
+    }
 
     // Helper: parse balance response into structured data
-    function parseBalance(balanceData: any): { totalQtd: number; totalRes: number; totalDisp: number; locais: any[] } {
+    function parseBalance(balanceData: any): { totalQtd: number; totalRes: number; totalDisp: number; locais: any[]; _balItemKeys?: string[] } {
       let balanceItems: any[] = [];
       if (Array.isArray(balanceData)) {
         balanceItems = balanceData;
+      } else if (balanceData?.dados && Array.isArray(balanceData.dados)) {
+        balanceItems = balanceData.dados;
       } else if (balanceData?.data && Array.isArray(balanceData.data)) {
         balanceItems = balanceData.data;
       } else if (balanceData?.items && Array.isArray(balanceData.items)) {
@@ -4116,102 +4301,267 @@ app.get(`${BASE}/produtos/saldo/:sku`, async (c) => {
 
       let totalQtd = 0, totalRes = 0, totalDisp = 0;
       const locais: any[] = [];
+      const balItemKeys = balanceItems.length > 0 ? Object.keys(balanceItems[0]) : [];
+      if (balItemKeys.length > 0) {
+        dbg(`[Saldo] parseBalance: ${balanceItems.length} items, keys=[${balItemKeys.join(",")}]`);
+      }
 
       if (balanceItems.length > 0) {
         for (const item of balanceItems) {
-          const qtd = Number(item.quantidade || item.qtdSaldo || item.saldo || item.qtd || 0);
-          const res = Number(item.reservado || item.qtdReservado || item.qtdReserva || 0);
-          const disp = Number(item.disponivel || item.qtdDisponivel || 0) || (qtd - res);
+          let qtd = tryFields(item, QTD_FIELDS);
+          if (qtd === 0) qtd = autoDetectQtd(item);
+          const res = tryFieldsIncZero(item, RES_FIELDS);
+          const disp = tryFields(item, DISP_FIELDS) || (qtd - res);
           totalQtd += qtd;
           totalRes += res;
           totalDisp += disp;
           locais.push({
-            local: item.descLocal || item.nomeLocal || item.localEstoque || item.codLocal || "Geral",
-            filial: item.descFilial || item.nomeFilial || item.codFilial || "",
+            local: item.descLocal || item.nomeLocal || item.localEstoque || item.codLocal || item.local || "Geral",
+            filial: item.descFilial || item.nomeFilial || item.codFilial || item.filial || "",
             quantidade: qtd,
             reservado: res,
             disponivel: disp,
           });
         }
       } else if (typeof balanceData === "object" && balanceData !== null && !balanceData.error && !balanceData.message) {
-        totalQtd = Number(balanceData.quantidade || balanceData.qtdSaldo || balanceData.saldo || 0);
-        totalRes = Number(balanceData.reservado || balanceData.qtdReservado || 0);
-        totalDisp = Number(balanceData.disponivel || balanceData.qtdDisponivel || 0) || (totalQtd - totalRes);
+        let qtd = tryFields(balanceData, QTD_FIELDS);
+        if (qtd === 0) qtd = autoDetectQtd(balanceData);
+        totalQtd = qtd;
+        totalRes = tryFieldsIncZero(balanceData, RES_FIELDS);
+        totalDisp = tryFields(balanceData, DISP_FIELDS) || (totalQtd - totalRes);
+        if (totalQtd === 0) {
+          dbg(`[Saldo] parseBalance: object with no recognized qty fields. Keys=[${Object.keys(balanceData).join(",")}]`);
+        }
       }
 
-      return { totalQtd, totalRes, totalDisp, locais };
+      return { totalQtd, totalRes, totalDisp, locais, _balItemKeys: balItemKeys.length > 0 ? balItemKeys : undefined };
     }
 
-    // Strategy 1: Direct balance call using SKU as codProduto (most SIGE APIs use codProduto as ID)
-    console.log(`[Saldo] Trying direct balance for codProduto=${sku}`);
-    const directResult = await sigeAuthFetch("GET", `/product/${encodeURIComponent(sku)}/balance`);
-    console.log(`[Saldo] Direct balance for ${sku}: HTTP ${directResult.status}, data keys: ${directResult.data ? Object.keys(directResult.data).join(",") : "null"}`);
-
-    if (directResult.ok && directResult.data) {
-      const { totalQtd, totalRes, totalDisp, locais } = parseBalance(directResult.data);
-      const result = {
-        sku, found: true, sige: true, sigeId: sku,
-        quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
-        locais: locais.length > 0 ? locais : undefined,
-        balanceRaw: directResult.data,
-        _cachedAt: Date.now(),
-      };
-      await kv.set(cacheKey, JSON.stringify(result));
-      console.log(`[Saldo] SKU ${sku} (direct): qtd=${totalQtd}, disp=${totalDisp}, reserv=${totalRes}`);
-      return c.json({ ...result, cached: false });
+    // Helper: extract products array from SIGE response
+    function extractProducts(data: any): any[] {
+      if (!data) return [];
+      if (Array.isArray(data)) return data;
+      if (data?.dados && Array.isArray(data.dados)) return data.dados;
+      if (data?.data && Array.isArray(data.data)) return data.data;
+      if (data?.items && Array.isArray(data.items)) return data.items;
+      if (data?.content && Array.isArray(data.content)) return data.content;
+      if (data?.codProduto || data?.id || data?.descProdutoEst) return [data];
+      return [];
     }
 
-    // Strategy 2: Search for the product first, then use its ID
-    console.log(`[Saldo] Direct failed, searching SIGE for codProduto=${sku}`);
-    const searchResult = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
-    console.log(`[Saldo] Search result: HTTP ${searchResult.status}, data type: ${typeof searchResult.data}, isArray: ${Array.isArray(searchResult.data)}`);
+    // Helper: try to get balance for a found product
+    async function tryBalanceForProduct(p: any, stepLabel: string): Promise<any | null> {
+      const possibleIds = [p.id, p.codProduto, p.codigo, p.cod].filter(Boolean);
+      const triedIds = new Set<string>();
+      for (const pid of possibleIds) {
+        const pidStr = String(pid);
+        if (triedIds.has(pidStr)) continue;
+        triedIds.add(pidStr);
+        dbg(`[Saldo] ${stepLabel}: trying balance ID ${pidStr}`);
+        const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pidStr)}/balance`);
+        dbg(`[Saldo] ${stepLabel}: balance ID ${pidStr} -> HTTP ${balRes.status}`);
+        if (debugMode) sigeResponses.push({ step: `${stepLabel}_bal_${pidStr}`, path: `/product/${pidStr}/balance`, status: balRes.status, ok: balRes.ok, data: balRes.data });
+        if (balRes.ok && balRes.data) {
+          const { totalQtd, totalRes, totalDisp, locais, _balItemKeys } = parseBalance(balRes.data);
+          dbg(`[Saldo] ${stepLabel}: balance parsed: qtd=${totalQtd}, res=${totalRes}, disp=${totalDisp}, itemKeys=${_balItemKeys?.join(",") || "none"}`);
+          return {
+            sku, found: true, sige: true, sigeId: pidStr,
+            descricao: p.descProdutoEst || p.descricao || p.descProduto || "",
+            quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+            locais: locais.length > 0 ? locais : undefined,
+            _balItemKeys,
+            _cachedAt: Date.now(),
+          };
+        }
+      }
+      return null;
+    }
 
-    if (searchResult.ok && searchResult.data) {
-      let products: any[] = [];
-      const sd = searchResult.data;
-      if (Array.isArray(sd)) products = sd;
-      else if (sd?.data && Array.isArray(sd.data)) products = sd.data;
-      else if (sd?.items && Array.isArray(sd.items)) products = sd.items;
-      else if (sd?.content && Array.isArray(sd.content)) products = sd.content;
-
-      console.log(`[Saldo] Search found ${products.length} products. First keys: ${products[0] ? Object.keys(products[0]).join(",") : "none"}`);
-
-      if (products.length > 0) {
-        const p = products[0];
-        // Try different ID fields
-        const possibleIds = [p.id, p.codProduto, p.codigo, p.cod].filter(Boolean);
-        console.log(`[Saldo] Possible IDs for ${sku}: ${possibleIds.join(", ")}`);
-
-        for (const pid of possibleIds) {
-          if (pid === sku) continue; // Already tried above
-          console.log(`[Saldo] Trying balance with ID ${pid}`);
-          const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pid)}/balance`);
-          if (balRes.ok && balRes.data) {
-            const { totalQtd, totalRes, totalDisp, locais } = parseBalance(balRes.data);
-            const result = {
-              sku, found: true, sige: true, sigeId: pid,
-              descricao: p.descProdutoEst || p.descricao || "",
-              quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
-              locais: locais.length > 0 ? locais : undefined,
-              balanceRaw: balRes.data,
+    // Helper: search SIGE with params, find product, get balance
+    async function searchAndGetBalance(queryParams: string, stepLabel: string): Promise<any | null> {
+      const searchPath = `/product?${queryParams}`;
+      dbg(`[Saldo] ${stepLabel}: GET ${searchPath}`);
+      const searchRes = await sigeAuthFetch("GET", searchPath);
+      dbg(`[Saldo] ${stepLabel}: HTTP ${searchRes.status}, ok=${searchRes.ok}`);
+      if (debugMode) sigeResponses.push({ step: stepLabel, path: searchPath, status: searchRes.status, ok: searchRes.ok, data: searchRes.data });
+      if (searchRes.ok && searchRes.data) {
+        const products = extractProducts(searchRes.data);
+        dbg(`[Saldo] ${stepLabel}: found ${products.length} products. Keys: ${products[0] ? Object.keys(products[0]).slice(0, 8).join(",") : "none"}`);
+        if (products.length > 0) {
+          const p = products[0];
+          // Check if product already has embedded balance data
+          const directBal = parseBalance(p);
+          if (directBal.totalQtd > 0 || directBal.totalDisp > 0) {
+            dbg(`[Saldo] ${stepLabel}: product has embedded balance: qtd=${directBal.totalQtd}, disp=${directBal.totalDisp}`);
+            return {
+              sku, found: true, sige: true, sigeId: String(p.id || p.codProduto || ""),
+              descricao: p.descProdutoEst || p.descricao || p.descProduto || "",
+              quantidade: directBal.totalQtd, reservado: directBal.totalRes, disponivel: directBal.totalDisp,
+              locais: directBal.locais.length > 0 ? directBal.locais : undefined,
               _cachedAt: Date.now(),
             };
-            await kv.set(cacheKey, JSON.stringify(result));
-            console.log(`[Saldo] SKU ${sku} (via ID ${pid}): qtd=${totalQtd}, disp=${totalDisp}`);
-            return c.json({ ...result, cached: false });
           }
+          return await tryBalanceForProduct(p, stepLabel);
+        }
+      }
+      return null;
+    }
+
+    // ── Strategy 0: Check saved mapping (sige_map_<sku>) ──
+    const mapEntry = await kv.get(`sige_map_${sku}`);
+    if (mapEntry) {
+      const map = typeof mapEntry === "string" ? JSON.parse(mapEntry) : mapEntry;
+      if (map.sigeId) {
+        dbg(`[Saldo] S0: Found mapping ${sku} -> SIGE ${map.sigeId} (type: ${map.matchType})`);
+        const mapBal = await sigeAuthFetch("GET", `/product/${encodeURIComponent(map.sigeId)}/balance`);
+        dbg(`[Saldo] S0: balance for ${map.sigeId} -> HTTP ${mapBal.status}`);
+        if (debugMode) sigeResponses.push({ step: "s0_mapping", path: `/product/${map.sigeId}/balance`, status: mapBal.status, ok: mapBal.ok, data: mapBal.data });
+        if (mapBal.ok && mapBal.data) {
+          const { totalQtd, totalRes, totalDisp, locais, _balItemKeys } = parseBalance(mapBal.data);
+          dbg(`[Saldo] S0 found via mapping: qtd=${totalQtd}, disp=${totalDisp}`);
+          const result = {
+            sku, found: true, sige: true, sigeId: map.sigeId,
+            descricao: map.descricao || "",
+            quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+            locais: locais.length > 0 ? locais : undefined,
+            _balItemKeys,
+            _cachedAt: Date.now(),
+          };
+          await kv.set(cacheKey, JSON.stringify(result));
+          return c.json({ ...result, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
         }
       }
     }
 
-    // Nothing worked — cache as not found
+    // ── Strategy 1: Direct balance call with original SKU ──
+    dbg(`[Saldo] Strategy 1: GET /product/${sku}/balance`);
+    const directResult = await sigeAuthFetch("GET", `/product/${encodeURIComponent(sku)}/balance`);
+    dbg(`[Saldo] S1: HTTP ${directResult.status}, ok=${directResult.ok}, keys: ${directResult.data ? Object.keys(directResult.data).join(",") : "null"}`);
+    if (debugMode) sigeResponses.push({ step: "s1_direct", path: `/product/${sku}/balance`, status: directResult.status, ok: directResult.ok, data: directResult.data });
+
+    if (directResult.ok && directResult.data) {
+      const { totalQtd, totalRes, totalDisp, locais, _balItemKeys } = parseBalance(directResult.data);
+      dbg(`[Saldo] S1 found: qtd=${totalQtd}, disp=${totalDisp}, itemKeys=${_balItemKeys?.join(",") || "none"}`);
+      const result = {
+        sku, found: true, sige: true, sigeId: sku,
+        quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+        locais: locais.length > 0 ? locais : undefined,
+        _balItemKeys,
+        _cachedAt: Date.now(),
+      };
+      await kv.set(cacheKey, JSON.stringify(result));
+      return c.json({ ...result, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+    }
+
+    // ── Strategy 2: Search by codProduto (exact SKU) ──
+    let found = await searchAndGetBalance(`codProduto=${encodeURIComponent(sku)}&limit=5&offset=1`, "s2_cod");
+    if (found) {
+      await kv.set(cacheKey, JSON.stringify(found));
+      return c.json({ ...found, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+    }
+
+    // ── Strategy 3: If SKU has a dash, try the part before the dash ──
+    if (sku.includes("-")) {
+      const basePart = sku.split("-")[0];
+      dbg(`[Saldo] S3: trying base part "${basePart}" (before dash)`);
+
+      // 3a: Direct balance with base part
+      const directBase = await sigeAuthFetch("GET", `/product/${encodeURIComponent(basePart)}/balance`);
+      dbg(`[Saldo] S3a: direct /${basePart}/balance -> HTTP ${directBase.status}`);
+      if (debugMode) sigeResponses.push({ step: "s3a_direct_base", path: `/product/${basePart}/balance`, status: directBase.status, ok: directBase.ok, data: directBase.data });
+
+      if (directBase.ok && directBase.data) {
+        const { totalQtd, totalRes, totalDisp, locais, _balItemKeys } = parseBalance(directBase.data);
+        dbg(`[Saldo] S3a found via base "${basePart}": qtd=${totalQtd}, disp=${totalDisp}`);
+        const result = {
+          sku, found: true, sige: true, sigeId: basePart,
+          quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+          locais: locais.length > 0 ? locais : undefined,
+          _balItemKeys,
+          _cachedAt: Date.now(),
+        };
+        await kv.set(cacheKey, JSON.stringify(result));
+        return c.json({ ...result, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+      }
+
+      // 3b: Search by codProduto with base part
+      found = await searchAndGetBalance(`codProduto=${encodeURIComponent(basePart)}&limit=5&offset=1`, "s3b_cod_base");
+      if (found) {
+        await kv.set(cacheKey, JSON.stringify(found));
+        return c.json({ ...found, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+      }
+    }
+
+    // ── Strategy 4: Try without dashes/dots/spaces (e.g. "112274376") ──
+    const skuClean = sku.replace(/[-.\s]/g, "");
+    if (skuClean !== sku && (!sku.includes("-") || skuClean !== sku.split("-")[0])) {
+      dbg(`[Saldo] S4: trying cleaned SKU "${skuClean}"`);
+      found = await searchAndGetBalance(`codProduto=${encodeURIComponent(skuClean)}&limit=5&offset=1`, "s4_cod_clean");
+      if (found) {
+        await kv.set(cacheKey, JSON.stringify(found));
+        return c.json({ ...found, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+      }
+    }
+
+    // ── Strategy 5: Search by referencia ──
+    dbg(`[Saldo] S5: searching by referencia="${sku}"`);
+    found = await searchAndGetBalance(`referencia=${encodeURIComponent(sku)}&limit=5&offset=1`, "s5_ref");
+    if (found) {
+      await kv.set(cacheKey, JSON.stringify(found));
+      return c.json({ ...found, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+    }
+
+    // ── Strategy 6: Search by description as last resort ──
+    dbg(`[Saldo] S6: searching by descProduto="${sku}"`);
+    found = await searchAndGetBalance(`descProduto=${encodeURIComponent(sku)}&limit=3&offset=1`, "s6_desc");
+    if (found) {
+      await kv.set(cacheKey, JSON.stringify(found));
+      return c.json({ ...found, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
+    }
+
+    // Nothing worked — cache as not found (2 min TTL for not-found to retry sooner)
+    dbg(`[Saldo] SKU ${sku}: not found in SIGE after all 6 strategies`);
     const notFound = { sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now() };
     await kv.set(cacheKey, JSON.stringify(notFound));
-    console.log(`[Saldo] SKU ${sku}: not found in SIGE after all strategies`);
-    return c.json({ ...notFound, cached: false });
+    return c.json({ ...notFound, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
   } catch (e: any) {
     console.log(`[Saldo] Exception for SKU ${c.req.param("sku")}:`, e);
     return c.json({ error: e.message || `Erro: ${e}`, sku: c.req.param("sku"), found: false, sige: false, quantidade: 0 });
+  }
+});
+
+// DELETE /produtos/saldo/cache — clear all balance cache entries
+app.delete(`${BASE}/produtos/saldo/cache`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const entries = await kv.getByPrefix("sige_balance_");
+    let cleared = 0;
+    for (const entry of (entries || [])) {
+      if (entry?.key) {
+        await kv.del(entry.key);
+        cleared++;
+      }
+    }
+    console.log(`[Saldo] Cache cleared: ${cleared} entries by user ${userId}`);
+    return c.json({ cleared, message: `${cleared} entradas de cache removidas.` });
+  } catch (e: any) {
+    console.log("[Saldo] Cache clear exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /produtos/saldo/cache/:sku — clear cache for a single SKU
+app.delete(`${BASE}/produtos/saldo/cache/:sku`, async (c) => {
+  try {
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const cacheKey = `sige_balance_${sku}`;
+    await kv.del(cacheKey);
+    console.log(`[Saldo] Cache cleared for SKU ${sku}`);
+    return c.json({ cleared: true, sku, message: `Cache para SKU ${sku} removido.` });
+  } catch (e: any) {
+    console.log("[Saldo] Cache clear exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
   }
 });
 
@@ -4228,10 +4578,22 @@ app.post(`${BASE}/produtos/saldos`, async (c) => {
     const rawToken = await kv.get("sige_api_token");
     if (!rawToken) return c.json({ results: skus.map((s: string) => ({ sku: s, found: false, sige: false })), error: "SIGE nao conectado." });
 
-    // Helper: parse balance response
+    // Helper: parse balance response — expanded field detection
+    const bQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
+    const bRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+    function bTf(item: any, fields: string[]): number {
+      for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } }
+      return 0;
+    }
+    function bAd(item: any): number {
+      const skip = /^(cod|id|num|pagina|qtdRegistro|qtdPagina|grade|divisao|unidade)/i;
+      for (const [k, v] of Object.entries(item)) { if (typeof v === "number" && v > 0 && !skip.test(k)) return v; }
+      return 0;
+    }
     function parseBal(bd: any): { totalQtd: number; totalRes: number; totalDisp: number } {
       let items: any[] = [];
       if (Array.isArray(bd)) items = bd;
+      else if (bd?.dados && Array.isArray(bd.dados)) items = bd.dados;
       else if (bd?.data && Array.isArray(bd.data)) items = bd.data;
       else if (bd?.items && Array.isArray(bd.items)) items = bd.items;
       else if (bd?.content && Array.isArray(bd.content)) items = bd.content;
@@ -4239,30 +4601,86 @@ app.post(`${BASE}/produtos/saldos`, async (c) => {
       let totalQtd = 0, totalRes = 0, totalDisp = 0;
       if (items.length > 0) {
         for (const it of items) {
-          const q = Number(it.quantidade || it.qtdSaldo || it.saldo || it.qtd || 0);
-          const r = Number(it.reservado || it.qtdReservado || it.qtdReserva || 0);
+          let q = bTf(it, bQF); if (q === 0) q = bAd(it);
+          const r = bTf(it, bRF);
           totalQtd += q;
           totalRes += r;
         }
         totalDisp = totalQtd - totalRes;
       } else if (typeof bd === "object" && bd !== null && !bd.error && !bd.message) {
-        totalQtd = Number(bd.quantidade || bd.qtdSaldo || bd.saldo || 0);
-        totalRes = Number(bd.reservado || bd.qtdReservado || 0);
+        let q = bTf(bd, bQF); if (q === 0) q = bAd(bd);
+        totalQtd = q;
+        totalRes = bTf(bd, bRF);
         totalDisp = totalQtd - totalRes;
       }
       return { totalQtd, totalRes, totalDisp };
     }
 
-    // Process one SKU: cache -> direct balance -> search+balance
+    // Process one SKU: mapping -> cache -> direct balance -> search+balance -> try base part
     async function fetchOneSku(sku: string): Promise<any> {
       const cacheKey = `sige_balance_${sku}`;
       const cached = await kv.get(cacheKey);
       if (cached) {
         const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
         const age = Date.now() - (parsed._cachedAt || 0);
-        if (age < 5 * 60 * 1000) {
+        const ttl = parsed.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+        if (age < ttl) {
           return { ...parsed, cached: true };
         }
+      }
+
+      // Strategy 0: Check if there's a saved mapping (sige_map_<sku>)
+      const mapEntry = await kv.get(`sige_map_${sku}`);
+      if (mapEntry) {
+        const map = typeof mapEntry === "string" ? JSON.parse(mapEntry) : mapEntry;
+        if (map.sigeId) {
+          const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(map.sigeId)}/balance`);
+          if (balRes.ok && balRes.data) {
+            const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
+            const r = {
+              sku, found: true, sige: true, sigeId: map.sigeId,
+              descricao: map.descricao || "",
+              quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+              _cachedAt: Date.now(),
+            };
+            await kv.set(cacheKey, JSON.stringify(r));
+            return { ...r, cached: false };
+          }
+        }
+      }
+
+      // Helper: extract products array
+      function extractProds(data: any): any[] {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        if (data?.dados && Array.isArray(data.dados)) return data.dados;
+        if (data?.data && Array.isArray(data.data)) return data.data;
+        if (data?.items && Array.isArray(data.items)) return data.items;
+        if (data?.content && Array.isArray(data.content)) return data.content;
+        if (data?.codProduto || data?.id) return [data];
+        return [];
+      }
+
+      // Helper: try balance with possible IDs from a product
+      async function tryBalForProduct(p: any, skipId?: string): Promise<any | null> {
+        const ids = [p.id, p.codProduto, p.codigo, p.cod].filter(Boolean);
+        const tried = new Set<string>();
+        for (const pid of ids) {
+          const pidStr = String(pid);
+          if (tried.has(pidStr) || pidStr === skipId) continue;
+          tried.add(pidStr);
+          const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pidStr)}/balance`);
+          if (balRes.ok && balRes.data) {
+            const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
+            return {
+              sku, found: true, sige: true, sigeId: pidStr,
+              descricao: p.descProdutoEst || p.descricao || p.descProduto || "",
+              quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+              _cachedAt: Date.now(),
+            };
+          }
+        }
+        return null;
       }
 
       // Strategy 1: Direct balance with SKU as product ID
@@ -4278,32 +4696,38 @@ app.post(`${BASE}/produtos/saldos`, async (c) => {
         return { ...r, cached: false };
       }
 
-      // Strategy 2: Search first, then balance with found ID
+      // Strategy 2: Search by codProduto (exact SKU)
       const searchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
       if (searchRes.ok && searchRes.data) {
-        let products: any[] = [];
-        const sd = searchRes.data;
-        if (Array.isArray(sd)) products = sd;
-        else if (sd?.data && Array.isArray(sd.data)) products = sd.data;
-        else if (sd?.items && Array.isArray(sd.items)) products = sd.items;
-        else if (sd?.content && Array.isArray(sd.content)) products = sd.content;
+        const prods = extractProds(searchRes.data);
+        if (prods.length > 0) {
+          const result = await tryBalForProduct(prods[0], sku);
+          if (result) { await kv.set(cacheKey, JSON.stringify(result)); return { ...result, cached: false }; }
+        }
+      }
 
-        if (products.length > 0) {
-          const p = products[0];
-          const possibleIds = [p.id, p.codProduto, p.codigo, p.cod].filter((v: any) => v && v !== sku);
-          for (const pid of possibleIds) {
-            const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pid)}/balance`);
-            if (balRes.ok && balRes.data) {
-              const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
-              const r = {
-                sku, found: true, sige: true, sigeId: pid,
-                descricao: p.descProdutoEst || p.descricao || "",
-                quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
-                _cachedAt: Date.now(),
-              };
-              await kv.set(cacheKey, JSON.stringify(r));
-              return { ...r, cached: false };
-            }
+      // Strategy 3: If SKU has a dash, try the part before the dash
+      if (sku.includes("-")) {
+        const basePart = sku.split("-")[0];
+        // 3a: Direct balance with base part
+        const directBase = await sigeAuthFetch("GET", `/product/${encodeURIComponent(basePart)}/balance`);
+        if (directBase.ok && directBase.data) {
+          const { totalQtd, totalRes, totalDisp } = parseBal(directBase.data);
+          const r = {
+            sku, found: true, sige: true, sigeId: basePart,
+            quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp,
+            _cachedAt: Date.now(),
+          };
+          await kv.set(cacheKey, JSON.stringify(r));
+          return { ...r, cached: false };
+        }
+        // 3b: Search by codProduto with base part
+        const searchBase = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(basePart)}&limit=1&offset=1`);
+        if (searchBase.ok && searchBase.data) {
+          const prods = extractProds(searchBase.data);
+          if (prods.length > 0) {
+            const result = await tryBalForProduct(prods[0]);
+            if (result) { await kv.set(cacheKey, JSON.stringify(result)); return { ...result, cached: false }; }
           }
         }
       }
@@ -4337,6 +4761,1493 @@ app.post(`${BASE}/produtos/saldos`, async (c) => {
     console.log("[Saldo bulk] Exception:", e);
     // Always return 200 with structured data so frontend doesn't throw
     return c.json({ error: e.message || `Erro: ${e}`, results: [], total: 0 });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ─── STOCK SUMMARY (global count across ALL products) ────
+// ═══════════════════════════════════════════════════════════
+
+// GET /produtos/stock-summary — returns global stock counts by reading all cached balance entries
+app.get(`${BASE}/produtos/stock-summary`, async (c) => {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !supabaseKey) return c.json({ error: "Configuracao incompleta." }, 500);
+
+    // 1) Check if we have a recent cached summary (TTL 30s)
+    const SUMMARY_CACHE_KEY = "stock_summary_cache";
+    const cachedSummary = await kv.get(SUMMARY_CACHE_KEY);
+    if (cachedSummary) {
+      const parsed = typeof cachedSummary === "string" ? JSON.parse(cachedSummary) : cachedSummary;
+      if (parsed._cachedAt && Date.now() - parsed._cachedAt < 30_000) {
+        return c.json({ ...parsed, cached: true });
+      }
+    }
+
+    // 2) Get ALL product SKUs from "produtos" table
+    const headers = { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` };
+    const allSkus: string[] = [];
+    let offset = 0;
+    const batchSize = 1000;
+    while (true) {
+      const resp = await fetch(
+        `${supabaseUrl}/rest/v1/produtos?select=sku&order=sku.asc&offset=${offset}&limit=${batchSize}`,
+        { headers: { ...headers, "Prefer": "count=exact" } }
+      );
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const row of batch) { if (row.sku) allSkus.push(row.sku); }
+      if (batch.length < batchSize) break;
+      offset += batchSize;
+    }
+    const totalProducts = allSkus.length;
+
+    // 3) Get ALL cached balance entries via prefix scan
+    const supabaseSrv = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: balanceRows, error: balErr } = await supabaseSrv
+      .from("kv_store_b7b07654")
+      .select("key, value")
+      .like("key", "sige_balance_%");
+    if (balErr) {
+      console.log("[StockSummary] Error fetching balance cache:", balErr.message);
+      return c.json({ error: balErr.message }, 500);
+    }
+
+    const balanceMap = new Map<string, any>();
+    for (const row of (balanceRows || [])) {
+      const sku = row.key.replace("sige_balance_", "");
+      let val = row.value;
+      if (typeof val === "string") { try { val = JSON.parse(val); } catch {} }
+      balanceMap.set(sku, val);
+    }
+
+    // 4) Count stats for ALL products
+    let inStock = 0, outOfStock = 0, notFound = 0, pending = 0;
+    for (const sku of allSkus) {
+      const bal = balanceMap.get(sku);
+      if (!bal) { pending++; continue; }
+      const age = Date.now() - (bal._cachedAt || 0);
+      const ttl = bal.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+      if (age > ttl) { pending++; continue; }
+      if (!bal.found) { notFound++; continue; }
+      const avail = Number(bal.disponivel ?? bal.quantidade ?? 0);
+      if (avail > 0) inStock++; else outOfStock++;
+    }
+
+    const summary = { totalProducts, inStock, outOfStock, notFound, pending, totalCached: balanceMap.size, _cachedAt: Date.now() };
+    await kv.set(SUMMARY_CACHE_KEY, JSON.stringify(summary));
+    console.log(`[StockSummary] total=${totalProducts}, inStock=${inStock}, outOfStock=${outOfStock}, notFound=${notFound}, pending=${pending}`);
+    return c.json({ ...summary, cached: false });
+  } catch (e: any) {
+    console.log("[StockSummary] Exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /produtos/stock-scan — trigger balance scan for uncached/expired SKUs in batches
+app.post(`${BASE}/produtos/stock-scan`, async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const batchSize = Math.min(Number(body.batchSize) || 50, 50);
+
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ error: "SIGE nao configurado." });
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ error: "SIGE nao conectado." });
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const headers = { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` };
+    const allSkus: string[] = [];
+    let offset = 0;
+    while (true) {
+      const resp = await fetch(`${supabaseUrl}/rest/v1/produtos?select=sku&order=sku.asc&offset=${offset}&limit=1000`, { headers });
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const row of batch) { if (row.sku) allSkus.push(row.sku); }
+      if (batch.length < 1000) break;
+      offset += 1000;
+    }
+
+    const supabaseSrv = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: balanceRows } = await supabaseSrv.from("kv_store_b7b07654").select("key, value").like("key", "sige_balance_%");
+    const balanceMap = new Map<string, any>();
+    for (const row of (balanceRows || [])) {
+      const sku = row.key.replace("sige_balance_", "");
+      let val = row.value;
+      if (typeof val === "string") { try { val = JSON.parse(val); } catch {} }
+      balanceMap.set(sku, val);
+    }
+
+    const pendingSkus: string[] = [];
+    for (const sku of allSkus) {
+      const bal = balanceMap.get(sku);
+      if (!bal) { pendingSkus.push(sku); continue; }
+      const age = Date.now() - (bal._cachedAt || 0);
+      const ttl = bal.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+      if (age > ttl) pendingSkus.push(sku);
+    }
+
+    if (pendingSkus.length === 0) {
+      await kv.del("stock_summary_cache");
+      return c.json({ scanned: 0, remaining: 0, message: "Todos os produtos ja estao no cache." });
+    }
+
+    const toProcess = pendingSkus.slice(0, batchSize);
+
+    const sQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
+    const sRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+    function sTf(item: any, fields: string[]): number {
+      for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } }
+      return 0;
+    }
+    function sAd(item: any): number {
+      const skip = /^(cod|id|num|pagina|qtdRegistro|qtdPagina|grade|divisao|unidade)/i;
+      for (const [k, v] of Object.entries(item)) { if (typeof v === "number" && v > 0 && !skip.test(k)) return v; }
+      return 0;
+    }
+    function parseBal(bd: any): { totalQtd: number; totalRes: number; totalDisp: number } {
+      let items: any[] = [];
+      if (Array.isArray(bd)) items = bd;
+      else if (bd?.dados && Array.isArray(bd.dados)) items = bd.dados;
+      else if (bd?.data && Array.isArray(bd.data)) items = bd.data;
+      else if (bd?.items && Array.isArray(bd.items)) items = bd.items;
+      else if (bd?.content && Array.isArray(bd.content)) items = bd.content;
+      let totalQtd = 0, totalRes = 0, totalDisp = 0;
+      if (items.length > 0) {
+        for (const it of items) {
+          let q = sTf(it, sQF); if (q === 0) q = sAd(it);
+          const r = sTf(it, sRF);
+          totalQtd += q;
+          totalRes += r;
+        }
+        totalDisp = totalQtd - totalRes;
+      } else if (typeof bd === "object" && bd !== null && !bd.error && !bd.message) {
+        let q = sTf(bd, sQF); if (q === 0) q = sAd(bd);
+        totalQtd = q;
+        totalRes = sTf(bd, sRF);
+        totalDisp = totalQtd - totalRes;
+      }
+      return { totalQtd, totalRes, totalDisp };
+    }
+
+    function extractProds(data: any): any[] {
+      if (!data) return [];
+      if (Array.isArray(data)) return data;
+      if (data?.dados && Array.isArray(data.dados)) return data.dados;
+      if (data?.data && Array.isArray(data.data)) return data.data;
+      if (data?.items && Array.isArray(data.items)) return data.items;
+      if (data?.content && Array.isArray(data.content)) return data.content;
+      if (data?.codProduto || data?.id) return [data];
+      return [];
+    }
+
+    async function tryBalForProduct(p: any, sku: string, skipId?: string): Promise<any | null> {
+      const ids = [p.id, p.codProduto, p.codigo, p.cod].filter(Boolean);
+      const tried = new Set<string>();
+      for (const pid of ids) {
+        const pidStr = String(pid);
+        if (tried.has(pidStr) || pidStr === skipId) continue;
+        tried.add(pidStr);
+        const balRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(pidStr)}/balance`);
+        if (balRes.ok && balRes.data) {
+          const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
+          return { sku, found: true, sige: true, sigeId: pidStr, descricao: p.descProdutoEst || p.descricao || p.descProduto || "", quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp, _cachedAt: Date.now() };
+        }
+      }
+      return null;
+    }
+
+    async function fetchOneSku(sku: string): Promise<any> {
+      // Check saved mapping first
+      const mapE = await kv.get(`sige_map_${sku}`);
+      if (mapE) {
+        const mp = typeof mapE === "string" ? JSON.parse(mapE) : mapE;
+        if (mp.sigeId) {
+          const balR = await sigeAuthFetch("GET", `/product/${encodeURIComponent(mp.sigeId)}/balance`);
+          if (balR.ok && balR.data) {
+            const { totalQtd, totalRes, totalDisp } = parseBal(balR.data);
+            return { sku, found: true, sige: true, sigeId: mp.sigeId, descricao: mp.descricao || "", quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp, _cachedAt: Date.now() };
+          }
+        }
+      }
+      const directRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(sku)}/balance`);
+      if (directRes.ok && directRes.data) {
+        const { totalQtd, totalRes, totalDisp } = parseBal(directRes.data);
+        return { sku, found: true, sige: true, sigeId: sku, quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp, _cachedAt: Date.now() };
+      }
+      const searchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
+      if (searchRes.ok && searchRes.data) {
+        const prods = extractProds(searchRes.data);
+        if (prods.length > 0) {
+          const result = await tryBalForProduct(prods[0], sku, sku);
+          if (result) return result;
+        }
+      }
+      if (sku.includes("-")) {
+        const basePart = sku.split("-")[0];
+        const directBase = await sigeAuthFetch("GET", `/product/${encodeURIComponent(basePart)}/balance`);
+        if (directBase.ok && directBase.data) {
+          const { totalQtd, totalRes, totalDisp } = parseBal(directBase.data);
+          return { sku, found: true, sige: true, sigeId: basePart, quantidade: totalQtd, reservado: totalRes, disponivel: totalDisp, _cachedAt: Date.now() };
+        }
+        const searchBase = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(basePart)}&limit=1&offset=1`);
+        if (searchBase.ok && searchBase.data) {
+          const prods = extractProds(searchBase.data);
+          if (prods.length > 0) {
+            const result = await tryBalForProduct(prods[0], sku);
+            if (result) return result;
+          }
+        }
+      }
+      return { sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now() };
+    }
+
+    const results: any[] = [];
+    const PARALLEL = 5;
+    for (let i = 0; i < toProcess.length; i += PARALLEL) {
+      const batch = toProcess.slice(i, i + PARALLEL);
+      const batchResults = await Promise.all(
+        batch.map(async (sku) => {
+          try {
+            const result = await fetchOneSku(sku);
+            await kv.set(`sige_balance_${sku}`, JSON.stringify(result));
+            return result;
+          } catch (ex: any) {
+            console.log(`[StockScan] Error for ${sku}:`, ex.message);
+            return { sku, found: false, sige: true, error: ex.message };
+          }
+        })
+      );
+      results.push(...batchResults);
+    }
+
+    await kv.del("stock_summary_cache");
+    const found = results.filter((r) => r.found).length;
+    console.log(`[StockScan] Scanned ${results.length}, found=${found}, remaining=${pendingSkus.length - toProcess.length}`);
+    return c.json({ scanned: results.length, found, remaining: pendingSkus.length - toProcess.length, totalPending: pendingSkus.length, results });
+  } catch (e: any) {
+    console.log("[StockScan] Exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ─── SIGE PRODUCT MAPPING (match local SKUs ↔ SIGE IDs) ──
+// ═══════════════════════════════════════════════════════════
+
+// GET /produtos/sige-map — list all mappings
+app.get(`${BASE}/produtos/sige-map`, async (c) => {
+  try {
+    const entries = await kv.getByPrefix("sige_map_");
+    const mappings: any[] = [];
+    for (const entry of (entries || [])) {
+      if (!entry) continue;
+      let val = entry;
+      if (typeof val === "string") { try { val = JSON.parse(val); } catch {} }
+      if (val && typeof val === "object" && (val.sku || val.sigeId)) {
+        mappings.push(val);
+      }
+    }
+    return c.json({ mappings, total: mappings.length });
+  } catch (e: any) {
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /produtos/sige-map/:sku — manually map a local SKU to a SIGE product ID
+app.put(`${BASE}/produtos/sige-map/:sku`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const body = await c.req.json();
+    const sigeId = String(body.sigeId || "").trim();
+    if (!sigeId) return c.json({ error: "sigeId obrigatorio." }, 400);
+    const mapping = {
+      sku,
+      sigeId,
+      codProduto: body.codProduto || sigeId,
+      descricao: body.descricao || "",
+      matchType: "manual",
+      matchedAt: Date.now(),
+      matchedBy: userId,
+    };
+    await kv.set(`sige_map_${sku}`, JSON.stringify(mapping));
+    await kv.del(`sige_balance_${sku}`);
+    console.log(`[SigeMap] Manual mapping: ${sku} -> SIGE ${sigeId} by user ${userId}`);
+    return c.json({ ok: true, sku, mapping });
+  } catch (e: any) {
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /produtos/sige-map/:sku — remove mapping for a SKU
+app.delete(`${BASE}/produtos/sige-map/:sku`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    await kv.del(`sige_map_${sku}`);
+    await kv.del(`sige_balance_${sku}`);
+    return c.json({ ok: true, sku, message: `Mapeamento para ${sku} removido.` });
+  } catch (e: any) {
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// POST /produtos/sige-sync — auto-match local products with SIGE products
+app.post(`${BASE}/produtos/sige-sync`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json().catch(() => ({}));
+    const fetchBal = body.fetchBalances !== false;
+    const clearExisting = body.clearExisting === true;
+    const pgSize = Math.min(Number(body.batchSize) || 500, 500);
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ error: "SIGE nao configurado." });
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ error: "SIGE nao conectado." });
+    console.log(`[SigeSync] Starting. fetchBal=${fetchBal}, clear=${clearExisting}`);
+
+    // 1) Load local product SKUs
+    const sUrl = Deno.env.get("SUPABASE_URL")!;
+    const sKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const dbH = { "apikey": sKey, "Authorization": `Bearer ${sKey}` };
+    const localProds: { sku: string; titulo: string }[] = [];
+    let dOff = 0;
+    while (true) {
+      const resp = await fetch(`${sUrl}/rest/v1/produtos?select=sku,titulo&order=sku.asc&offset=${dOff}&limit=1000`, { headers: dbH });
+      const batch = await resp.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      for (const row of batch) { if (row.sku) localProds.push({ sku: row.sku, titulo: row.titulo || "" }); }
+      if (batch.length < 1000) break;
+      dOff += 1000;
+    }
+    console.log(`[SigeSync] ${localProds.length} local products`);
+
+    // 2) Load ALL SIGE products
+    const sigeProd: any[] = [];
+    let sOff = 1; let pg = 0;
+    while (true) {
+      pg++;
+      const res = await sigeAuthFetch("GET", `/product?limit=${pgSize}&offset=${sOff}`);
+      if (!res.ok) { console.log(`[SigeSync] SIGE fetch fail at offset ${sOff}`); break; }
+      let items: any[] = [];
+      const d = res.data;
+      if (Array.isArray(d)) items = d;
+      else if (d?.dados && Array.isArray(d.dados)) items = d.dados;
+      else if (d?.data && Array.isArray(d.data)) items = d.data;
+      else if (d?.items && Array.isArray(d.items)) items = d.items;
+      else if (d?.content && Array.isArray(d.content)) items = d.content;
+      if (items.length === 0) break;
+      sigeProd.push(...items);
+      console.log(`[SigeSync] Page ${pg}: ${items.length} (total: ${sigeProd.length})`);
+      if (items.length < pgSize) break;
+      sOff += pgSize;
+    }
+    console.log(`[SigeSync] ${sigeProd.length} SIGE products loaded`);
+
+    // 3) Build SIGE lookups
+    const sigeByCod = new Map<string, any>();
+    const sigeByIdM = new Map<string, any>();
+    for (const sp of sigeProd) {
+      const cod = String(sp.codProduto || "").toLowerCase();
+      const sid = String(sp.id || "");
+      if (cod) {
+        sigeByCod.set(cod, sp);
+        sigeByCod.set(cod.replace(/^0+/, ""), sp);
+        sigeByCod.set(cod.replace(/[-.\/\s]/g, ""), sp);
+      }
+      if (sid) sigeByIdM.set(sid, sp);
+    }
+
+    // 4) Clear existing if requested
+    if (clearExisting) {
+      let cleared = 0;
+      for (const lp of localProds) {
+        try { await kv.del(`sige_map_${lp.sku}`); cleared++; } catch {}
+      }
+      console.log(`[SigeSync] Cleared mappings for ${cleared} local SKUs`);
+    }
+
+    // 5) Match
+    let matched = 0, unmatched = 0, skipped = 0;
+    const matchRes: any[] = [];
+    const newMaps: { sku: string; sigeId: string; codProduto: string; descricao: string; matchType: string }[] = [];
+    for (const lp of localProds) {
+      const sku = lp.sku;
+      const skuL = sku.toLowerCase();
+      const skuC = skuL.replace(/[-.\/\s]/g, "");
+      const skuNZ = skuL.replace(/^0+/, "");
+      if (!clearExisting) {
+        const exm = await kv.get(`sige_map_${sku}`);
+        if (exm) { skipped++; continue; }
+      }
+      let mp: any = null; let mt = "";
+      if (sigeByCod.has(skuL)) { mp = sigeByCod.get(skuL); mt = "exact_cod"; }
+      else if (sigeByCod.has(skuC)) { mp = sigeByCod.get(skuC); mt = "clean_cod"; }
+      else if (skuNZ !== skuL && sigeByCod.has(skuNZ)) { mp = sigeByCod.get(skuNZ); mt = "no_zeros"; }
+      else if (sigeByIdM.has(sku)) { mp = sigeByIdM.get(sku); mt = "sige_id"; }
+      else if (sku.includes("-")) {
+        const bp = sku.split("-")[0].toLowerCase();
+        if (sigeByCod.has(bp)) { mp = sigeByCod.get(bp); mt = "base_dash"; }
+      }
+      if (mp) {
+        const sigeId = String(mp.id || mp.codProduto || "");
+        const codP = String(mp.codProduto || "");
+        const desc = mp.descProdutoEst || mp.descricao || mp.descProduto || "";
+        await kv.set(`sige_map_${sku}`, JSON.stringify({ sku, sigeId, codProduto: codP, descricao: desc, matchType: mt, matchedAt: Date.now() }));
+        newMaps.push({ sku, sigeId, codProduto: codP, descricao: desc, matchType: mt });
+        matched++;
+        matchRes.push({ sku, matched: true, matchType: mt, sigeId, codProduto: codP, descricao: desc.substring(0, 60) });
+      } else {
+        unmatched++;
+        matchRes.push({ sku, matched: false, titulo: lp.titulo.substring(0, 60) });
+      }
+    }
+    console.log(`[SigeSync] Match: ${matched} matched, ${unmatched} unmatched, ${skipped} skipped`);
+
+    // 6) Fetch balances for matched
+    let balFetched = 0;
+    if (fetchBal && newMaps.length > 0) {
+      const qF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
+      const rF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+      function stf(item: any, fields: string[]): number {
+        for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } } return 0;
+      }
+      function sad(item: any): number {
+        const skip = /^(cod|id|num|pagina|qtdRegistro|qtdPagina|grade|divisao|unidade)/i;
+        for (const [k, v] of Object.entries(item)) { if (typeof v === "number" && v > 0 && !skip.test(k)) return v; } return 0;
+      }
+      function spb(bd: any): { tQ: number; tR: number; tD: number } {
+        let items: any[] = [];
+        if (Array.isArray(bd)) items = bd;
+        else if (bd?.dados && Array.isArray(bd.dados)) items = bd.dados;
+        else if (bd?.data && Array.isArray(bd.data)) items = bd.data;
+        else if (bd?.items && Array.isArray(bd.items)) items = bd.items;
+        else if (bd?.content && Array.isArray(bd.content)) items = bd.content;
+        let tQ = 0, tR = 0, tD = 0;
+        if (items.length > 0) {
+          for (const it of items) { let q = stf(it, qF); if (q === 0) q = sad(it); tQ += q; tR += stf(it, rF); }
+          tD = tQ - tR;
+        } else if (typeof bd === "object" && bd !== null && !bd.error && !bd.message) {
+          let q = stf(bd, qF); if (q === 0) q = sad(bd); tQ = q; tR = stf(bd, rF); tD = tQ - tR;
+        }
+        return { tQ, tR, tD };
+      }
+      const PAR = 5;
+      for (let i = 0; i < newMaps.length; i += PAR) {
+        const batch = newMaps.slice(i, i + PAR);
+        await Promise.all(batch.map(async (m) => {
+          try {
+            const balR = await sigeAuthFetch("GET", `/product/${encodeURIComponent(m.sigeId)}/balance`);
+            if (balR.ok && balR.data) {
+              const { tQ, tR, tD } = spb(balR.data);
+              await kv.set(`sige_balance_${m.sku}`, JSON.stringify({
+                sku: m.sku, found: true, sige: true, sigeId: m.sigeId, descricao: m.descricao,
+                quantidade: tQ, reservado: tR, disponivel: tD, _cachedAt: Date.now(),
+              }));
+              balFetched++;
+            }
+          } catch (ex: any) { console.log(`[SigeSync] Bal error ${m.sku}:`, ex.message); }
+        }));
+      }
+      console.log(`[SigeSync] Fetched ${balFetched} balances`);
+    }
+    await kv.del("stock_summary_cache");
+    return c.json({
+      ok: true, localProducts: localProds.length, sigeProducts: sigeProd.length,
+      matched, unmatched, skipped, balanceFetched: balFetched,
+      matchResults: matchRes.slice(0, 200), totalResults: matchRes.length,
+    });
+  } catch (e: any) {
+    console.log("[SigeSync] Exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── PREÇOS (Price from SIGE + custom override) ──────
+// ═══════════════════════════════════════════════════════
+
+// GET /price-config — global price tier configuration
+app.get(`${BASE}/price-config`, async (c) => {
+  try {
+    const raw = await kv.get("price_config");
+    const config = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : { tier: "v2", showPrice: true };
+    return c.json(config);
+  } catch (e: any) {
+    console.log("[PriceConfig] GET exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /price-config — save global price tier (admin)
+app.put(`${BASE}/price-config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const body = await c.req.json();
+    const config: any = {
+      tier: body.tier || "v2",
+      showPrice: body.showPrice !== false,
+      updatedAt: Date.now(),
+      updatedBy: userId,
+    };
+    // Preserve list price mapping if provided
+    if (body.listPriceMapping && typeof body.listPriceMapping === "object") {
+      config.listPriceMapping = body.listPriceMapping;
+    }
+    await kv.set("price_config", JSON.stringify(config));
+    console.log(`[PriceConfig] Updated by ${userId}: tier=${config.tier}, showPrice=${config.showPrice}, listMapping=${JSON.stringify(config.listPriceMapping || {})}`);
+    return c.json(config);
+  } catch (e: any) {
+    console.log("[PriceConfig] PUT exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /produtos/preco/:sku — set custom price for a product (admin)
+app.put(`${BASE}/produtos/preco/:sku`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const body = await c.req.json();
+    const customPrice = Number(body.price);
+    if (isNaN(customPrice) || customPrice < 0) return c.json({ error: "Preco invalido." }, 400);
+    const entry = { sku, price: customPrice, source: "custom", updatedAt: Date.now(), updatedBy: userId };
+    await kv.set(`price_custom_${sku}`, JSON.stringify(entry));
+    // Also clear old key format and cache
+    await kv.del(`product_price_${sku}`);
+    await kv.del(`sige_price_${sku}`);
+    console.log(`[Price] Custom price set for ${sku}: R$${customPrice.toFixed(2)} by ${userId}`);
+    return c.json({ ok: true, sku, price: customPrice });
+  } catch (e: any) {
+    console.log("[Price] PUT custom exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /produtos/preco/:sku — remove custom price (admin)
+app.delete(`${BASE}/produtos/preco/:sku`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    await kv.del(`price_custom_${sku}`);
+    await kv.del(`product_price_${sku}`);
+    await kv.del(`sige_price_${sku}`);
+    console.log(`[Price] Custom price removed for ${sku} by ${userId}`);
+    return c.json({ ok: true, sku, message: "Preco personalizado removido." });
+  } catch (e: any) {
+    console.log("[Price] DELETE custom exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// GET /produtos/preco/:sku — public endpoint to get product price
+app.get(`${BASE}/produtos/preco/:sku`, async (c) => {
+  try {
+    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    if (!sku) return c.json({ error: "SKU obrigatorio.", sku: "", found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
+
+    // 0. Load global price config
+    const cfgRaw = await kv.get("price_config");
+    const cfg = cfgRaw ? (typeof cfgRaw === "string" ? JSON.parse(cfgRaw) : cfgRaw) : { tier: "v2", showPrice: true };
+    const selectedTier: string = cfg.tier || "v2";
+    const showPrice = cfg.showPrice !== false;
+
+    // 1. Check for custom price override (new key format first, then old)
+    for (const prefix of ["price_custom_", "product_price_"]) {
+      const customRaw = await kv.get(`${prefix}${sku}`);
+      if (customRaw) {
+        const custom = typeof customRaw === "string" ? JSON.parse(customRaw) : customRaw;
+        if (custom.price !== undefined && custom.price !== null) {
+          console.log(`[Price] Custom price for ${sku}: R$${custom.price} (key=${prefix})`);
+          return c.json({ sku, found: true, source: "custom", price: custom.price, v1: null, v2: null, v3: null, tier: "custom", showPrice, cached: false });
+        }
+      }
+    }
+
+    // 2. Check price cache (10 min for found, 2 min for not found)
+    const cacheKey = `sige_price_${sku}`;
+    const cached = await kv.get(cacheKey);
+    if (cached) {
+      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+      const age = Date.now() - (parsed._cachedAt || 0);
+      const ttl = parsed.found ? 10 * 60 * 1000 : 2 * 60 * 1000;
+      if (age < ttl) {
+        return c.json({ ...parsed, showPrice, cached: true });
+      }
+    }
+
+    // 3. Check SIGE configured
+    const rawConfig = await kv.get("sige_api_config");
+    if (!rawConfig) return c.json({ sku, found: false, source: "none", error: "SIGE nao configurado.", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice });
+    const rawToken = await kv.get("sige_api_token");
+    if (!rawToken) return c.json({ sku, found: false, source: "none", error: "SIGE nao conectado.", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice });
+
+    // ─── Price lookup via SIGE /list-price-items endpoint ───
+
+    function exArr(data: any): any[] {
+      if (!data) return [];
+      if (Array.isArray(data)) return data;
+      if (data?.dados && Array.isArray(data.dados)) return data.dados;
+      if (data?.data && Array.isArray(data.data)) return data.data;
+      if (data?.items && Array.isArray(data.items)) return data.items;
+      if (data?.content && Array.isArray(data.content)) return data.content;
+      if (data?.codProduto || data?.id || data?.descProdutoEst) return [data];
+      return [];
+    }
+
+    // Extract price value from a list-price-item object
+    function extractPriceValue(item: any): number | null {
+      const priceFields = [
+        "vlrTabela","valorTabela","vlrLista","valorLista","vlrPreco","valorPreco",
+        "vlrVenda","valorVenda","precoVenda","preco","valor","vlr","vlrItem","valorItem",
+        "precoItem","precoUnitario","valorUnitario","vlrUnitario","precoLista",
+        "vlr_tabela","valor_tabela","preco_venda","valor_venda","vlr_venda",
+      ];
+      for (const k of priceFields) {
+        if (item[k] !== undefined && item[k] !== null && item[k] !== "") {
+          const v = Number(item[k]); if (!isNaN(v) && v > 0) return v;
+        }
+      }
+      // Auto-detect: find any numeric field > 0 with price-like name
+      for (const k of Object.keys(item)) {
+        if (/^(vlr|valor|preco|tabela)/i.test(k)) {
+          const v = Number(item[k]);
+          if (!isNaN(v) && v > 0) return v;
+        }
+      }
+      // Last resort: any numeric field > 0 that is not a code/id/offset
+      const skipPattern = /^(cod|id|limit|offset|desc|tipo|unidade|data)/i;
+      for (const k of Object.keys(item)) {
+        if (skipPattern.test(k)) continue;
+        const v = Number(item[k]);
+        if (!isNaN(v) && v > 0) return v;
+      }
+      return null;
+    }
+
+    // Load list-price mapping from config: { v1: "codLista_1", v2: "codLista_2", v3: "codLista_3" }
+    const listMapping = cfg.listPriceMapping || {};
+
+    // ─── Step 4: Find product codProduto via strategies ───
+
+    async function findProductId(): Promise<{ codProduto: string; descricao: string } | null> {
+      // S0: Check mapping
+      const mapEntry = await kv.get(`sige_map_${sku}`);
+      if (mapEntry) {
+        const map = typeof mapEntry === "string" ? JSON.parse(mapEntry) : mapEntry;
+        if (map.sigeId) {
+          console.log(`[Price] S0: mapping ${sku} -> SIGE ${map.sigeId}`);
+          return { codProduto: map.sigeId, descricao: "" };
+        }
+      }
+
+      // S1: Search by codProduto = SKU
+      console.log(`[Price] S1: codProduto=${sku}`);
+      const s1 = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(sku)}&limit=1&offset=1`);
+      if (s1.ok && s1.data) {
+        const prods = exArr(s1.data);
+        if (prods.length > 0) {
+          return { codProduto: String(prods[0].codProduto || prods[0].id || sku), descricao: prods[0].descProdutoEst || "" };
+        }
+      }
+
+      // S2: Base part before dash
+      if (sku.includes("-")) {
+        const base = sku.split("-")[0];
+        console.log(`[Price] S2: base=${base}`);
+        const s2 = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(base)}&limit=1&offset=1`);
+        if (s2.ok && s2.data) {
+          const prods = exArr(s2.data);
+          if (prods.length > 0) {
+            return { codProduto: String(prods[0].codProduto || prods[0].id || base), descricao: prods[0].descProdutoEst || "" };
+          }
+        }
+      }
+
+      // S3: Clean SKU (remove dashes, dots, spaces)
+      const skuC = sku.replace(/[-.\s]/g, "");
+      if (skuC !== sku && skuC !== sku.split("-")[0]) {
+        console.log(`[Price] S3: cleaned=${skuC}`);
+        const s3 = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(skuC)}&limit=1&offset=1`);
+        if (s3.ok && s3.data) {
+          const prods = exArr(s3.data);
+          if (prods.length > 0) {
+            return { codProduto: String(prods[0].codProduto || prods[0].id || skuC), descricao: prods[0].descProdutoEst || "" };
+          }
+        }
+      }
+
+      return null;
+    }
+
+    console.log(`[Price] Looking up product for SKU: ${sku}`);
+    const productInfo = await findProductId();
+
+    if (!productInfo) {
+      console.log(`[Price] ${sku}: product not found in SIGE`);
+      const notFound = { sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice, _cachedAt: Date.now(), _priceListItems: 0, _detectedListCodes: [] as string[] };
+      await kv.set(cacheKey, JSON.stringify(notFound));
+      return c.json({ ...notFound, cached: false });
+    }
+
+    const { codProduto, descricao } = productInfo;
+    console.log(`[Price] Product found: codProduto=${codProduto}, desc=${descricao.slice(0, 60)}`);
+
+    // ─── Step 5: Fetch prices via /list-price-items ───
+
+    console.log(`[Price] Fetching list-price-items for codProduto=${codProduto}`);
+    const lpRes = await sigeAuthFetch("GET", `/list-price-items?codProduto=${encodeURIComponent(codProduto)}&limit=50&offset=1`);
+
+    let v1: number | null = null;
+    let v2: number | null = null;
+    let v3: number | null = null;
+    let base: number | null = null;
+    let priceListItems: any[] = [];
+    let detectedListCodes: string[] = [];
+    let itemSampleKeys: string[] = [];
+    let priceListDebug: any[] = [];
+
+    if (lpRes.ok && lpRes.data) {
+      priceListItems = exArr(lpRes.data);
+      console.log(`[Price] list-price-items for ${codProduto}: ${priceListItems.length} items`);
+
+      if (priceListItems.length > 0) {
+        itemSampleKeys = Object.keys(priceListItems[0]);
+        console.log(`[Price] Item sample keys: [${itemSampleKeys.join(",")}]`);
+        console.log(`[Price] Item sample: ${JSON.stringify(priceListItems[0]).slice(0, 500)}`);
+
+        // Group by codLista and extract prices
+        const byList = new Map<string, { item: any; price: number | null }>();
+        for (const item of priceListItems) {
+          const code = String(item.codLista || item.codLista || "unknown");
+          const price = extractPriceValue(item);
+          if (!byList.has(code) || (price !== null && byList.get(code)!.price === null)) {
+            byList.set(code, { item, price });
+          }
+          if (!detectedListCodes.includes(code)) detectedListCodes.push(code);
+        }
+
+        // Debug info for each list
+        for (const [code, entry] of byList.entries()) {
+          priceListDebug.push({ codLista: code, price: entry.price, descLista: entry.item.descLista || null });
+        }
+        console.log(`[Price] Detected lists: ${JSON.stringify(priceListDebug)}`);
+
+        // Try configured mapping first
+        if (listMapping.v1 && byList.has(listMapping.v1)) {
+          v1 = byList.get(listMapping.v1)!.price;
+          console.log(`[Price] Mapped v1 = list ${listMapping.v1} -> ${v1}`);
+        }
+        if (listMapping.v2 && byList.has(listMapping.v2)) {
+          v2 = byList.get(listMapping.v2)!.price;
+          console.log(`[Price] Mapped v2 = list ${listMapping.v2} -> ${v2}`);
+        }
+        if (listMapping.v3 && byList.has(listMapping.v3)) {
+          v3 = byList.get(listMapping.v3)!.price;
+          console.log(`[Price] Mapped v3 = list ${listMapping.v3} -> ${v3}`);
+        }
+
+        // Auto-detect: if no mapping configured or no prices found, assign first 3 lists to v1/v2/v3
+        if (v1 === null && v2 === null && v3 === null) {
+          const codes = Array.from(byList.keys()).sort();
+          if (codes.length >= 1) v1 = byList.get(codes[0])!.price;
+          if (codes.length >= 2) v2 = byList.get(codes[1])!.price;
+          if (codes.length >= 3) v3 = byList.get(codes[2])!.price;
+          console.log(`[Price] Auto-mapped: lists=[${codes.slice(0,3).join(",")}] -> v1=${v1}, v2=${v2}, v3=${v3}`);
+        }
+
+        // Base = first available
+        base = v1 ?? v2 ?? v3 ?? null;
+        if (base === null && priceListItems.length > 0) {
+          base = extractPriceValue(priceListItems[0]);
+        }
+      }
+    } else {
+      console.log(`[Price] list-price-items for ${codProduto}: HTTP ${lpRes.status}, data: ${JSON.stringify(lpRes.data).slice(0, 300)}`);
+    }
+
+    const tMap: Record<string, number | null> = { v1, v2, v3 };
+    const selectedPrice = tMap[selectedTier] ?? base ?? v2 ?? v1 ?? v3;
+    const found = selectedPrice !== null;
+
+    const result: any = {
+      sku, found, source: "sige", sigeId: codProduto, descricao,
+      v1, v2, v3, base,
+      tier: selectedTier, price: selectedPrice, showPrice, _cachedAt: Date.now(),
+      _priceListItems: priceListItems.length,
+      _detectedListCodes: detectedListCodes,
+      _priceListDebug: priceListDebug,
+      _itemSampleKeys: itemSampleKeys,
+      _listMapping: listMapping,
+    };
+
+    console.log(`[Price] ${sku}: final -> found=${found}, v1=${v1}, v2=${v2}, v3=${v3}, base=${base}, price=${selectedPrice}`);
+    await kv.set(cacheKey, JSON.stringify(result));
+    return c.json({ ...result, cached: false });
+  } catch (e: any) {
+    console.log(`[Price] Exception for SKU ${c.req.param("sku")}:`, e);
+    return c.json({ error: e.message || `Erro: ${e}`, sku: c.req.param("sku"), found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
+  }
+});
+
+// ─── Custom prices management ───
+
+// GET /produtos/custom-prices — list all custom prices (admin)
+app.get(`${BASE}/produtos/custom-prices`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const newKeys = await kv.getByPrefix("price_custom_");
+    const oldKeys = await kv.getByPrefix("product_price_");
+
+    const customs: any[] = [];
+    const seenSkus = new Set<string>();
+
+    for (const entry of [...(newKeys || []), ...(oldKeys || [])]) {
+      try {
+        const val = typeof entry.value === "string" ? JSON.parse(entry.value) : entry.value;
+        const sku = val.sku || entry.key.replace("price_custom_", "").replace("product_price_", "");
+        if (seenSkus.has(sku)) continue;
+        seenSkus.add(sku);
+        customs.push({
+          sku,
+          price: val.price,
+          source: "custom",
+          updatedAt: val.updatedAt || null,
+        });
+      } catch {}
+    }
+
+    customs.sort((a: any, b: any) => a.sku.localeCompare(b.sku));
+    console.log(`[Price] Custom prices list: ${customs.length} items`);
+    return c.json({ customs, total: customs.length });
+  } catch (e: any) {
+    console.log("[Price] Custom prices list exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /price-cache — clear all price caches (admin)
+app.delete(`${BASE}/price-cache`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const cachedEntries = await kv.getByPrefix("sige_price_");
+    let cleared = 0;
+    if (cachedEntries && cachedEntries.length > 0) {
+      const keys = cachedEntries.map((e: any) => e.key);
+      await kv.mdel(keys);
+      cleared = keys.length;
+    }
+    console.log(`[Price] Cache cleared: ${cleared} entries by ${userId}`);
+    return c.json({ cleared, message: `${cleared} caches de preco removidos.` });
+  } catch (e: any) {
+    console.log("[Price] Cache clear exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════
+// ─── PAGHIPER ─────────────────────────
+// ═══════════════════════════════════════
+
+const PAGHIPER_PIX_URL = "https://pix.paghiper.com/invoice";
+const PAGHIPER_BOLETO_URL = "https://api.paghiper.com/transaction";
+
+// Helper: get PagHiper credentials from KV
+async function getPagHiperCredentials(): Promise<{ apiKey: string; token: string } | null> {
+  const raw = await kv.get("paghiper_config");
+  if (!raw) return null;
+  const config = typeof raw === "string" ? JSON.parse(raw) : raw;
+  if (!config.apiKey || !config.token) return null;
+  return { apiKey: config.apiKey, token: config.token };
+}
+
+// Helper: translate PagHiper status codes
+function translateStatus(status: string): string {
+  const map: Record<string, string> = {
+    pending: "Pendente",
+    reserved: "Reservado",
+    canceled: "Cancelado",
+    completed: "Pago",
+    paid: "Pago",
+    processing: "Processando",
+    refunded: "Reembolsado",
+    partially_refunded: "Reembolso Parcial",
+  };
+  return map[status] || status;
+}
+
+// GET /paghiper/config — get config status (admin)
+app.get(`${BASE}/paghiper/config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const raw = await kv.get("paghiper_config");
+    if (!raw) return c.json({ configured: false });
+
+    const config = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return c.json({
+      configured: !!(config.apiKey && config.token),
+      hasApiKey: !!config.apiKey,
+      hasToken: !!config.token,
+      apiKeyPreview: config.apiKey ? config.apiKey.substring(0, 8) + "..." : null,
+      updatedAt: config.updatedAt || null,
+    });
+  } catch (e: any) {
+    console.log("[PagHiper] Config get error:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// PUT /paghiper/config — save PagHiper credentials (admin)
+app.put(`${BASE}/paghiper/config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const { apiKey, token } = await c.req.json();
+    if (!apiKey || !token) {
+      return c.json({ error: "API Key e Token sao obrigatorios." }, 400);
+    }
+
+    await kv.set("paghiper_config", JSON.stringify({
+      apiKey,
+      token,
+      updatedAt: Date.now(),
+    }));
+
+    console.log(`[PagHiper] Config saved by user ${userId}`);
+    return c.json({ success: true, configured: true });
+  } catch (e: any) {
+    console.log("[PagHiper] Config save error:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// DELETE /paghiper/config — remove PagHiper credentials (admin)
+app.delete(`${BASE}/paghiper/config`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    await kv.del("paghiper_config");
+    console.log(`[PagHiper] Config deleted by user ${userId}`);
+    return c.json({ success: true, configured: false });
+  } catch (e: any) {
+    console.log("[PagHiper] Config delete error:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ─── PIX ───
+
+// POST /paghiper/pix/create — create PIX charge
+app.post(`${BASE}/paghiper/pix/create`, async (c) => {
+  try {
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const body = await c.req.json();
+    const { order_id, payer_email, payer_name, payer_cpf_cnpj, payer_phone, items, days_due_date, notification_url } = body;
+
+    if (!order_id || !payer_email || !payer_name || !payer_cpf_cnpj || !items?.length) {
+      return c.json({ error: "Campos obrigatorios: order_id, payer_email, payer_name, payer_cpf_cnpj, items[]" }, 400);
+    }
+
+    const payload: any = {
+      apiKey: creds.apiKey,
+      order_id,
+      payer_email,
+      payer_name,
+      payer_cpf_cnpj: payer_cpf_cnpj.replace(/\D/g, ""),
+      payer_phone: payer_phone ? payer_phone.replace(/\D/g, "") : undefined,
+      notification_url: notification_url || "",
+      days_due_date: days_due_date || "1",
+      items: items.map((item: any, i: number) => ({
+        description: item.description || `Item ${i + 1}`,
+        quantity: String(item.quantity || 1),
+        item_id: String(item.item_id || i + 1),
+        price_cents: String(item.price_cents),
+      })),
+    };
+
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+    console.log(`[PagHiper] PIX create for order ${order_id}`);
+
+    const res = await fetch(`${PAGHIPER_PIX_URL}/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] PIX create response:`, JSON.stringify(data));
+
+    if (!res.ok || data?.pix_create_request?.result === "reject") {
+      const msg = data?.pix_create_request?.response_message || data?.message || `HTTP ${res.status}`;
+      return c.json({ error: msg, paghiperResponse: data }, 400);
+    }
+
+    const txId = data?.pix_create_request?.transaction_id;
+    if (txId) {
+      await kv.set(`paghiper_tx_${txId}`, JSON.stringify({
+        type: "pix",
+        order_id,
+        transaction_id: txId,
+        status: data?.pix_create_request?.status || "pending",
+        created_at: Date.now(),
+        payer_email,
+        payer_name,
+        payer_cpf_cnpj,
+        value_cents: items.reduce((sum: number, it: any) => sum + Number(it.price_cents) * Number(it.quantity || 1), 0),
+        qr_code: data?.pix_create_request?.pix_code?.qrcode_base64 || null,
+        pix_url: data?.pix_create_request?.pix_code?.pix_url || null,
+        emv: data?.pix_create_request?.pix_code?.emv || null,
+        bacen_url: data?.pix_create_request?.pix_code?.bacen_url || null,
+      }));
+      await kv.set(`paghiper_order_${order_id}`, txId);
+    }
+
+    return c.json({
+      success: true,
+      transaction_id: txId,
+      status: data?.pix_create_request?.status,
+      qr_code_base64: data?.pix_create_request?.pix_code?.qrcode_base64 || null,
+      pix_url: data?.pix_create_request?.pix_code?.pix_url || null,
+      emv: data?.pix_create_request?.pix_code?.emv || null,
+      bacen_url: data?.pix_create_request?.pix_code?.bacen_url || null,
+      due_date: data?.pix_create_request?.due_date || null,
+      value_cents: data?.pix_create_request?.value_cents || null,
+      raw: data,
+    });
+  } catch (e: any) {
+    console.log("[PagHiper] PIX create exception:", e);
+    return c.json({ error: e.message || `Erro ao criar PIX: ${e}` }, 500);
+  }
+});
+
+// POST /paghiper/pix/status — check PIX payment status
+app.post(`${BASE}/paghiper/pix/status`, async (c) => {
+  try {
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const { transaction_id } = await c.req.json();
+    if (!transaction_id) return c.json({ error: "transaction_id obrigatorio." }, 400);
+
+    const res = await fetch(`${PAGHIPER_PIX_URL}/status/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        apiKey: creds.apiKey,
+        token: creds.token,
+        transaction_id,
+      }),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] PIX status for ${transaction_id}:`, JSON.stringify(data));
+
+    const statusData = data?.status_request;
+    const status = statusData?.status || "unknown";
+
+    const existing = await kv.get(`paghiper_tx_${transaction_id}`);
+    if (existing) {
+      const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
+      tx.status = status;
+      tx.status_updated_at = Date.now();
+      if (statusData?.paid_date) tx.paid_date = statusData.paid_date;
+      await kv.set(`paghiper_tx_${transaction_id}`, JSON.stringify(tx));
+    }
+
+    return c.json({
+      transaction_id,
+      status,
+      status_label: translateStatus(status),
+      value_cents: statusData?.value_cents || null,
+      value_cents_paid: statusData?.value_cents_paid || null,
+      paid_date: statusData?.paid_date || null,
+      due_date: statusData?.due_date || null,
+      raw: data,
+    });
+  } catch (e: any) {
+    console.log("[PagHiper] PIX status exception:", e);
+    return c.json({ error: e.message || `Erro ao consultar PIX: ${e}` }, 500);
+  }
+});
+
+// POST /paghiper/pix/cancel — cancel PIX charge (admin)
+app.post(`${BASE}/paghiper/pix/cancel`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const { transaction_id, status } = await c.req.json();
+    if (!transaction_id) return c.json({ error: "transaction_id obrigatorio." }, 400);
+
+    const res = await fetch(`${PAGHIPER_PIX_URL}/cancel/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        apiKey: creds.apiKey,
+        token: creds.token,
+        transaction_id,
+        status: status || "canceled",
+      }),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] PIX cancel for ${transaction_id}:`, JSON.stringify(data));
+
+    const existing = await kv.get(`paghiper_tx_${transaction_id}`);
+    if (existing) {
+      const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
+      tx.status = "canceled";
+      tx.canceled_at = Date.now();
+      tx.canceled_by = userId;
+      await kv.set(`paghiper_tx_${transaction_id}`, JSON.stringify(tx));
+    }
+
+    return c.json({ success: true, transaction_id, data });
+  } catch (e: any) {
+    console.log("[PagHiper] PIX cancel exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ─── BOLETO ───
+
+// POST /paghiper/boleto/create — create boleto charge
+app.post(`${BASE}/paghiper/boleto/create`, async (c) => {
+  try {
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const body = await c.req.json();
+    const {
+      order_id, payer_email, payer_name, payer_cpf_cnpj, payer_phone,
+      payer_street, payer_number, payer_complement, payer_district,
+      payer_city, payer_state, payer_zip_code,
+      items, days_due_date, notification_url, type_bank_slip,
+      fixed_description, seller_description
+    } = body;
+
+    if (!order_id || !payer_email || !payer_name || !payer_cpf_cnpj || !items?.length) {
+      return c.json({ error: "Campos obrigatorios: order_id, payer_email, payer_name, payer_cpf_cnpj, items[]" }, 400);
+    }
+
+    const payload: any = {
+      apiKey: creds.apiKey,
+      order_id,
+      payer_email,
+      payer_name,
+      payer_cpf_cnpj: payer_cpf_cnpj.replace(/\D/g, ""),
+      payer_phone: payer_phone ? payer_phone.replace(/\D/g, "") : undefined,
+      payer_street: payer_street || undefined,
+      payer_number: payer_number || undefined,
+      payer_complement: payer_complement || undefined,
+      payer_district: payer_district || undefined,
+      payer_city: payer_city || undefined,
+      payer_state: payer_state || undefined,
+      payer_zip_code: payer_zip_code ? payer_zip_code.replace(/\D/g, "") : undefined,
+      notification_url: notification_url || "",
+      days_due_date: days_due_date || "3",
+      type_bank_slip: type_bank_slip || "boletoA4",
+      fixed_description: fixed_description !== undefined ? String(fixed_description) : undefined,
+      seller_description: seller_description || undefined,
+      items: items.map((item: any, i: number) => ({
+        description: item.description || `Item ${i + 1}`,
+        quantity: String(item.quantity || 1),
+        item_id: String(item.item_id || i + 1),
+        price_cents: String(item.price_cents),
+      })),
+    };
+
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+    console.log(`[PagHiper] Boleto create for order ${order_id}`);
+
+    const res = await fetch(`${PAGHIPER_BOLETO_URL}/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] Boleto create response:`, JSON.stringify(data));
+
+    if (!res.ok || data?.create_request?.result === "reject") {
+      const msg = data?.create_request?.response_message || data?.message || `HTTP ${res.status}`;
+      return c.json({ error: msg, paghiperResponse: data }, 400);
+    }
+
+    const txId = data?.create_request?.transaction_id;
+    if (txId) {
+      await kv.set(`paghiper_tx_${txId}`, JSON.stringify({
+        type: "boleto",
+        order_id,
+        transaction_id: txId,
+        status: data?.create_request?.status || "pending",
+        created_at: Date.now(),
+        payer_email,
+        payer_name,
+        payer_cpf_cnpj,
+        value_cents: items.reduce((sum: number, it: any) => sum + Number(it.price_cents) * Number(it.quantity || 1), 0),
+        bank_slip: {
+          digitable_line: data?.create_request?.bank_slip?.digitable_line || null,
+          url_slip: data?.create_request?.bank_slip?.url_slip || null,
+          url_slip_pdf: data?.create_request?.bank_slip?.url_slip_pdf || null,
+        },
+      }));
+      await kv.set(`paghiper_order_${order_id}`, txId);
+    }
+
+    return c.json({
+      success: true,
+      transaction_id: txId,
+      status: data?.create_request?.status,
+      due_date: data?.create_request?.due_date || null,
+      value_cents: data?.create_request?.value_cents || null,
+      bank_slip: {
+        digitable_line: data?.create_request?.bank_slip?.digitable_line || null,
+        url_slip: data?.create_request?.bank_slip?.url_slip || null,
+        url_slip_pdf: data?.create_request?.bank_slip?.url_slip_pdf || null,
+      },
+      raw: data,
+    });
+  } catch (e: any) {
+    console.log("[PagHiper] Boleto create exception:", e);
+    return c.json({ error: e.message || `Erro ao criar boleto: ${e}` }, 500);
+  }
+});
+
+// POST /paghiper/boleto/status — check boleto payment status
+app.post(`${BASE}/paghiper/boleto/status`, async (c) => {
+  try {
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const { transaction_id } = await c.req.json();
+    if (!transaction_id) return c.json({ error: "transaction_id obrigatorio." }, 400);
+
+    const res = await fetch(`${PAGHIPER_BOLETO_URL}/status/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        apiKey: creds.apiKey,
+        token: creds.token,
+        transaction_id,
+      }),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] Boleto status for ${transaction_id}:`, JSON.stringify(data));
+
+    const statusData = data?.status_request;
+    const status = statusData?.status || "unknown";
+
+    const existing = await kv.get(`paghiper_tx_${transaction_id}`);
+    if (existing) {
+      const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
+      tx.status = status;
+      tx.status_updated_at = Date.now();
+      if (statusData?.paid_date) tx.paid_date = statusData.paid_date;
+      await kv.set(`paghiper_tx_${transaction_id}`, JSON.stringify(tx));
+    }
+
+    return c.json({
+      transaction_id,
+      status,
+      status_label: translateStatus(status),
+      value_cents: statusData?.value_cents || null,
+      value_cents_paid: statusData?.value_cents_paid || null,
+      paid_date: statusData?.paid_date || null,
+      due_date: statusData?.due_date || null,
+      raw: data,
+    });
+  } catch (e: any) {
+    console.log("[PagHiper] Boleto status exception:", e);
+    return c.json({ error: e.message || `Erro ao consultar boleto: ${e}` }, 500);
+  }
+});
+
+// POST /paghiper/boleto/cancel — cancel boleto (admin)
+app.post(`${BASE}/paghiper/boleto/cancel`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const creds = await getPagHiperCredentials();
+    if (!creds) return c.json({ error: "PagHiper nao configurado." }, 400);
+
+    const { transaction_id } = await c.req.json();
+    if (!transaction_id) return c.json({ error: "transaction_id obrigatorio." }, 400);
+
+    const res = await fetch(`${PAGHIPER_BOLETO_URL}/cancel/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        apiKey: creds.apiKey,
+        token: creds.token,
+        transaction_id,
+        status: "canceled",
+      }),
+    });
+
+    const data = await res.json();
+    console.log(`[PagHiper] Boleto cancel for ${transaction_id}:`, JSON.stringify(data));
+
+    const existing = await kv.get(`paghiper_tx_${transaction_id}`);
+    if (existing) {
+      const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
+      tx.status = "canceled";
+      tx.canceled_at = Date.now();
+      tx.canceled_by = userId;
+      await kv.set(`paghiper_tx_${transaction_id}`, JSON.stringify(tx));
+    }
+
+    return c.json({ success: true, transaction_id, data });
+  } catch (e: any) {
+    console.log("[PagHiper] Boleto cancel exception:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// ─── NOTIFICATION WEBHOOK ───
+
+// POST /paghiper/notification — PagHiper notification callback (public, no auth)
+app.post(`${BASE}/paghiper/notification`, async (c) => {
+  try {
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      // PagHiper may send as form-urlencoded
+      const text = await c.req.text();
+      const params = new URLSearchParams(text);
+      body = Object.fromEntries(params.entries());
+    }
+
+    const { notification_id, idTransacao, transaction_id: txId } = body;
+    const transactionId = idTransacao || txId;
+    console.log(`[PagHiper] Notification received: notification_id=${notification_id}, transactionId=${transactionId}`);
+
+    if (!transactionId) {
+      console.log("[PagHiper] Notification missing transactionId, body:", JSON.stringify(body));
+      return c.json({ received: true, warning: "missing transactionId" });
+    }
+
+    const existing = await kv.get(`paghiper_tx_${transactionId}`);
+    const txType = existing
+      ? (typeof existing === "string" ? JSON.parse(existing) : existing).type || "pix"
+      : "pix";
+
+    const creds = await getPagHiperCredentials();
+    if (!creds) {
+      console.log("[PagHiper] Notification: no credentials configured");
+      return c.json({ received: true, warning: "no credentials" });
+    }
+
+    const statusUrl = txType === "boleto"
+      ? `${PAGHIPER_BOLETO_URL}/status/`
+      : `${PAGHIPER_PIX_URL}/status/`;
+
+    const res = await fetch(statusUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        apiKey: creds.apiKey,
+        token: creds.token,
+        transaction_id: transactionId,
+      }),
+    });
+
+    const data = await res.json();
+    const statusData = data?.status_request;
+    const status = statusData?.status || "unknown";
+
+    console.log(`[PagHiper] Notification: tx=${transactionId} type=${txType} status=${status}`);
+
+    if (existing) {
+      const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
+      tx.status = status;
+      tx.status_updated_at = Date.now();
+      tx.notification_id = notification_id;
+      if (statusData?.paid_date) tx.paid_date = statusData.paid_date;
+      if (statusData?.value_cents_paid) tx.value_cents_paid = Number(statusData.value_cents_paid);
+      await kv.set(`paghiper_tx_${transactionId}`, JSON.stringify(tx));
+    }
+
+    await kv.set(`paghiper_notif_${Date.now()}`, JSON.stringify({
+      notification_id,
+      transaction_id: transactionId,
+      type: txType,
+      status,
+      received_at: Date.now(),
+      raw: body,
+    }));
+
+    return c.json({ received: true, status });
+  } catch (e: any) {
+    console.log("[PagHiper] Notification exception:", e);
+    return c.json({ received: true, error: e.message }, 500);
+  }
+});
+
+// ─── TRANSACTIONS LIST (admin) ───
+
+// GET /paghiper/transactions — list all PagHiper transactions
+app.get(`${BASE}/paghiper/transactions`, async (c) => {
+  try {
+    const userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    const entries = await kv.getByPrefix("paghiper_tx_");
+    const transactions: any[] = [];
+
+    if (entries && entries.length > 0) {
+      for (const entry of entries) {
+        try {
+          const val = typeof entry.value === "string" ? JSON.parse(entry.value) : entry.value;
+          transactions.push(val);
+        } catch {}
+      }
+    }
+
+    transactions.sort((a: any, b: any) => (b.created_at || 0) - (a.created_at || 0));
+    return c.json({ transactions, total: transactions.length });
+  } catch (e: any) {
+    console.log("[PagHiper] Transactions list error:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
+  }
+});
+
+// GET /paghiper/transaction/:id — get single transaction
+app.get(`${BASE}/paghiper/transaction/:id`, async (c) => {
+  try {
+    const txId = c.req.param("id");
+    const raw = await kv.get(`paghiper_tx_${txId}`);
+    if (!raw) return c.json({ error: "Transacao nao encontrada." }, 404);
+    const tx = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return c.json(tx);
+  } catch (e: any) {
+    console.log("[PagHiper] Transaction get error:", e);
+    return c.json({ error: e.message || `Erro: ${e}` }, 500);
   }
 });
 

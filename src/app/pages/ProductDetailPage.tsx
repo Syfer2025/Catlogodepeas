@@ -20,6 +20,8 @@ import type { ProductImage } from "../services/api";
 import { ProductCard } from "../components/ProductCard";
 import type { ProdutoItem } from "../components/ProductCard";
 import { StockBadge } from "../components/StockBadge";
+import { PriceBadge } from "../components/PriceBadge";
+import { copyToClipboard } from "../utils/clipboard";
 
 export function ProductDetailPage() {
   const { id } = useParams();
@@ -368,13 +370,7 @@ export function ProductDetailPage() {
                 <button
                   onClick={() => {
                     const url = window.location.href;
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                      navigator.clipboard.writeText(url).catch(() => {
-                        fallbackCopy(url);
-                      });
-                    } else {
-                      fallbackCopy(url);
-                    }
+                    copyToClipboard(url);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
@@ -388,9 +384,14 @@ export function ProductDetailPage() {
               </div>
 
               {/* Title */}
-              <h1 className="text-gray-800 mb-4" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.3 }}>
+              <h1 className="text-gray-800 mb-2" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.3 }}>
                 {product.titulo}
               </h1>
+
+              {/* Price */}
+              <div className="mb-4">
+                <PriceBadge sku={product.sku} variant="full" />
+              </div>
 
               {/* WhatsApp CTA */}
               <a
@@ -595,13 +596,4 @@ export function ProductDetailPage() {
       )}
     </div>
   );
-}
-
-function fallbackCopy(text: string) {
-  const textArea = document.createElement("textarea");
-  textArea.value = text;
-  document.body.appendChild(textArea);
-  textArea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textArea);
 }

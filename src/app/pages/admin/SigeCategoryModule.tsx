@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
+import { copyToClipboard } from "../../utils/clipboard";
 
 interface SigeCategoryModuleProps {
   isConnected: boolean;
@@ -141,7 +142,7 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
   };
 
   const handleCopy = (data: any) => {
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    copyToClipboard(JSON.stringify(data, null, 2));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

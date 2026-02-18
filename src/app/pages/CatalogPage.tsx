@@ -17,6 +17,8 @@ import {
   Layers,
   Tag,
 } from "lucide-react";
+import { StockBadge } from "../components/StockBadge";
+import { PriceBadge } from "../components/PriceBadge";
 import * as api from "../services/api";
 import { getProductMainImageUrl } from "../services/api";
 import type { ProductBalance } from "../services/api";
@@ -365,7 +367,7 @@ export function CatalogPage() {
               ) : (
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   {/* Table header */}
-                  <div className="hidden sm:grid grid-cols-[48px_1fr_200px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200">
+                  <div className="hidden sm:grid grid-cols-[48px_1fr_160px_120px_100px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-200">
                     <span></span>
                     <span
                       className="text-gray-500"
@@ -389,12 +391,34 @@ export function CatalogPage() {
                     >
                       SKU
                     </span>
+                    <span
+                      className="text-gray-500"
+                      style={{
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Preco
+                    </span>
+                    <span
+                      className="text-gray-500"
+                      style={{
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Estoque
+                    </span>
                   </div>
                   {produtos.map((produto, idx) => (
                     <Link
                       key={produto.sku}
                       to={`/produto/${encodeURIComponent(produto.sku)}`}
-                      className={`grid grid-cols-1 sm:grid-cols-[48px_1fr_200px] gap-2 sm:gap-4 px-5 py-3 hover:bg-red-50 transition-colors items-center ${
+                      className={`grid grid-cols-1 sm:grid-cols-[48px_1fr_160px_120px_100px] gap-2 sm:gap-4 px-5 py-3 hover:bg-red-50 transition-colors items-center ${
                         idx < produtos.length - 1 ? "border-b border-gray-100" : ""
                       }`}
                     >
@@ -412,6 +436,12 @@ export function CatalogPage() {
                         >
                           {produto.sku}
                         </span>
+                      </div>
+                      <div className="pl-8 sm:pl-0" onClick={(e) => e.preventDefault()}>
+                        <PriceBadge sku={produto.sku} variant="compact" />
+                      </div>
+                      <div className="pl-8 sm:pl-0" onClick={(e) => e.preventDefault()}>
+                        <StockBadge sku={produto.sku} variant="compact" preloaded={balanceMap[produto.sku]} />
                       </div>
                     </Link>
                   ))}

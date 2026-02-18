@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import * as api from "../services/api";
-import type { ProductBalance } from "../services/api";
 
 /** Hook to animate elements when they scroll into view */
 function useScrollReveal() {
@@ -57,7 +56,6 @@ const STATS = [
 export function HomePage() {
   const [produtos, setProdutos] = useState<ProdutoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
   const benefitsReveal = useScrollReveal();
   const productsReveal = useScrollReveal();
   const ctaReveal = useScrollReveal();
@@ -76,19 +74,6 @@ export function HomePage() {
     };
     load();
   }, []);
-
-  // Bulk-load stock balances for featured products
-  useEffect(() => {
-    if (produtos.length === 0) return;
-    const skus = produtos.map((p) => p.sku);
-    api.getProductBalances(skus)
-      .then((res) => {
-        const map: Record<string, ProductBalance> = {};
-        for (const b of (res.results || [])) { map[b.sku] = b; }
-        setBalanceMap(map);
-      })
-      .catch((e) => console.error("[HomePage] Bulk balance error:", e));
-  }, [produtos]);
 
   return (
     <div className="min-h-screen">
@@ -215,7 +200,7 @@ export function HomePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {produtos.map((produto) => (
-                <ProductCard key={produto.sku} product={produto} balance={balanceMap[produto.sku]} />
+                <ProductCard key={produto.sku} product={produto} />
               ))}
             </div>
           )}

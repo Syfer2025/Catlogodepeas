@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
+import { copyToClipboard } from "../../utils/clipboard";
 
 // ─── Endpoint definitions ───
 
@@ -180,7 +181,7 @@ export function SigeDepModule({ isConnected }: SigeDepModuleProps) {
 
   const handleCopy = () => {
     if (testResult) {
-      navigator.clipboard.writeText(JSON.stringify(testResult, null, 2));
+      copyToClipboard(JSON.stringify(testResult, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

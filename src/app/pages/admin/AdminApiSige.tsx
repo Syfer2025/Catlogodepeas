@@ -44,12 +44,14 @@ import { SigeProductPcpModule } from "./SigeProductPcpModule";
 import { SigeProductPromotionModule } from "./SigeProductPromotionModule";
 import { SigeProductReferenceModule } from "./SigeProductReferenceModule";
 import { SigeProductTechnicalSheetModule } from "./SigeProductTechnicalSheetModule";
+import { SigeProductPriceModule } from "./SigeProductPriceModule";
 import { SigeOrderModule } from "./SigeOrderModule";
 import { SigeOrderObservationModule } from "./SigeOrderObservationModule";
 import { SigeOrderInstallmentModule } from "./SigeOrderInstallmentModule";
 import { SigeOrderItemsModule } from "./SigeOrderItemsModule";
 import { SigeOrderItemsTextModule } from "./SigeOrderItemsTextModule";
 import { SigeTestRunner } from "./SigeTestRunner";
+import { SigeStockExplorer } from "./SigeStockExplorer";
 
 interface SigeStatus {
   configured: boolean;
@@ -763,6 +765,11 @@ export function AdminApiSige() {
       {/* ═══ Test Runner ═══ */}
       <SigeTestRunner isConnected={!!isConnected} />
 
+      {/* ═══ Stock Explorer (Diagnostico) ═══ */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <SigeStockExplorer isConnected={!!isConnected} />
+      </div>
+
       {/* ═══ API Modules ═══ */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <button onClick={() => setShowDocs(!showDocs)}
@@ -771,7 +778,7 @@ export function AdminApiSige() {
             <Zap className="w-4.5 h-4.5 text-red-500" />
             Modulos da API SIGE
             <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full" style={{ fontSize: "0.68rem", fontWeight: 600 }}>
-              19 modulos
+              21 modulos
             </span>
           </h3>
           {showDocs ? <ChevronDown className="w-4.5 h-4.5 text-gray-400" /> : <ChevronRight className="w-4.5 h-4.5 text-gray-400" />}
@@ -982,6 +989,9 @@ export function AdminApiSige() {
             <SigeProductPromotionModule isConnected={!!isConnected} />
             <SigeProductReferenceModule isConnected={!!isConnected} />
             <SigeProductTechnicalSheetModule isConnected={!!isConnected} />
+
+            {/* ─── Module: Produto Preco ─── */}
+            <SigeProductPriceModule isConnected={!!isConnected} />
 
             {/* ─── Module 7: Pedidos ─── */}
             <SigeOrderModule isConnected={!!isConnected} />

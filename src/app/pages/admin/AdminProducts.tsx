@@ -2,19 +2,27 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
 import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode } from "../../services/api";
-import type { ProductBalance } from "../../services/api";
+import type { ProductBalance, StockSummary } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { defaultCategoryTree } from "../../data/categoryTree";
+import { SigeStockSync } from "./SigeStockSync";
+import { PriceBadge } from "../../components/PriceBadge";
 import {
   Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff,
   ChevronLeft, ChevronRight, Grid3X3, List, Database, X,
   Plus, Edit3, Trash2, Save, ImagePlus, Check,
   AlertCircle, CheckCircle2, ChevronDown,
   FileText, Tag, ExternalLink, Camera, PenLine,
-  PackageCheck, PackageX,
+  PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal,
+  BarChart3, TrendingUp, TrendingDown, AlertOctagon,
 } from "lucide-react";
 
 const ITEMS_PER_PAGE = 20;
+
+// Filter/sort types
+type StockFilter = "all" | "in_stock" | "out_of_stock" | "not_found";
+type VisibilityFilter = "all" | "visible" | "hidden";
+type SortOption = "default" | "name_asc" | "name_desc" | "sku_asc" | "sku_desc" | "stock_desc" | "stock_asc";
 
 // ─── Toast ───
 function Toast({ toast }: { toast: { type: "success" | "error"; msg: string } | null }) {
@@ -78,6 +86,18 @@ export function AdminProducts() {
   const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
   const [balanceLoading, setBalanceLoading] = useState(false);
 
+  // Filters & sorting
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
+  const [sortOption, setSortOption] = useState<SortOption>("default");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Global stock summary (all products)
+  const [globalSummary, setGlobalSummary] = useState<StockSummary | null>(null);
+  const [globalSummaryLoading, setGlobalSummaryLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ scanned: number; remaining: number } | null>(null);
+
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
@@ -138,6 +158,43 @@ export function AdminProducts() {
       .finally(() => setBalanceLoading(false));
   }, [produtos]);
 
+  // Load global stock summary on mount
+  const loadGlobalSummary = useCallback(() => {
+    setGlobalSummaryLoading(true);
+    api.getStockSummary()
+      .then((res) => setGlobalSummary(res))
+      .catch((e) => console.error("[AdminProducts] Global summary error:", e))
+      .finally(() => setGlobalSummaryLoading(false));
+  }, []);
+
+  useEffect(() => { loadGlobalSummary(); }, [loadGlobalSummary]);
+
+  // Scan uncached products
+  const runStockScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    setScanProgress(null);
+    try {
+      let remaining = Infinity;
+      let totalScanned = 0;
+      while (remaining > 0) {
+        const result = await api.triggerStockScan(50);
+        if (result.error) { showToast("error", result.error); break; }
+        totalScanned += result.scanned;
+        remaining = result.remaining;
+        setScanProgress({ scanned: totalScanned, remaining });
+        if (result.scanned === 0) break;
+      }
+      showToast("success", `Scan concluido! ${totalScanned} SKUs verificados.`);
+      loadGlobalSummary();
+    } catch (e: any) {
+      showToast("error", `Erro no scan: ${e.message}`);
+    } finally {
+      setScanning(false);
+      setScanProgress(null);
+    }
+  };
+
   const goToPage = (n: number) => { if (n >= 1 && n <= totalPages) setPage(n); };
 
   const getPageNumbers = () => {
@@ -192,6 +249,75 @@ export function AdminProducts() {
     navigate(`/produto/${encodeURIComponent(sku)}`);
   };
 
+  // ─── Apply client-side filters and sorting ───
+  const filteredProdutos = (() => {
+    let list = [...produtos];
+
+    // Stock filter
+    if (stockFilter !== "all") {
+      list = list.filter((p) => {
+        const b = balanceMap[p.sku];
+        if (stockFilter === "not_found") return !b || !b.found;
+        if (stockFilter === "in_stock") return b && b.found && (b.disponivel ?? b.quantidade ?? 0) > 0;
+        if (stockFilter === "out_of_stock") return b && b.found && (b.disponivel ?? b.quantidade ?? 0) === 0;
+        return true;
+      });
+    }
+
+    // Visibility filter
+    if (visibilityFilter !== "all") {
+      list = list.filter((p) => {
+        const vis = metaMap[p.sku]?.visible !== false;
+        return visibilityFilter === "visible" ? vis : !vis;
+      });
+    }
+
+    // Sorting
+    if (sortOption !== "default") {
+      list.sort((a, b) => {
+        switch (sortOption) {
+          case "name_asc": return a.titulo.localeCompare(b.titulo, "pt-BR");
+          case "name_desc": return b.titulo.localeCompare(a.titulo, "pt-BR");
+          case "sku_asc": return a.sku.localeCompare(b.sku);
+          case "sku_desc": return b.sku.localeCompare(a.sku);
+          case "stock_desc": {
+            const aQty = balanceMap[a.sku]?.found ? (balanceMap[a.sku].disponivel ?? balanceMap[a.sku].quantidade ?? 0) : -1;
+            const bQty = balanceMap[b.sku]?.found ? (balanceMap[b.sku].disponivel ?? balanceMap[b.sku].quantidade ?? 0) : -1;
+            return bQty - aQty;
+          }
+          case "stock_asc": {
+            const aQty = balanceMap[a.sku]?.found ? (balanceMap[a.sku].disponivel ?? balanceMap[a.sku].quantidade ?? 0) : -1;
+            const bQty = balanceMap[b.sku]?.found ? (balanceMap[b.sku].disponivel ?? balanceMap[b.sku].quantidade ?? 0) : -1;
+            return aQty - bQty;
+          }
+          default: return 0;
+        }
+      });
+    }
+
+    return list;
+  })();
+
+  const hasActiveFilters = stockFilter !== "all" || visibilityFilter !== "all" || sortOption !== "default";
+
+  const clearAllFilters = () => {
+    setStockFilter("all");
+    setVisibilityFilter("all");
+    setSortOption("default");
+  };
+
+  // Stats for filter badges
+  const stockStats = (() => {
+    let inStock = 0, outOfStock = 0, notFound = 0;
+    for (const p of produtos) {
+      const b = balanceMap[p.sku];
+      if (!b || !b.found) { notFound++; continue; }
+      const avail = b.disponivel ?? b.quantidade ?? 0;
+      if (avail > 0) inStock++; else outOfStock++;
+    }
+    return { inStock, outOfStock, notFound };
+  })();
+
   return (
     <div className="space-y-5">
       <Toast toast={toast} />
@@ -221,6 +347,188 @@ export function AdminProducts() {
         </div>
       </div>
 
+      {/* ═══ Stock Overview Dashboard (GLOBAL — all products) ═══ */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-red-500" />
+            <p className="text-gray-500" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+              Resumo Geral de Estoque
+            </p>
+            {globalSummary && !globalSummaryLoading && (
+              <span className="text-gray-300" style={{ fontSize: "0.65rem" }}>
+                ({globalSummary.totalProducts} produtos)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {globalSummary && globalSummary.pending > 0 && !scanning && (
+              <button
+                onClick={runStockScan}
+                className="flex items-center gap-1 px-2.5 py-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                style={{ fontSize: "0.7rem", fontWeight: 600 }}
+                title={`${globalSummary.pending} produtos ainda nao verificados no SIGE`}
+              >
+                <RefreshCw className="w-3 h-3" />
+                Verificar {globalSummary.pending} pendentes
+              </button>
+            )}
+            {scanning && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 text-blue-600 bg-blue-50 border border-blue-200 rounded-lg" style={{ fontSize: "0.7rem", fontWeight: 600 }}>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Escaneando... {scanProgress ? `${scanProgress.scanned} feitos, ${scanProgress.remaining} restantes` : ""}
+              </div>
+            )}
+            <button
+              onClick={loadGlobalSummary}
+              disabled={globalSummaryLoading}
+              className="p-1 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+              title="Atualizar resumo"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${globalSummaryLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {globalSummaryLoading && !globalSummary ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 animate-pulse" />
+                  <div className="w-4 h-4 rounded bg-gray-100 animate-pulse" />
+                </div>
+                <div className="h-7 w-12 bg-gray-100 rounded animate-pulse mb-1" />
+                <div className="h-3 w-20 bg-gray-50 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        ) : globalSummary ? (() => {
+          const s = globalSummary;
+          const verified = s.inStock + s.outOfStock + s.notFound;
+          const pctIn = s.totalProducts > 0 ? (s.inStock / s.totalProducts) * 100 : 0;
+          const pctOut = s.totalProducts > 0 ? (s.outOfStock / s.totalProducts) * 100 : 0;
+          const pctNf = s.totalProducts > 0 ? (s.notFound / s.totalProducts) * 100 : 0;
+          const pctPending = s.totalProducts > 0 ? (s.pending / s.totalProducts) * 100 : 0;
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {/* Total */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <Package className="w-[18px] h-[18px] text-gray-500" />
+                  </div>
+                  <BarChart3 className="w-4 h-4 text-gray-300" />
+                </div>
+                <p className="text-gray-800" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.totalProducts.toLocaleString("pt-BR")}</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Total Cadastrados</p>
+                {/* Combined stacked bar */}
+                <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden flex">
+                  <div className="h-full bg-green-500 transition-all duration-700" style={{ width: `${pctIn}%` }} />
+                  <div className="h-full bg-red-500 transition-all duration-700" style={{ width: `${pctOut}%` }} />
+                  <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${pctNf}%` }} />
+                  <div className="h-full bg-gray-300 transition-all duration-700" style={{ width: `${pctPending}%` }} />
+                </div>
+              </div>
+
+              {/* In stock */}
+              <div
+                className={`bg-white rounded-xl border p-4 hover:shadow-md transition-all cursor-pointer ${
+                  stockFilter === "in_stock" ? "border-green-400 ring-2 ring-green-100 bg-green-50/30" : "border-gray-200 hover:border-green-300"
+                }`}
+                onClick={() => { setStockFilter(stockFilter === "in_stock" ? "all" : "in_stock"); setShowFilters(true); }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
+                    <PackageCheck className="w-[18px] h-[18px] text-green-600" />
+                  </div>
+                  <TrendingUp className="w-4 h-4 text-green-400" />
+                </div>
+                <p className="text-green-700" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.inStock.toLocaleString("pt-BR")}</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Com Estoque</p>
+                <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full transition-all duration-700" style={{ width: `${pctIn}%` }} />
+                </div>
+                <p className="text-green-600 mt-1" style={{ fontSize: "0.62rem", fontWeight: 600 }}>{pctIn.toFixed(1)}%</p>
+              </div>
+
+              {/* Out of stock */}
+              <div
+                className={`bg-white rounded-xl border p-4 hover:shadow-md transition-all cursor-pointer ${
+                  stockFilter === "out_of_stock" ? "border-red-400 ring-2 ring-red-100 bg-red-50/30" : "border-gray-200 hover:border-red-300"
+                }`}
+                onClick={() => { setStockFilter(stockFilter === "out_of_stock" ? "all" : "out_of_stock"); setShowFilters(true); }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center">
+                    <PackageX className="w-[18px] h-[18px] text-red-500" />
+                  </div>
+                  <TrendingDown className="w-4 h-4 text-red-400" />
+                </div>
+                <p className="text-red-600" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.outOfStock.toLocaleString("pt-BR")}</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Sem Estoque</p>
+                <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="h-full bg-red-500 rounded-full transition-all duration-700" style={{ width: `${pctOut}%` }} />
+                </div>
+                <p className="text-red-500 mt-1" style={{ fontSize: "0.62rem", fontWeight: 600 }}>{pctOut.toFixed(1)}%</p>
+              </div>
+
+              {/* Not found */}
+              <div
+                className={`bg-white rounded-xl border p-4 hover:shadow-md transition-all cursor-pointer ${
+                  stockFilter === "not_found" ? "border-amber-400 ring-2 ring-amber-100 bg-amber-50/30" : "border-gray-200 hover:border-amber-300"
+                }`}
+                onClick={() => { setStockFilter(stockFilter === "not_found" ? "all" : "not_found"); setShowFilters(true); }}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center">
+                    <AlertOctagon className="w-[18px] h-[18px] text-amber-600" />
+                  </div>
+                </div>
+                <p className="text-amber-600" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.notFound.toLocaleString("pt-BR")}</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Nao Localizado SIGE</p>
+                <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                  <div className="h-full bg-amber-400 rounded-full transition-all duration-700" style={{ width: `${pctNf}%` }} />
+                </div>
+                <p className="text-amber-500 mt-1" style={{ fontSize: "0.62rem", fontWeight: 600 }}>{pctNf.toFixed(1)}%</p>
+              </div>
+
+              {/* Pending (not yet scanned) */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Loader2 className={`w-[18px] h-[18px] text-blue-500 ${scanning ? "animate-spin" : ""}`} />
+                  </div>
+                  {s.pending > 0 && !scanning && (
+                    <button onClick={runStockScan} className="text-blue-500 hover:text-blue-700 transition-colors" title="Iniciar scan">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-blue-600" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.pending.toLocaleString("pt-BR")}</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Pendentes de Scan</p>
+                {s.pending > 0 && (
+                  <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-blue-400 rounded-full transition-all duration-700" style={{ width: `${pctPending}%` }} />
+                  </div>
+                )}
+                {s.pending === 0 && (
+                  <p className="text-green-500 mt-2 flex items-center gap-1" style={{ fontSize: "0.62rem", fontWeight: 600 }}>
+                    <CheckCircle2 className="w-3 h-3" /> 100% verificado
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })() : null}
+      </div>
+
+      {/* SIGE Sync Panel */}
+      <SigeStockSync onSyncComplete={() => {
+        loadData();
+        loadGlobalSummary();
+      }} />
+
       {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex-1 relative">
@@ -238,6 +546,195 @@ export function AdminProducts() {
           </div>
         )}
       </div>
+
+      {/* Filters & Sorting Bar */}
+      {!loading && produtos.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Toggle + Quick stats */}
+          <div className="px-4 py-3 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors ${
+                hasActiveFilters
+                  ? "bg-red-50 border-red-200 text-red-600"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
+              }`}
+              style={{ fontSize: "0.8rem", fontWeight: 600 }}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Filtros
+              {hasActiveFilters && (
+                <span className="bg-red-600 text-white w-4.5 h-4.5 rounded-full flex items-center justify-center" style={{ fontSize: "0.6rem", minWidth: "18px", height: "18px" }}>
+                  {(stockFilter !== "all" ? 1 : 0) + (visibilityFilter !== "all" ? 1 : 0) + (sortOption !== "default" ? 1 : 0)}
+                </span>
+              )}
+            </button>
+
+            {/* Quick stock stats */}
+            {!balanceLoading && Object.keys(balanceMap).length > 0 && (
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => { setStockFilter(stockFilter === "in_stock" ? "all" : "in_stock"); setShowFilters(true); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                    stockFilter === "in_stock" ? "bg-green-100 text-green-700 ring-1 ring-green-300" : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+                  }`}
+                  style={{ fontSize: "0.72rem", fontWeight: 500 }}
+                  title="Filtrar com estoque"
+                >
+                  <PackageCheck className="w-3 h-3" />
+                  <span>{stockStats.inStock}</span>
+                </button>
+                <button
+                  onClick={() => { setStockFilter(stockFilter === "out_of_stock" ? "all" : "out_of_stock"); setShowFilters(true); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                    stockFilter === "out_of_stock" ? "bg-red-100 text-red-600 ring-1 ring-red-300" : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                  }`}
+                  style={{ fontSize: "0.72rem", fontWeight: 500 }}
+                  title="Filtrar sem estoque"
+                >
+                  <PackageX className="w-3 h-3" />
+                  <span>{stockStats.outOfStock}</span>
+                </button>
+                {stockStats.notFound > 0 && (
+                  <button
+                    onClick={() => { setStockFilter(stockFilter === "not_found" ? "all" : "not_found"); setShowFilters(true); }}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                      stockFilter === "not_found" ? "bg-amber-100 text-amber-700 ring-1 ring-amber-300" : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                    }`}
+                    style={{ fontSize: "0.72rem", fontWeight: 500 }}
+                    title="Nao encontrado no SIGE"
+                  >
+                    <AlertCircle className="w-3 h-3" />
+                    <span>{stockStats.notFound}</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {balanceLoading && (
+              <div className="flex items-center gap-1.5 ml-auto text-gray-400" style={{ fontSize: "0.72rem" }}>
+                <Loader2 className="w-3 h-3 animate-spin" /> Carregando saldos...
+              </div>
+            )}
+          </div>
+
+          {/* Expanded filter controls */}
+          {showFilters && (
+            <div className="px-4 pb-4 pt-1 border-t border-gray-100">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Stock filter */}
+                <div>
+                  <label className="block text-gray-400 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Estoque
+                  </label>
+                  <div className="relative">
+                    <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <select
+                      value={stockFilter}
+                      onChange={(e) => setStockFilter(e.target.value as StockFilter)}
+                      className="w-full pl-8 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 appearance-none cursor-pointer transition-all"
+                      style={{ fontSize: "0.82rem" }}
+                    >
+                      <option value="all">Todos</option>
+                      <option value="in_stock">Com estoque ({stockStats.inStock})</option>
+                      <option value="out_of_stock">Sem estoque ({stockStats.outOfStock})</option>
+                      <option value="not_found">Nao localizado SIGE ({stockStats.notFound})</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Visibility filter */}
+                <div>
+                  <label className="block text-gray-400 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Visibilidade
+                  </label>
+                  <div className="relative">
+                    <Eye className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <select
+                      value={visibilityFilter}
+                      onChange={(e) => setVisibilityFilter(e.target.value as VisibilityFilter)}
+                      className="w-full pl-8 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 appearance-none cursor-pointer transition-all"
+                      style={{ fontSize: "0.82rem" }}
+                    >
+                      <option value="all">Todos</option>
+                      <option value="visible">Visiveis</option>
+                      <option value="hidden">Ocultos</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Sort */}
+                <div>
+                  <label className="block text-gray-400 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Ordenar por
+                  </label>
+                  <div className="relative">
+                    <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <select
+                      value={sortOption}
+                      onChange={(e) => setSortOption(e.target.value as SortOption)}
+                      className="w-full pl-8 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 appearance-none cursor-pointer transition-all"
+                      style={{ fontSize: "0.82rem" }}
+                    >
+                      <option value="default">Padrao</option>
+                      <option value="name_asc">Nome A → Z</option>
+                      <option value="name_desc">Nome Z → A</option>
+                      <option value="sku_asc">SKU A → Z</option>
+                      <option value="sku_desc">SKU Z → A</option>
+                      <option value="stock_desc">Estoque: Maior → Menor</option>
+                      <option value="stock_asc">Estoque: Menor → Maior</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Active filter tags + clear */}
+              {hasActiveFilters && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {stockFilter !== "all" && (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${
+                      stockFilter === "in_stock" ? "bg-green-50 text-green-700 border-green-200" :
+                      stockFilter === "out_of_stock" ? "bg-red-50 text-red-600 border-red-200" :
+                      "bg-amber-50 text-amber-700 border-amber-200"
+                    }`} style={{ fontSize: "0.75rem" }}>
+                      {stockFilter === "in_stock" ? "Com estoque" : stockFilter === "out_of_stock" ? "Sem estoque" : "Nao localizado"}
+                      <button onClick={() => setStockFilter("all")} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+                    </span>
+                  )}
+                  {visibilityFilter !== "all" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-blue-50 text-blue-600 border-blue-200" style={{ fontSize: "0.75rem" }}>
+                      {visibilityFilter === "visible" ? "Visiveis" : "Ocultos"}
+                      <button onClick={() => setVisibilityFilter("all")} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+                    </span>
+                  )}
+                  {sortOption !== "default" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-purple-50 text-purple-600 border-purple-200" style={{ fontSize: "0.75rem" }}>
+                      {{
+                        name_asc: "Nome A→Z", name_desc: "Nome Z→A",
+                        sku_asc: "SKU A→Z", sku_desc: "SKU Z→A",
+                        stock_desc: "Estoque ↓", stock_asc: "Estoque ↑", default: "",
+                      }[sortOption]}
+                      <button onClick={() => setSortOption("default")} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+                    </span>
+                  )}
+                  <button onClick={clearAllFilters} className="text-gray-400 hover:text-red-600 transition-colors" style={{ fontSize: "0.75rem" }}>
+                    Limpar tudo
+                  </button>
+                </div>
+              )}
+
+              {/* Result count when filtered */}
+              {hasActiveFilters && (
+                <p className="mt-2 text-gray-400" style={{ fontSize: "0.78rem" }}>
+                  Mostrando {filteredProdutos.length} de {produtos.length} produtos nesta pagina
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
@@ -265,19 +762,61 @@ export function AdminProducts() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-3 text-gray-500 w-12" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>#</th>
-                  <th className="text-left px-4 py-3 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Produto</th>
-                  <th className="text-left px-4 py-3 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>SKU</th>
-                  <th className="text-left px-4 py-3 text-gray-500 w-24" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Saldo</th>
+                  <th
+                    className="text-left px-4 py-3 text-gray-500 cursor-pointer hover:text-red-600 transition-colors select-none"
+                    style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    onClick={() => setSortOption(sortOption === "name_asc" ? "name_desc" : "name_asc")}
+                  >
+                    <span className="flex items-center gap-1">
+                      Produto
+                      {sortOption === "name_asc" && <span className="text-red-500">↑</span>}
+                      {sortOption === "name_desc" && <span className="text-red-500">↓</span>}
+                      {sortOption !== "name_asc" && sortOption !== "name_desc" && <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                    </span>
+                  </th>
+                  <th
+                    className="text-left px-4 py-3 text-gray-500 cursor-pointer hover:text-red-600 transition-colors select-none"
+                    style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    onClick={() => setSortOption(sortOption === "sku_asc" ? "sku_desc" : "sku_asc")}
+                  >
+                    <span className="flex items-center gap-1">
+                      SKU
+                      {sortOption === "sku_asc" && <span className="text-red-500">↑</span>}
+                      {sortOption === "sku_desc" && <span className="text-red-500">↓</span>}
+                      {sortOption !== "sku_asc" && sortOption !== "sku_desc" && <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                    </span>
+                  </th>
+                  <th
+                    className="text-left px-4 py-3 text-gray-500 w-24 cursor-pointer hover:text-red-600 transition-colors select-none"
+                    style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}
+                    onClick={() => setSortOption(sortOption === "stock_desc" ? "stock_asc" : "stock_desc")}
+                  >
+                    <span className="flex items-center gap-1">
+                      Saldo
+                      {sortOption === "stock_desc" && <span className="text-red-500">↓</span>}
+                      {sortOption === "stock_asc" && <span className="text-red-500">↑</span>}
+                      {sortOption !== "stock_desc" && sortOption !== "stock_asc" && <ArrowUpDown className="w-3 h-3 opacity-40" />}
+                    </span>
+                  </th>
+                  <th className="text-left px-4 py-3 text-gray-500 w-28" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Preco</th>
                   <th className="text-center px-4 py-3 text-gray-500 w-16" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Visivel</th>
                   <th className="text-right px-4 py-3 text-gray-500 w-28" style={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Acoes</th>
                 </tr>
               </thead>
               <tbody>
-                {produtos.map((produto, idx) => {
+                {filteredProdutos.length === 0 && hasActiveFilters ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center">
+                      <Filter className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-gray-500 mb-1" style={{ fontSize: "0.88rem", fontWeight: 500 }}>Nenhum produto corresponde aos filtros</p>
+                      <button onClick={clearAllFilters} className="text-red-600 hover:text-red-700" style={{ fontSize: "0.82rem" }}>Limpar filtros</button>
+                    </td>
+                  </tr>
+                ) : filteredProdutos.map((produto, idx) => {
                   const vis = metaMap[produto.sku]?.visible !== false;
                   return (
                     <tr key={produto.sku} className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${!vis ? "opacity-50" : ""}`}>
-                      <td className="px-4 py-3"><span className="text-gray-400" style={{ fontSize: "0.75rem" }}>{(page - 1) * ITEMS_PER_PAGE + idx + 1}</span></td>
+                      <td className="px-4 py-3"><span className="text-gray-400" style={{ fontSize: "0.75rem" }}>{idx + 1}</span></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setEditSku(produto.sku)}>
                           <ProductThumb sku={produto.sku} size={36} />
@@ -303,6 +842,9 @@ export function AdminProducts() {
                           );
                         })() : <span className="text-gray-300" style={{ fontSize: "0.72rem" }}>—</span>}
                       </td>
+                      <td className="px-4 py-3">
+                        <PriceBadge sku={produto.sku} variant="compact" />
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => toggleVisibility(produto.sku)} className={`p-1 rounded-md transition-colors ${vis ? "text-green-600 hover:bg-green-50" : "text-gray-400 hover:bg-gray-100"}`}>
                           {vis ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -323,8 +865,16 @@ export function AdminProducts() {
           </div>
         </div>
       ) : !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {produtos.map((produto) => {
+        <div>
+          {filteredProdutos.length === 0 && hasActiveFilters ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <Filter className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+              <p className="text-gray-500 mb-1" style={{ fontSize: "0.88rem", fontWeight: 500 }}>Nenhum produto corresponde aos filtros</p>
+              <button onClick={clearAllFilters} className="text-red-600 hover:text-red-700" style={{ fontSize: "0.82rem" }}>Limpar filtros</button>
+            </div>
+          ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredProdutos.map((produto) => {
             const vis = metaMap[produto.sku]?.visible !== false;
             return (
               <div key={produto.sku} className={`bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-red-200 transition-all ${!vis ? "opacity-50" : ""}`}>
@@ -333,17 +883,20 @@ export function AdminProducts() {
                   <div className="flex-1 min-w-0">
                     <p className="text-gray-800 mb-1.5 line-clamp-2 hover:text-red-600 transition-colors" style={{ fontSize: "0.85rem", fontWeight: 500, lineHeight: 1.4 }}>{produto.titulo}</p>
                     <div className="flex items-center gap-1.5"><Hash className="w-3 h-3 text-gray-400" /><span className="font-mono text-gray-500 bg-gray-50 px-2 py-0.5 rounded" style={{ fontSize: "0.72rem" }}>{produto.sku}</span></div>
-                    {balanceMap[produto.sku]?.found && (() => {
-                      const b = balanceMap[produto.sku];
-                      const avail = b.disponivel ?? b.quantidade ?? 0;
-                      const inStock = avail > 0;
-                      return (
-                        <div className={`flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border w-fit ${inStock ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`} style={{ fontSize: "0.65rem", fontWeight: 600 }}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-green-500" : "bg-red-500"}`} />
-                          {inStock ? `${avail} em estoque` : "Sem estoque"}
-                        </div>
-                      );
-                    })()}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {balanceMap[produto.sku]?.found && (() => {
+                        const b = balanceMap[produto.sku];
+                        const avail = b.disponivel ?? b.quantidade ?? 0;
+                        const inStock = avail > 0;
+                        return (
+                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border w-fit ${inStock ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`} style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-green-500" : "bg-red-500"}`} />
+                            {inStock ? `${avail} em estoque` : "Sem estoque"}
+                          </div>
+                        );
+                      })()}
+                      <PriceBadge sku={produto.sku} variant="compact" />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
@@ -357,12 +910,17 @@ export function AdminProducts() {
             );
           })}
         </div>
+          )}
+        </div>
       )}
 
       {/* Pagination */}
       {!loading && !error && totalPages > 1 && (
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-gray-400 order-2 sm:order-1" style={{ fontSize: "0.85rem" }}>Pagina {page} de {totalPages} — {total} produto{total !== 1 ? "s" : ""}</p>
+          <p className="text-gray-400 order-2 sm:order-1" style={{ fontSize: "0.85rem" }}>
+            Pagina {page} de {totalPages} — {total} produto{total !== 1 ? "s" : ""}
+            {hasActiveFilters && ` (${filteredProdutos.length} filtrado${filteredProdutos.length !== 1 ? "s" : ""})`}
+          </p>
           <div className="flex items-center gap-1 order-1 sm:order-2">
             <button onClick={() => goToPage(page - 1)} disabled={page === 1} className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-red-50 hover:border-red-300 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"><ChevronLeft className="w-4 h-4" /></button>
             {getPageNumbers().map((p, i) => typeof p === "string" ? (

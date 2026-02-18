@@ -783,17 +783,147 @@ export interface ProductBalance {
   balanceError?: string;
   cached?: boolean;
   error?: string;
+  _priceKeys?: string[];
+  _allKeys?: string[];
+  _fetchedDetail?: boolean;
+  _detailKeys?: number;
 }
 
 /** Get stock balance for a single product from SIGE (public, cached 5 min) */
-export const getProductBalance = (sku: string) =>
-  request<ProductBalance>(`/produtos/saldo/${encodeURIComponent(sku)}`);
+export const getProductBalance = (sku: string, opts?: { force?: boolean; debug?: boolean }) => {
+  const params = new URLSearchParams();
+  if (opts?.force) params.set("force", "1");
+  if (opts?.debug) params.set("debug", "1");
+  const qs = params.toString();
+  return request<ProductBalance & { _debug?: string[]; _sigeResponses?: any[] }>(
+    `/produtos/saldo/${encodeURIComponent(sku)}${qs ? `?${qs}` : ""}`
+  );
+};
 
 /** Get stock balances for multiple SKUs in bulk (admin) */
 export const getProductBalances = (skus: string[]) =>
   request<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
     method: "POST",
     body: JSON.stringify({ skus }),
+  });
+
+/** Clear balance cache for all SKUs (admin, requires auth) */
+export const clearBalanceCache = (accessToken: string) =>
+  request<{ cleared: number; message: string }>("/produtos/saldo/cache", {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+/** Clear balance cache for a single SKU (admin, requires auth) */
+export const clearBalanceCacheSku = (accessToken: string, sku: string) =>
+  request<{ cleared: boolean; sku: string; message: string }>(
+    `/produtos/saldo/cache/${encodeURIComponent(sku)}`,
+    { method: "DELETE", headers: { "X-User-Token": accessToken } }
+  );
+
+/** Global stock summary across ALL products */
+export interface StockSummary {
+  totalProducts: number;
+  inStock: number;
+  outOfStock: number;
+  notFound: number;
+  pending: number;
+  totalCached: number;
+  cached: boolean;
+  _cachedAt: number;
+  error?: string;
+}
+
+export const getStockSummary = () =>
+  request<StockSummary>("/produtos/stock-summary");
+
+/** Trigger balance scan for uncached/expired SKUs */
+export interface StockScanResult {
+  scanned: number;
+  found: number;
+  remaining: number;
+  totalPending: number;
+  message?: string;
+  error?: string;
+}
+
+export const triggerStockScan = (batchSize = 50) =>
+  request<StockScanResult>("/produtos/stock-scan", {
+    method: "POST",
+    body: JSON.stringify({ batchSize }),
+  });
+
+// ─── SIGE Product Mapping (match local SKUs ↔ SIGE IDs) ───
+
+export interface SigeMapping {
+  sku: string;
+  sigeId: string;
+  codProduto: string;
+  descricao: string;
+  matchType: string;
+  matchedAt: number;
+  matchedBy?: string;
+}
+
+export interface SigeSyncResult {
+  ok: boolean;
+  localProducts: number;
+  sigeProducts: number;
+  matched: number;
+  unmatched: number;
+  skipped: number;
+  balanceFetched: number;
+  matchResults: Array<{
+    sku: string;
+    matched: boolean;
+    matchType?: string;
+    sigeId?: string;
+    codProduto?: string;
+    descricao?: string;
+    titulo?: string;
+  }>;
+  totalResults: number;
+  error?: string;
+}
+
+/** Get all SIGE mappings */
+export const getSigeMappings = () =>
+  request<{ mappings: SigeMapping[]; total: number }>("/produtos/sige-map");
+
+/** Manually map a local SKU to a SIGE product ID */
+export const setSigeMapping = (
+  accessToken: string,
+  sku: string,
+  data: { sigeId: string; codProduto?: string; descricao?: string }
+) =>
+  request<{ ok: boolean; sku: string; mapping: SigeMapping }>(
+    `/produtos/sige-map/${encodeURIComponent(sku)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+      headers: { "X-User-Token": accessToken },
+    }
+  );
+
+/** Remove mapping for a SKU */
+export const deleteSigeMapping = (accessToken: string, sku: string) =>
+  request<{ ok: boolean; sku: string; message: string }>(
+    `/produtos/sige-map/${encodeURIComponent(sku)}`,
+    {
+      method: "DELETE",
+      headers: { "X-User-Token": accessToken },
+    }
+  );
+
+/** Auto-match local products with SIGE products */
+export const triggerSigeSync = (
+  accessToken: string,
+  opts?: { fetchBalances?: boolean; clearExisting?: boolean; batchSize?: number }
+) =>
+  request<SigeSyncResult>("/produtos/sige-sync", {
+    method: "POST",
+    body: JSON.stringify(opts || {}),
+    headers: { "X-User-Token": accessToken },
   });
 
 // ─── Product CRUD (Admin) ───
@@ -1043,3 +1173,296 @@ export const deleteFooterLogo = async (accessToken: string) => {
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   return data as { deleted: boolean };
 };
+
+// ─── Price Config ───
+
+export interface PriceConfig {
+  tier: "v1" | "v2" | "v3";
+  showPrice: boolean;
+  updatedAt?: number;
+  listPriceMapping?: Record<string, string>;
+}
+
+export const getPriceConfig = () =>
+  request<PriceConfig>("/price-config");
+
+export const savePriceConfig = (config: Partial<PriceConfig>, accessToken: string) =>
+  request<PriceConfig>("/price-config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── Product Price ───
+
+export interface ProductPrice {
+  sku: string;
+  found: boolean;
+  source: "sige" | "custom" | "none";
+  price: number | null;
+  v1: number | null;
+  v2: number | null;
+  v3: number | null;
+  base?: number | null;
+  tier: string;
+  showPrice?: boolean;
+  sigeId?: string;
+  descricao?: string;
+  cached?: boolean;
+  error?: string;
+  _priceListItems?: number;
+  _detectedListCodes?: string[];
+  _priceListDebug?: Array<{ codLista: string; price: number | null; descLista?: string | null }>;
+  _itemSampleKeys?: string[];
+  _listMapping?: Record<string, string>;
+}
+
+export const getProductPrice = (sku: string) =>
+  request<ProductPrice>(`/produtos/preco/${encodeURIComponent(sku)}`);
+
+export const setProductCustomPrice = (sku: string, price: number, accessToken: string) =>
+  request<{ ok: boolean; sku: string; price: number }>(
+    `/produtos/preco/${encodeURIComponent(sku)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ price }),
+      headers: { "X-User-Token": accessToken },
+    }
+  );
+
+export const deleteProductCustomPrice = (sku: string, accessToken: string) =>
+  request<{ ok: boolean; sku: string; message: string }>(
+    `/produtos/preco/${encodeURIComponent(sku)}`,
+    {
+      method: "DELETE",
+      headers: { "X-User-Token": accessToken },
+    }
+  );
+
+// ─── Custom Prices List ───
+
+export interface CustomPriceEntry {
+  sku: string;
+  price: number;
+  source: "custom";
+  updatedAt: number | null;
+}
+
+export const getCustomPrices = (accessToken: string) =>
+  request<{ customs: CustomPriceEntry[]; total: number }>("/produtos/custom-prices", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const clearPriceCache = (accessToken: string) =>
+  request<{ cleared: number; message: string }>("/price-cache", {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── SIGE List Price ───
+
+export const getSigeListPrices = (accessToken: string) =>
+  request<any>("/sige/list-price", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const getSigeListPriceItems = (accessToken: string, params?: { codProduto?: string; codLista?: string; limit?: number; offset?: number }) => {
+  const cleaned: Record<string, string> = {};
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) cleaned[k] = String(v);
+    }
+  }
+  const qs = Object.keys(cleaned).length > 0 ? "?" + new URLSearchParams(cleaned).toString() : "";
+  return request<any>(`/sige/list-price-items${qs}`, {
+    headers: { "X-User-Token": accessToken },
+  });
+};
+
+// ─── PagHiper ───
+
+export interface PagHiperConfig {
+  configured: boolean;
+  hasApiKey?: boolean;
+  hasToken?: boolean;
+  apiKeyPreview?: string | null;
+  updatedAt?: number | null;
+}
+
+export const getPagHiperConfig = (accessToken: string) =>
+  request<PagHiperConfig>("/paghiper/config", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const savePagHiperConfig = (accessToken: string, config: { apiKey: string; token: string }) =>
+  request<{ success: boolean; configured: boolean }>("/paghiper/config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const deletePagHiperConfig = (accessToken: string) =>
+  request<{ success: boolean; configured: boolean }>("/paghiper/config", {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// PIX
+
+export interface PixCreatePayload {
+  order_id: string;
+  payer_email: string;
+  payer_name: string;
+  payer_cpf_cnpj: string;
+  payer_phone?: string;
+  days_due_date?: string;
+  notification_url?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    item_id: string;
+    price_cents: number;
+  }>;
+}
+
+export interface PixCreateResponse {
+  success: boolean;
+  transaction_id: string;
+  status: string;
+  qr_code_base64: string | null;
+  pix_url: string | null;
+  emv: string | null;
+  bacen_url: string | null;
+  due_date: string | null;
+  value_cents: number | null;
+  raw: any;
+  error?: string;
+}
+
+export const createPixCharge = (payload: PixCreatePayload) =>
+  request<PixCreateResponse>("/paghiper/pix/create", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const getPixStatus = (transaction_id: string) =>
+  request<{
+    transaction_id: string;
+    status: string;
+    status_label: string;
+    value_cents: number | null;
+    value_cents_paid: number | null;
+    paid_date: string | null;
+    due_date: string | null;
+    raw: any;
+  }>("/paghiper/pix/status", {
+    method: "POST",
+    body: JSON.stringify({ transaction_id }),
+  });
+
+export const cancelPixCharge = (accessToken: string, transaction_id: string) =>
+  request<{ success: boolean; transaction_id: string }>("/paghiper/pix/cancel", {
+    method: "POST",
+    body: JSON.stringify({ transaction_id }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// Boleto
+
+export interface BoletoCreatePayload {
+  order_id: string;
+  payer_email: string;
+  payer_name: string;
+  payer_cpf_cnpj: string;
+  payer_phone?: string;
+  payer_street?: string;
+  payer_number?: string;
+  payer_complement?: string;
+  payer_district?: string;
+  payer_city?: string;
+  payer_state?: string;
+  payer_zip_code?: string;
+  days_due_date?: string;
+  notification_url?: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    item_id: string;
+    price_cents: number;
+  }>;
+}
+
+export interface BoletoCreateResponse {
+  success: boolean;
+  transaction_id: string;
+  status: string;
+  due_date: string | null;
+  value_cents: number | null;
+  bank_slip: {
+    digitable_line: string | null;
+    url_slip: string | null;
+    url_slip_pdf: string | null;
+  };
+  raw: any;
+  error?: string;
+}
+
+export const createBoletoCharge = (payload: BoletoCreatePayload) =>
+  request<BoletoCreateResponse>("/paghiper/boleto/create", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const getBoletoStatus = (transaction_id: string) =>
+  request<{
+    transaction_id: string;
+    status: string;
+    status_label: string;
+    value_cents: number | null;
+    value_cents_paid: number | null;
+    paid_date: string | null;
+    due_date: string | null;
+    raw: any;
+  }>("/paghiper/boleto/status", {
+    method: "POST",
+    body: JSON.stringify({ transaction_id }),
+  });
+
+export const cancelBoletoCharge = (accessToken: string, transaction_id: string) =>
+  request<{ success: boolean; transaction_id: string }>("/paghiper/boleto/cancel", {
+    method: "POST",
+    body: JSON.stringify({ transaction_id }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// Transactions
+
+export interface PagHiperTransaction {
+  type: "pix" | "boleto";
+  order_id: string;
+  transaction_id: string;
+  status: string;
+  created_at: number;
+  payer_email: string;
+  payer_name: string;
+  payer_cpf_cnpj: string;
+  value_cents: number;
+  paid_date?: string;
+  canceled_at?: number;
+  qr_code?: string | null;
+  pix_url?: string | null;
+  emv?: string | null;
+  bank_slip?: {
+    digitable_line: string | null;
+    url_slip: string | null;
+    url_slip_pdf: string | null;
+  };
+}
+
+export const getPagHiperTransactions = (accessToken: string) =>
+  request<{ transactions: PagHiperTransaction[]; total: number }>("/paghiper/transactions", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const getPagHiperTransaction = (transaction_id: string) =>
+  request<PagHiperTransaction>(`/paghiper/transaction/${encodeURIComponent(transaction_id)}`);

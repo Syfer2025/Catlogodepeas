@@ -8,6 +8,8 @@ import { UserAuthPage } from "./pages/UserAuthPage";
 import { UserAccountPage } from "./pages/UserAccountPage";
 import { UserResetPasswordPage } from "./pages/UserResetPasswordPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { AdminPage } from "./pages/admin/AdminPage";
+import { AdminResetPasswordPage } from "./pages/admin/AdminResetPasswordPage";
 
 export const router = createBrowserRouter([
   {
@@ -26,18 +28,10 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin",
-    lazy: () =>
-      import("./pages/admin/AdminPage").then((m) => ({
-        Component: m.AdminPage,
-      })),
-    HydrateFallback: () => null,
+    Component: AdminPage,
   },
   {
     path: "/admin/reset-password",
-    lazy: () =>
-      import("./pages/admin/AdminResetPasswordPage").then((m) => ({
-        Component: m.AdminResetPasswordPage,
-      })),
-    HydrateFallback: () => null,
+    Component: AdminResetPasswordPage,
   },
 ]);

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getProductMainImageUrl } from "../services/api";
 import type { ProductBalance } from "../services/api";
 import { StockBadge } from "./StockBadge";
+import { PriceBadge } from "./PriceBadge";
 
 export interface ProdutoItem {
   sku: string;
@@ -62,11 +63,16 @@ export function ProductCard({ product, balance }: ProductCardProps) {
       <div className="p-4 flex flex-col flex-1 border-t border-gray-100">
         {/* Title */}
         <h3
-          className="text-gray-800 mb-3 group-hover:text-red-600 transition-colors line-clamp-3 flex-1"
+          className="text-gray-800 mb-2 group-hover:text-red-600 transition-colors line-clamp-3 flex-1"
           style={{ fontSize: "0.88rem", fontWeight: 500, lineHeight: 1.5 }}
         >
           {product.titulo}
         </h3>
+
+        {/* Price */}
+        <div className="mb-2">
+          <PriceBadge sku={product.sku} variant="compact" />
+        </div>
 
         {/* SKU + Stock */}
         <div className="flex items-center justify-between gap-1.5 text-gray-400 mt-auto pt-2 border-t border-gray-50">
