@@ -14,7 +14,7 @@ import {
   ChevronUp,
   FileCheck,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -69,9 +69,9 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -91,7 +91,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
     setCreating(true); setCreateResult(null); setCreateError("");
     try {
       let body: any;
-      try { body = JSON.parse(createJson); } catch { setCreateError("JSON invalido."); setCreating(false); return; }
+      try { body = JSON.parse(createJson); } catch { setCreateError("JSON inválido."); setCreating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerComplementCreate(token, createId.trim(), body);
       setCreateResult(result);
@@ -105,7 +105,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
     setUpdating(true); setUpdateResult(null); setUpdateError("");
     try {
       let body: any;
-      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON invalido."); setUpdating(false); return; }
+      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON inválido."); setUpdating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerComplementUpdate(token, updateId.trim(), body);
       setUpdateResult(result);
@@ -211,7 +211,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-violet-600 hover:text-violet-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de campos
+            {showHelp ? "Ocultar" : "Ver"} referência de campos
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
@@ -220,7 +220,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`// Campos do Complemento
 {
-  "codLista": 0,           // codigo da lista de preco
+  "codLista": 0,           // código da lista de preço
   "codGrupoLimite": null,  // cod grupo limite de credito
   "codRisco": null,        // cod risco do cadastro
   "percDesconto": null,    // percentual de desconto
@@ -240,7 +240,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
 //   "I"   -> ISENTO
 
 // Obs: cada cadastro pode ter apenas 1 complemento.
-// Alguns campos podem ser obrigatorios — valide com a empresa.`}</code>
+// Alguns campos podem ser obrigatórios — valide com a empresa.`}</code>
               </pre>
             </div>
           )}
@@ -256,7 +256,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca o complemento do cadastro pelo ID do cliente. Cada cadastro possui no maximo 1 registro de complemento.
+                    Busca o complemento do cadastro pelo ID do cliente. Cada cadastro possui no máximo 1 registro de complemento.
                   </p>
 
                   <div className="relative">
@@ -331,7 +331,7 @@ export function SigeCustomerComplementModule({ isConnected }: Props) {
 
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-blue-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Importante:</strong> Cada cliente suporta apenas <strong>1</strong> complemento. Se ja existir, use a aba "Alterar" para atualizar.
+                  <strong>Importante:</strong> Cada cliente suporta apenas <strong>1</strong> complemento. Se já existir, use a aba "Alterar" para atualizar.
                 </p>
               </div>
             </div>

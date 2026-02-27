@@ -1,19 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
-import {
-  Search,
-  X,
-  Loader2,
-  Package,
-  Hash,
-  ArrowRight,
-  Sparkles,
-  CornerDownLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
 import * as api from "../services/api";
-import { getProductMainImageUrl } from "../services/api";
+import { ProductImage } from "./ProductImage";
 import type { AutocompleteResult } from "../services/api";
+import { prefetchProductDetail } from "../utils/prefetch";
+import "../utils/emptyStateAnimations";
+
+// ── Search History (localStorage) ──
+var SEARCH_HISTORY_KEY = "carretao_search_history";
+var MAX_HISTORY = 5;
+
+function getSearchHistory(): string[] {
+  try {
+    var raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(function (s: any) { return typeof s === "string" && s.trim().length > 0; });
+  } catch { return []; }
+}
+
+function saveSearchHistory(term: string): void {
+  try {
+    var history = getSearchHistory().filter(function (s) { return s !== term; });
+    history.unshift(term);
+    if (history.length > MAX_HISTORY) history = history.slice(0, MAX_HISTORY);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
+  } catch {}
+}
+
+function clearSearchHistory(): void {
+  try { localStorage.removeItem(SEARCH_HISTORY_KEY); } catch {}
+}
 
 interface SearchAutocompleteProps {
   variant?: "header" | "mobile";
@@ -24,7 +43,7 @@ interface SearchAutocompleteProps {
 export function SearchAutocomplete({
   variant = "header",
   onSelect,
-  placeholder = "Buscar pecas por nome ou codigo...",
+  placeholder = "Buscar peças por nome ou código...",
 }: SearchAutocompleteProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AutocompleteResult[]>([]);
@@ -33,12 +52,15 @@ export function SearchAutocomplete({
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyItems, setHistoryItems] = useState<string[]>([]);
 
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressHistoryRef = useRef(false);
 
   // Debounced search
   const doSearch = useCallback(async (q: string) => {
@@ -49,11 +71,28 @@ export function SearchAutocomplete({
     if (q.trim().length < 2) {
       setResults([]);
       setTotalMatches(0);
-      setIsOpen(false);
       setHasSearched(false);
       setLoading(false);
+      // Show history when query is too short but has history
+      if (q.trim().length === 0 && !suppressHistoryRef.current) {
+        var hist = getSearchHistory();
+        if (hist.length > 0 && document.activeElement === inputRef.current) {
+          setHistoryItems(hist);
+          setShowHistory(true);
+          setIsOpen(true);
+        } else {
+          setIsOpen(false);
+          setShowHistory(false);
+        }
+      } else {
+        suppressHistoryRef.current = false;
+        setIsOpen(false);
+        setShowHistory(false);
+      }
       return;
     }
+
+    setShowHistory(false);
 
     setLoading(true);
     abortControllerRef.current = new AbortController();
@@ -89,6 +128,7 @@ export function SearchAutocomplete({
     const handleClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        setShowHistory(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
@@ -96,19 +136,27 @@ export function SearchAutocomplete({
   }, []);
 
   const goToProduct = (sku: string) => {
-    navigate(`/produto/${encodeURIComponent(sku)}`);
+    if (query.trim().length >= 2) saveSearchHistory(query.trim());
+    suppressHistoryRef.current = true;
+    navigate("/produto/" + encodeURIComponent(sku));
     setQuery("");
     setIsOpen(false);
+    setShowHistory(false);
     setResults([]);
+    inputRef.current?.blur();
     onSelect?.();
   };
 
   const goToCatalog = () => {
     if (query.trim()) {
-      navigate(`/catalogo?busca=${encodeURIComponent(query.trim())}`);
+      saveSearchHistory(query.trim());
+      suppressHistoryRef.current = true;
+      navigate("/catalogo?busca=" + encodeURIComponent(query.trim()));
       setQuery("");
       setIsOpen(false);
+      setShowHistory(false);
       setResults([]);
+      inputRef.current?.blur();
       onSelect?.();
     }
   };
@@ -118,6 +166,34 @@ export function SearchAutocomplete({
       if (e.key === "Enter") {
         e.preventDefault();
         goToCatalog();
+      }
+      return;
+    }
+
+    // When showing history, handle navigation within history items
+    if (showHistory && historyItems.length > 0 && results.length === 0) {
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setActiveIndex(function (prev) { return (prev + 1) % historyItems.length; });
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setActiveIndex(function (prev) { return (prev - 1 + historyItems.length) % historyItems.length; });
+          break;
+        case "Enter":
+          e.preventDefault();
+          if (activeIndex >= 0 && activeIndex < historyItems.length) {
+            setQuery(historyItems[activeIndex]);
+            setShowHistory(false);
+          }
+          break;
+        case "Escape":
+          setIsOpen(false);
+          setShowHistory(false);
+          setActiveIndex(-1);
+          inputRef.current?.blur();
+          break;
       }
       return;
     }
@@ -143,6 +219,7 @@ export function SearchAutocomplete({
         break;
       case "Escape":
         setIsOpen(false);
+        setShowHistory(false);
         setActiveIndex(-1);
         inputRef.current?.blur();
         break;
@@ -150,8 +227,20 @@ export function SearchAutocomplete({
   };
 
   const handleFocus = () => {
+    if (suppressHistoryRef.current) {
+      suppressHistoryRef.current = false;
+      return;
+    }
     if (results.length > 0 && query.trim().length >= 2) {
       setIsOpen(true);
+    } else if (query.trim().length < 2) {
+      // Show recent searches when input is focused but empty
+      var history = getSearchHistory();
+      if (history.length > 0) {
+        setHistoryItems(history);
+        setShowHistory(true);
+        setIsOpen(true);
+      }
     }
   };
 
@@ -159,18 +248,23 @@ export function SearchAutocomplete({
     setQuery("");
     setResults([]);
     setIsOpen(false);
+    setShowHistory(false);
     setHasSearched(false);
+    suppressHistoryRef.current = true;
     inputRef.current?.focus();
   };
 
   // Highlight matching text
   const highlightMatch = (text: string, q: string) => {
-    if (!q.trim()) return text;
+    // Escape HTML entities to prevent XSS via product titles
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const safeText = esc(text);
+    if (!q.trim()) return safeText;
     const norm = q
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
-    const textNorm = text
+    const textNorm = safeText
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
@@ -179,7 +273,7 @@ export function SearchAutocomplete({
     if (idx === -1) {
       // Try each word
       const words = norm.split(/\s+/).filter((w) => w.length >= 2);
-      let result = text;
+      let result = safeText;
       for (const word of words) {
         const wordIdx = result
           .toLowerCase()
@@ -196,9 +290,9 @@ export function SearchAutocomplete({
       return result;
     }
 
-    const before = text.slice(0, idx);
-    const match = text.slice(idx, idx + norm.length);
-    const after = text.slice(idx + norm.length);
+    const before = safeText.slice(0, idx);
+    const match = safeText.slice(idx, idx + norm.length);
+    const after = safeText.slice(idx + norm.length);
     return `${before}<mark>${match}</mark>${after}`;
   };
 
@@ -211,43 +305,34 @@ export function SearchAutocomplete({
       case "similar":
         return { text: "Similar", color: "bg-amber-50 text-amber-600" };
       case "fuzzy":
-        return { text: "Sugestao", color: "bg-purple-50 text-purple-600" };
+        return { text: "Sugestão", color: "bg-purple-50 text-purple-600" };
     }
   };
 
   /** Thumbnail with fallback to Package icon */
   function ResultThumb({ sku, isActive }: { sku: string; isActive: boolean }) {
-    const [imgErr, setImgErr] = useState(false);
-
-    if (imgErr) {
-      return (
-        <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-            isActive ? "bg-red-100" : "bg-gray-100"
-          }`}
-        >
-          <Package
-            className={`w-4.5 h-4.5 ${isActive ? "text-red-500" : "text-gray-400"}`}
-          />
-        </div>
-      );
-    }
-
     return (
-      <img
-        src={getProductMainImageUrl(sku)}
+      <ProductImage
+        sku={sku}
         alt=""
-        className={`w-10 h-10 rounded-lg object-contain shrink-0 border p-0.5 ${
-          isActive ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"
-        }`}
-        onError={() => setImgErr(true)}
-        loading="lazy"
+        className={"w-10 h-10 rounded-lg object-contain shrink-0 border p-0.5 " +
+          (isActive ? "border-red-200 bg-red-50" : "border-gray-200 bg-white")}
+        fallback={
+          <div
+            className={"w-10 h-10 rounded-lg flex items-center justify-center shrink-0 " +
+              (isActive ? "bg-red-100" : "bg-gray-100")}
+          >
+            <Package
+              className={"w-4.5 h-4.5 " + (isActive ? "text-red-500" : "text-gray-400")}
+            />
+          </div>
+        }
       />
     );
   }
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full" role="search">
       {/* Input */}
       <div
         className={`flex w-full border rounded-lg overflow-hidden transition-all ${
@@ -257,9 +342,11 @@ export function SearchAutocomplete({
         }`}
       >
         <div className="flex-1 relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden="true" />
+          <label htmlFor="search-autocomplete" className="sr-only">Buscar peças por nome ou código</label>
           <input
             ref={inputRef}
+            id="search-autocomplete"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -270,6 +357,10 @@ export function SearchAutocomplete({
             style={{ fontSize: "0.9rem" }}
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
+            aria-expanded={isOpen}
+            aria-autocomplete="list"
+            aria-label="Buscar peças"
           />
           {query && (
             <button
@@ -283,6 +374,7 @@ export function SearchAutocomplete({
         <button
           onClick={goToCatalog}
           className="bg-red-600 hover:bg-red-700 text-white px-5 flex items-center justify-center transition-colors shrink-0"
+          aria-label="Buscar"
         >
           {loading ? (
             <Loader2 className="w-4.5 h-4.5 animate-spin" />
@@ -295,26 +387,80 @@ export function SearchAutocomplete({
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute top-full left-0 right-0 bg-white border border-t-0 border-red-400 rounded-b-lg shadow-xl z-[100] overflow-hidden max-h-[420px] overflow-y-auto">
-          {loading && results.length === 0 ? (
+          {/* Recent searches (shown when query is empty) */}
+          {showHistory && historyItems.length > 0 && !hasSearched && results.length === 0 && !loading ? (
+            <div>
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-gray-400 flex items-center gap-1.5" style={{ fontSize: "0.75rem" }}>
+                  <Clock className="w-3 h-3" />
+                  Buscas recentes
+                </span>
+                <button
+                  onClick={function () {
+                    clearSearchHistory();
+                    setHistoryItems([]);
+                    setShowHistory(false);
+                    setIsOpen(false);
+                  }}
+                  className="text-gray-400 hover:text-red-600 transition-colors flex items-center gap-1"
+                  style={{ fontSize: "0.7rem", fontWeight: 500 }}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Limpar
+                </button>
+              </div>
+              {historyItems.map(function (term, idx) {
+                return (
+                  <button
+                    key={term + "-" + idx}
+                    onClick={function () {
+                      setQuery(term);
+                      setShowHistory(false);
+                    }}
+                    onMouseEnter={function () { setActiveIndex(idx); }}
+                    className={"w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors border-b border-gray-50 last:border-b-0 " +
+                      (activeIndex === idx ? "bg-red-50" : "hover:bg-gray-50")}
+                  >
+                    <Clock className={"w-4 h-4 shrink-0 " + (activeIndex === idx ? "text-red-400" : "text-gray-300")} />
+                    <span className={"flex-1 truncate " + (activeIndex === idx ? "text-red-700" : "text-gray-700")} style={{ fontSize: "0.85rem" }}>
+                      {term}
+                    </span>
+                    <ChevronRight className={"w-3.5 h-3.5 shrink-0 " + (activeIndex === idx ? "text-red-400" : "text-gray-300")} />
+                  </button>
+                );
+              })}
+            </div>
+          ) : loading && results.length === 0 ? (
             <div className="flex items-center gap-3 px-4 py-5 text-gray-500">
               <Loader2 className="w-5 h-5 animate-spin text-red-500" />
-              <span style={{ fontSize: "0.85rem" }}>Buscando pecas...</span>
+              <span style={{ fontSize: "0.85rem" }}>Buscando peças...</span>
             </div>
           ) : results.length === 0 && hasSearched ? (
-            <div className="px-4 py-6 text-center">
-              <Package className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-              <p className="text-gray-600 mb-1" style={{ fontSize: "0.9rem", fontWeight: 500 }}>
+            <div className="px-4 py-7 text-center flex flex-col items-center">
+              <div className="relative mb-3">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-50 to-red-50 flex items-center justify-center">
+                  <Search
+                    className="w-7 h-7 text-gray-300"
+                    style={{ animation: "es-shake 1.5s ease-in-out both" }}
+                  />
+                </div>
+                <Sparkles
+                  className="w-3 h-3 text-red-300 absolute -top-0.5 -right-0.5"
+                  style={{ animation: "es-twinkle 2s ease-in-out infinite" }}
+                />
+              </div>
+              <p className="text-gray-600 mb-0.5" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
                 Nenhum resultado
               </p>
-              <p className="text-gray-400" style={{ fontSize: "0.8rem" }}>
-                Nenhuma peca encontrada para "{query}"
+              <p className="text-gray-400 mb-3 max-w-[220px]" style={{ fontSize: "0.78rem", lineHeight: 1.4 }}>
+                {"Nenhuma peça encontrada para \"" + query + "\""}
               </p>
               <button
                 onClick={goToCatalog}
-                className="mt-3 text-red-600 hover:text-red-700 transition-colors flex items-center gap-1 mx-auto"
-                style={{ fontSize: "0.8rem", fontWeight: 500 }}
+                className="text-red-600 hover:text-red-700 transition-colors flex items-center gap-1.5 mx-auto bg-red-50 hover:bg-red-100 px-4 py-2 rounded-lg"
+                style={{ fontSize: "0.8rem", fontWeight: 600 }}
               >
-                Buscar no catalogo completo
+                Buscar no catálogo completo
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -341,7 +487,7 @@ export function SearchAutocomplete({
                   <button
                     key={item.sku}
                     onClick={() => goToProduct(item.sku)}
-                    onMouseEnter={() => setActiveIndex(idx)}
+                    onMouseEnter={() => { setActiveIndex(idx); prefetchProductDetail(); }}
                     className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-b border-gray-50 last:border-b-0 ${
                       activeIndex === idx
                         ? "bg-red-50"

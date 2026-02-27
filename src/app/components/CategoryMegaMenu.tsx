@@ -9,6 +9,7 @@ import {
 import * as api from "../services/api";
 import type { CategoryNode } from "../services/api";
 import { defaultCategoryTree } from "../data/categoryTree";
+import { useHomepageInit } from "../contexts/HomepageInitContext";
 
 /* ─── Sort helper: locale-aware alphabetical ─── */
 function sortByName(nodes: CategoryNode[]): CategoryNode[] {
@@ -63,30 +64,25 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
   const [availableHeight, setAvailableHeight] = useState(500);
   const [dropdownLeft, setDropdownLeft] = useState(0);
   const [dropdownWidth, setDropdownWidth] = useState(0);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
-  const { mounted, visible } = useDelayedVisibility(isOpen, 250);
+  const { mounted, visible } = useDelayedVisibility(isOpen, 320);
+  const { data: initData, loading: initLoading } = useHomepageInit();
 
+  // Use category tree from combined init data (no separate API call)
   useEffect(() => {
-    api
-      .getCategoryTree()
-      .then(async (data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setTree(data);
-        } else {
-          try {
-            await api.saveCategoryTree(defaultCategoryTree);
-            setTree(defaultCategoryTree);
-          } catch {
-            setTree(defaultCategoryTree);
-          }
-        }
-      })
-      .catch((e) => {
-        console.error("Error loading category tree for menu:", e);
-        setTree(defaultCategoryTree);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    if (initLoading) return;
+    if (initData && Array.isArray(initData.categoryTree) && initData.categoryTree.length > 0) {
+      setTree(initData.categoryTree);
+      setCategoryCounts(initData.categoryCounts || {});
+      setLoading(false);
+    } else {
+      // Fallback: no data from init, use defaults
+      setTree(defaultCategoryTree);
+      setCategoryCounts({});
+      setLoading(false);
+    }
+  }, [initData, initLoading]);
 
   // Calculate available height and dropdown dimensions to span full container
   const calcDimensions = useCallback(() => {
@@ -145,7 +141,11 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
   };
 
   const handleMouseLeave = () => {
-    closeTimerRef.current = setTimeout(() => setIsOpen(false), 250);
+    closeTimerRef.current = setTimeout(() => {
+      setIsOpen(false);
+      setActiveParent(null);
+      setPrevParent(null);
+    }, 250);
   };
 
   const handleLinkClick = () => {
@@ -172,141 +172,201 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         onMouseEnter={handleMouseEnter}
-        className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg transition-all duration-200 ${
+        className={`flex items-center gap-1.5 px-4 py-2.5 relative ${
           isOpen
-            ? "bg-red-600 text-white shadow-sm"
-            : "text-gray-700 hover:text-red-600 hover:bg-red-50"
+            ? "bg-red-600 text-white rounded-t-lg z-[201]"
+            : "text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg"
         }`}
-        style={{ fontSize: "0.9rem", fontWeight: 500 }}
+        style={{
+          fontSize: "0.9rem",
+          fontWeight: isOpen ? 600 : 500,
+          transition: "all 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+          boxShadow: isOpen ? "0 -2px 12px rgba(220,38,38,0.15)" : "none",
+        }}
       >
-        <Layers className="w-4 h-4" />
+        <Layers
+          className="w-4 h-4"
+          style={{
+            transition: "transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transform: isOpen ? "rotate(-15deg) scale(1.1)" : "rotate(0) scale(1)",
+          }}
+        />
         Categorias
         <ChevronDown
-          className="w-3.5 h-3.5 transition-transform duration-300 ease-out"
-          style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          className="w-3.5 h-3.5"
+          style={{
+            transition: "transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+          }}
         />
       </button>
 
       {/* Dropdown mega-menu — always mounted while animating */}
       {mounted && (
-        <div
-          className="absolute top-full z-[200] pt-0"
-          onMouseEnter={() => {
-            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-          }}
-          style={{
-            left: `${dropdownLeft}px`,
-            width: dropdownWidth > 0 ? `${dropdownWidth}px` : "min(1060px, calc(100vw - 2rem))",
-            transition: "opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 220ms cubic-bezier(0.16,1,0.3,1)",
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(-8px)",
-            pointerEvents: visible ? "auto" : "none",
-          }}
-        >
+        <>
+          {/* Backdrop overlay */}
           <div
-            className="bg-white rounded-b-xl shadow-2xl border border-gray-200 border-t-2 border-t-red-600 flex overflow-hidden w-full"
+            className="fixed inset-0 z-[199]"
             style={{
-              maxHeight: `${availableHeight}px`,
+              backgroundColor: visible ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0)",
+              transition: "background-color 300ms ease",
+              pointerEvents: visible ? "auto" : "none",
+            }}
+            onMouseEnter={handleMouseLeave}
+          />
+          <div
+            className="absolute top-full left-0 z-[200]"
+            style={{ marginTop: "-1px" }}
+            onMouseEnter={() => {
+              if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
             }}
           >
-            {loading ? (
-              <div className="flex items-center justify-center p-10 w-full">
-                <Loader2 className="w-6 h-6 text-red-500 animate-spin" />
-              </div>
-            ) : (
-              <>
-                {/* Left column: parent categories */}
-                <div
-                  className="border-r border-gray-100 py-1.5 shrink-0 flex flex-col"
-                  style={{ width: "260px", maxHeight: `${availableHeight}px` }}
-                >
-                  <p
-                    className="px-4 py-1.5 text-gray-400 shrink-0"
-                    style={{
-                      fontSize: "0.62rem",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                    }}
-                  >
-                    Departamentos ({tree.length})
-                  </p>
-                  <div className="flex-1 overflow-y-auto min-h-0">
-                    {sortedTree.map((parent) => {
-                      const isActive = activeParent === parent.id;
-                      return (
-                        <button
-                          key={parent.id}
-                          onMouseEnter={() => setActiveParent(parent.id)}
-                          onClick={() => {
-                            if (!parent.children || parent.children.length === 0) {
-                              handleLinkClick();
-                            }
-                          }}
-                          className={`w-full text-left px-4 ${leftColItemPy} flex items-center justify-between gap-2`}
-                          style={{
-                            fontSize: leftColFontSize,
-                            transition: "background-color 180ms ease, color 180ms ease",
-                            backgroundColor: isActive ? "rgb(254 242 242)" : "transparent",
-                            color: isActive ? "rgb(185 28 28)" : "rgb(55 65 81)",
-                          }}
-                        >
-                          <span
-                            className="truncate"
-                            style={{
-                              fontWeight: isActive ? 600 : 400,
-                              transition: "font-weight 150ms ease",
-                            }}
-                          >
-                            {parent.name}
-                          </span>
-                          {parent.children && parent.children.length > 0 && (
-                            <ChevronRight
-                              className="w-3.5 h-3.5 shrink-0 transition-all duration-200"
-                              style={{
-                                color: isActive ? "rgb(248 113 113)" : "rgb(209 213 219)",
-                                transform: isActive ? "translateX(2px)" : "translateX(0)",
+            <div
+              style={{
+                width: dropdownWidth > 0
+                  ? `${dropdownWidth + dropdownLeft}px`
+                  : "min(1060px, calc(100vw - 2rem))",
+                transition: visible
+                  ? "opacity 300ms cubic-bezier(0.16,1,0.3,1), transform 300ms cubic-bezier(0.34,1.56,0.64,1)"
+                  : "opacity 200ms ease, transform 200ms ease",
+                opacity: visible ? 1 : 0,
+                transform: visible ? "translateY(0) scale(1)" : "translateY(-12px) scale(0.98)",
+                transformOrigin: "top left",
+                pointerEvents: visible ? "auto" : "none",
+              }}
+            >
+              {/* Animated red accent bar */}
+              <div
+                style={{
+                  height: "3px",
+                  background: "linear-gradient(90deg, rgb(220 38 38), rgb(248 113 113), rgb(220 38 38))",
+                  backgroundSize: "200% 100%",
+                  transform: visible ? "scaleX(1)" : "scaleX(0)",
+                  transformOrigin: "left",
+                  transition: visible
+                    ? "transform 400ms cubic-bezier(0.34,1.56,0.64,1) 80ms"
+                    : "transform 150ms ease",
+                  animationName: visible ? "megaMenuShimmer" : "none",
+                  animationDuration: "3s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                }}
+              />
+              <div
+                className="bg-white flex overflow-hidden w-full"
+                style={{
+                  maxHeight: `${availableHeight}px`,
+                  borderRadius: "0 0 0.75rem 0.75rem",
+                  boxShadow: visible
+                    ? "0 20px 60px -12px rgba(0,0,0,0.18), 0 8px 20px -8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05)"
+                    : "0 4px 12px rgba(0,0,0,0.05)",
+                  transition: "box-shadow 400ms ease",
+                }}
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center p-10 w-full">
+                    <Loader2 className="w-6 h-6 text-red-500 animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Left column: parent categories */}
+                    <div
+                      className="border-r border-gray-100 py-1.5 shrink-0 flex flex-col"
+                      style={{ width: "260px", maxHeight: `${availableHeight}px` }}
+                    >
+                      <p
+                        className="px-4 py-1.5 text-gray-400 shrink-0"
+                        style={{
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Departamentos ({tree.length})
+                      </p>
+                      <div className="flex-1 overflow-y-auto min-h-0 px-1.5">
+                        {sortedTree.map((parent, idx) => {
+                          const isActive = activeParent === parent.id;
+                          const parentCount = categoryCounts[parent.slug] || 0;
+                          const isEmpty = parentCount === 0;
+                          return (
+                            <button
+                              key={parent.id}
+                              onMouseEnter={() => setActiveParent(parent.id)}
+                              onClick={() => {
+                                if (!parent.children || parent.children.length === 0) {
+                                  handleLinkClick();
+                                }
                               }}
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Right column: children of active parent — crossfade */}
-                <div
-                  className="flex-1 py-3 px-5 overflow-y-auto min-h-0"
-                  style={{ maxHeight: `${availableHeight}px` }}
-                >
-                  <div
-                    style={{
-                      transition: "opacity 160ms ease, transform 160ms ease",
-                      opacity: panelFade ? 1 : 0,
-                      transform: panelFade ? "translateX(0)" : "translateX(6px)",
-                    }}
-                  >
-                    {activeParent ? (
-                      <ChildrenPanel
-                        parent={tree.find((p) => p.id === activeParent) || null}
-                        onLinkClick={handleLinkClick}
-                        compact={availableHeight < 500}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
-                        <Layers className="w-8 h-8 text-gray-300 mb-3" />
-                        <p style={{ fontSize: "0.85rem" }}>
-                          Passe o mouse sobre um departamento
-                        </p>
+                              className={`w-full text-left px-4 ${leftColItemPy} flex items-center justify-between gap-2 my-0.5`}
+                              style={{
+                                fontSize: leftColFontSize,
+                                fontWeight: isActive ? 600 : 400,
+                                transition: "background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease",
+                                backgroundColor: isActive ? (isEmpty ? "rgb(229 231 235)" : "rgb(220 38 38)") : "transparent",
+                                color: isActive ? (isEmpty ? "rgb(156 163 175)" : "white") : isEmpty ? "rgb(156 163 175)" : "rgb(55 65 81)",
+                                borderRadius: "0.5rem",
+                                boxShadow: isActive && !isEmpty
+                                  ? "0 4px 12px rgba(220,38,38,0.35)"
+                                  : "none",
+                                opacity: isEmpty ? 0.5 : 1,
+                              }}
+                            >
+                              <span className="truncate">
+                                {parent.name}
+                              </span>
+                              {parent.children && parent.children.length > 0 && (
+                                <ChevronRight
+                                  className="w-3.5 h-3.5 shrink-0"
+                                  style={{
+                                    color: isActive ? (isEmpty ? "rgb(156 163 175)" : "rgba(255,255,255,0.7)") : "rgb(209 213 219)",
+                                    transition: "color 180ms ease",
+                                  }}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
+                    </div>
+
+                    {/* Right column: children of active parent — crossfade */}
+                    <div
+                      className="flex-1 py-3 px-5 overflow-y-auto min-h-0"
+                      style={{ maxHeight: `${availableHeight}px` }}
+                    >
+                      <div
+                        style={{
+                          transition: "opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 220ms cubic-bezier(0.16,1,0.3,1)",
+                          opacity: panelFade ? 1 : 0,
+                          transform: panelFade ? "translateX(0) scale(1)" : "translateX(8px) scale(0.98)",
+                          transformOrigin: "left center",
+                        }}
+                      >
+                        {activeParent ? (
+                          <ChildrenPanel
+                            parent={tree.find((p) => p.id === activeParent) || null}
+                            onLinkClick={handleLinkClick}
+                            compact={availableHeight < 500}
+                            categoryCounts={categoryCounts}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
+                            <Layers className="w-8 h-8 text-gray-300 mb-3" />
+                            <p style={{ fontSize: "0.85rem" }}>
+                              Passe o mouse sobre um departamento
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -317,10 +377,12 @@ function ChildrenPanel({
   parent,
   onLinkClick,
   compact = false,
+  categoryCounts,
 }: {
   parent: CategoryNode | null;
   onLinkClick: () => void;
   compact?: boolean;
+  categoryCounts: Record<string, number>;
 }) {
   if (!parent) return null;
 
@@ -347,17 +409,33 @@ function ChildrenPanel({
   return (
     <div>
       {/* Parent title */}
-      <Link
-        to={`/catalogo?categoria=${parent.slug}`}
-        onClick={onLinkClick}
-        className="text-red-700 hover:text-red-800 flex items-center gap-1.5 mb-3 group/title"
-        style={{ fontSize: "0.9rem", fontWeight: 700, transition: "color 150ms ease" }}
-      >
-        {parent.name}
-        <ChevronRight
-          className="w-3.5 h-3.5 transition-transform duration-200 group-hover/title:translate-x-0.5"
-        />
-      </Link>
+      {(() => {
+        const parentCount = categoryCounts[parent.slug] || 0;
+        const parentEmpty = parentCount === 0;
+        if (parentEmpty) {
+          return (
+            <span
+              className="flex items-center gap-1.5 mb-3"
+              style={{ fontSize: "0.9rem", fontWeight: 700, color: "rgb(156 163 175)", opacity: 0.5, cursor: "default" }}
+            >
+              {parent.name}
+            </span>
+          );
+        }
+        return (
+          <Link
+            to={`/catalogo?categoria=${parent.slug}`}
+            onClick={onLinkClick}
+            className="text-red-700 hover:text-red-800 flex items-center gap-1.5 mb-3 group/title"
+            style={{ fontSize: "0.9rem", fontWeight: 700, transition: "color 150ms ease" }}
+          >
+            {parent.name}
+            <ChevronRight
+              className="w-3.5 h-3.5 transition-transform duration-200 group-hover/title:translate-x-0.5"
+            />
+          </Link>
+        );
+      })()}
 
       {/* Children via CSS multi-column for balanced distribution */}
       <div
@@ -366,53 +444,91 @@ function ChildrenPanel({
           columnGap: "1.5rem",
         }}
       >
-        {sorted.map((child, idx) => (
-          <div
-            key={child.id}
-            style={{
-              breakInside: "avoid",
-              WebkitColumnBreakInside: "avoid",
-              animation: "megaMenuFadeIn 200ms ease both",
-              animationDelay: `${idx * 18}ms`,
-              marginBottom: child.children && child.children.length > 0 ? "0.5rem" : "0",
-            }}
-          >
-            {child.children && child.children.length > 0 ? (
-              <div className="mb-0.5">
+        {sorted.map((child, idx) => {
+          const childCount = categoryCounts[child.slug] || 0;
+          const childEmpty = childCount === 0;
+          return (
+            <div
+              key={child.id}
+              style={{
+                breakInside: "avoid",
+                WebkitColumnBreakInside: "avoid",
+                animationName: "megaMenuFadeIn",
+                animationDuration: "200ms",
+                animationTimingFunction: "ease",
+                animationDelay: (idx * 18) + "ms",
+                animationFillMode: "both",
+                marginBottom: child.children && child.children.length > 0 ? "0.5rem" : "0",
+              }}
+            >
+              {child.children && child.children.length > 0 ? (
+                <div className="mb-0.5">
+                  {childEmpty ? (
+                    <span
+                      className={`block ${itemPy}`}
+                      style={{ fontSize: itemFont, fontWeight: 600, color: "rgb(156 163 175)", opacity: 0.5, cursor: "default" }}
+                    >
+                      {child.name}
+                    </span>
+                  ) : (
+                    <Link
+                      to={`/catalogo?categoria=${child.slug}`}
+                      onClick={onLinkClick}
+                      className={`text-gray-700 hover:text-red-600 block ${itemPy}`}
+                      style={{ fontSize: itemFont, fontWeight: 600, transition: "color 150ms ease" }}
+                    >
+                      {child.name}
+                    </Link>
+                  )}
+                  <div className="pl-2.5 border-l-2 border-gray-100">
+                    {child.children.map((gc) => {
+                      const gcCount = categoryCounts[gc.slug] || 0;
+                      const gcEmpty = gcCount === 0;
+                      if (gcEmpty) {
+                        return (
+                          <span
+                            key={gc.id}
+                            className="block py-0.5"
+                            style={{ fontSize: subItemFont, color: "rgb(156 163 175)", opacity: 0.5, cursor: "default" }}
+                          >
+                            {gc.name}
+                          </span>
+                        );
+                      }
+                      return (
+                        <Link
+                          key={gc.id}
+                          to={`/catalogo?categoria=${gc.slug}`}
+                          onClick={onLinkClick}
+                          className="block text-gray-500 hover:text-red-600 py-0.5"
+                          style={{ fontSize: subItemFont, transition: "color 150ms ease" }}
+                        >
+                          {gc.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : childEmpty ? (
+                <span
+                  className={`block ${itemPy}`}
+                  style={{ fontSize: itemFont, color: "rgb(156 163 175)", opacity: 0.5, cursor: "default" }}
+                >
+                  {child.name}
+                </span>
+              ) : (
                 <Link
                   to={`/catalogo?categoria=${child.slug}`}
                   onClick={onLinkClick}
-                  className={`text-gray-700 hover:text-red-600 block ${itemPy}`}
-                  style={{ fontSize: itemFont, fontWeight: 600, transition: "color 150ms ease" }}
+                  className={`block text-gray-600 hover:text-red-600 ${itemPy}`}
+                  style={{ fontSize: itemFont, transition: "color 150ms ease" }}
                 >
                   {child.name}
                 </Link>
-                <div className="pl-2.5 border-l-2 border-gray-100">
-                  {child.children.map((gc) => (
-                    <Link
-                      key={gc.id}
-                      to={`/catalogo?categoria=${gc.slug}`}
-                      onClick={onLinkClick}
-                      className="block text-gray-500 hover:text-red-600 py-0.5"
-                      style={{ fontSize: subItemFont, transition: "color 150ms ease" }}
-                    >
-                      {gc.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <Link
-                to={`/catalogo?categoria=${child.slug}`}
-                onClick={onLinkClick}
-                className={`block text-gray-600 hover:text-red-600 ${itemPy}`}
-                style={{ fontSize: itemFont, transition: "color 150ms ease" }}
-              >
-                {child.name}
-              </Link>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Keyframes */}
@@ -420,6 +536,14 @@ function ChildrenPanel({
         @keyframes megaMenuFadeIn {
           from { opacity: 0; transform: translateY(4px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes megaMenuShimmer {
+          0%   { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        @keyframes megaMenuItemSlideIn {
+          from { opacity: 0; transform: translateX(-6px); }
+          to   { opacity: 1; transform: translateX(0); }
         }
       `}</style>
     </div>
@@ -434,17 +558,21 @@ export function MobileCategoryMenu({ onNavigate }: { onNavigate?: () => void }) 
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [openSection, setOpenSection] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const { data: initData, loading: initLoading } = useHomepageInit();
 
+  // Use category tree from combined init data
   useEffect(() => {
-    api
-      .getCategoryTree()
-      .then((data) => {
-        if (Array.isArray(data)) setTree(data);
-      })
-      .catch((e) => console.error("Error loading category tree for mobile:", e))
-      .finally(() => setLoading(false));
-  }, []);
+    if (initLoading) return;
+    if (initData && Array.isArray(initData.categoryTree) && initData.categoryTree.length > 0) {
+      setTree(initData.categoryTree);
+      setCategoryCounts(initData.categoryCounts || {});
+    } else {
+      setTree(defaultCategoryTree);
+      setCategoryCounts({});
+    }
+    setLoading(false);
+  }, [initData, initLoading]);
 
   if (tree.length === 0 && !loading) return null;
 
@@ -453,57 +581,28 @@ export function MobileCategoryMenu({ onNavigate }: { onNavigate?: () => void }) 
 
   return (
     <div className="pt-1">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-red-50 transition-colors duration-200"
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="bg-red-50 rounded-full p-1.5">
-            <Layers className="w-4 h-4 text-red-600" />
+      {/* Categories list — shown directly without extra toggle */}
+      <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden max-h-[65vh] overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
           </div>
-          <span className="text-gray-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-            Categorias
-          </span>
-        </div>
-        <ChevronDown
-          className="w-4 h-4 text-gray-400 transition-transform duration-300 ease-out"
-          style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-        />
-      </button>
-
-      {/* Animated container */}
-      <div
-        className="overflow-hidden"
-        style={{
-          display: "grid",
-          gridTemplateRows: isOpen ? "1fr" : "0fr",
-          transition: "grid-template-rows 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="mt-1 mx-2 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden max-h-[60vh] overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
-              </div>
-            ) : (
-              sortedTree.map((parent) => (
-                <MobileParentItem
-                  key={parent.id}
-                  parent={parent}
-                  isExpanded={openSection === parent.id}
-                  onToggle={() =>
-                    setOpenSection(openSection === parent.id ? null : parent.id)
-                  }
-                  onNavigate={() => {
-                    setIsOpen(false);
-                    onNavigate?.();
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </div>
+        ) : (
+          sortedTree.map((parent) => (
+            <MobileParentItem
+              key={parent.id}
+              parent={parent}
+              isExpanded={openSection === parent.id}
+              onToggle={() =>
+                setOpenSection(openSection === parent.id ? null : parent.id)
+              }
+              onNavigate={() => {
+                onNavigate?.();
+              }}
+              categoryCounts={categoryCounts}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -515,22 +614,34 @@ function MobileParentItem({
   isExpanded,
   onToggle,
   onNavigate,
+  categoryCounts,
 }: {
   parent: CategoryNode;
   isExpanded: boolean;
   onToggle: () => void;
   onNavigate: () => void;
+  categoryCounts: Record<string, number>;
 }) {
   const hasChildren = parent.children && parent.children.length > 0;
   const sortedChildren = hasChildren ? sortByName(parent.children!) : [];
+  const parentCount = categoryCounts[parent.slug] || 0;
+  const parentEmpty = parentCount === 0;
 
   return (
     <div className="border-b border-gray-100 last:border-b-0">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white transition-colors duration-200"
+        style={{ opacity: parentEmpty ? 0.5 : 1 }}
       >
-        <span className="text-gray-700 truncate" style={{ fontSize: "0.82rem", fontWeight: 500 }}>
+        <span
+          className="truncate"
+          style={{
+            fontSize: "0.82rem",
+            fontWeight: 500,
+            color: parentEmpty ? "rgb(156 163 175)" : "rgb(55 65 81)",
+          }}
+        >
           {parent.name}
         </span>
         {hasChildren && (
@@ -552,21 +663,49 @@ function MobileParentItem({
         >
           <div className="min-h-0 overflow-hidden">
             <div className="bg-white px-4 pb-2">
-              {sortedChildren.map((child, idx) => (
-                <Link
-                  key={child.id}
-                  to={`/catalogo?categoria=${child.slug}`}
-                  onClick={onNavigate}
-                  className="block text-gray-500 hover:text-red-600 py-1.5 pl-2 border-l-2 border-gray-200 transition-colors duration-150"
-                  style={{
-                    fontSize: "0.78rem",
-                    animation: isExpanded ? `mobileItemSlideIn 200ms ease both` : "none",
-                    animationDelay: `${idx * 25}ms`,
-                  }}
-                >
-                  {child.name}
-                </Link>
-              ))}
+              {sortedChildren.map((child, idx) => {
+                const childCount = categoryCounts[child.slug] || 0;
+                const childEmpty = childCount === 0;
+                if (childEmpty) {
+                  return (
+                    <span
+                      key={child.id}
+                      className="block py-1.5 pl-2 border-l-2 border-gray-200"
+                      style={{
+                        fontSize: "0.78rem",
+                        color: "rgb(156 163 175)",
+                        opacity: 0.5,
+                        cursor: "default",
+                        animationName: isExpanded ? "mobileItemSlideIn" : "none",
+                        animationDuration: "200ms",
+                        animationTimingFunction: "ease",
+                        animationDelay: (idx * 25) + "ms",
+                        animationFillMode: "both",
+                      }}
+                    >
+                      {child.name}
+                    </span>
+                  );
+                }
+                return (
+                  <Link
+                    key={child.id}
+                    to={`/catalogo?categoria=${child.slug}`}
+                    onClick={onNavigate}
+                    className="block text-gray-500 hover:text-red-600 py-1.5 pl-2 border-l-2 border-gray-200 transition-colors duration-150"
+                    style={{
+                      fontSize: "0.78rem",
+                      animationName: isExpanded ? "mobileItemSlideIn" : "none",
+                      animationDuration: "200ms",
+                      animationTimingFunction: "ease",
+                      animationDelay: (idx * 25) + "ms",
+                      animationFillMode: "both",
+                    }}
+                  >
+                    {child.name}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>

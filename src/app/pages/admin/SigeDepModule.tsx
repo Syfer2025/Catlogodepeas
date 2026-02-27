@@ -17,7 +17,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -48,78 +48,78 @@ const CATEGORIES = [
 
 const ENDPOINTS: DepEndpoint[] = [
   // ── Localização & Estrutura ──
-  { path: "area", label: "Area", desc: "Busca cod. da area do produto", category: "localizacao",
-    params: [{ name: "codArea", placeholder: "Cod. area (ou multiplos, virgula)" }, { name: "nomeArea", placeholder: "Nome da area" }] },
+  { path: "area", label: "Área", desc: "Busca cod. da área do produto", category: "localizacao",
+    params: [{ name: "codArea", placeholder: "Cod. área (ou múltiplos, vírgula)" }, { name: "nomeArea", placeholder: "Nome da área" }] },
   { path: "area-work", label: "Ramo", desc: "Busca cod. do ramo do produto", category: "localizacao",
     params: [{ name: "codRamo", placeholder: "Cod. ramo" }, { name: "nomeRamo", placeholder: "Nome do ramo" }] },
   { path: "branch", label: "Filial", desc: "Busca filiais da empresa", category: "localizacao",
     params: [{ name: "codFilial", placeholder: "Cod. filial" }, { name: "nomeFilial", placeholder: "Nome filial" }, { name: "apelidoFilial", placeholder: "Apelido filial" }] },
-  { path: "country", label: "Pais", desc: "Busca cod. do pais", category: "localizacao",
-    params: [{ name: "codPais", placeholder: "Cod. pais" }, { name: "nomePais", placeholder: "Nome pais" }, { name: "apelidoPais", placeholder: "Apelido pais" }] },
-  { path: "municipality", label: "Municipio", desc: "Busca municipios (paginado)", category: "localizacao",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "cidade", placeholder: "Cidade" }, { name: "uf", placeholder: "UF (ex: SP)" }] },
+  { path: "country", label: "País", desc: "Busca cod. do país", category: "localizacao",
+    params: [{ name: "codPais", placeholder: "Cod. país" }, { name: "nomePais", placeholder: "Nome país" }, { name: "apelidoPais", placeholder: "Apelido país" }] },
+  { path: "municipality", label: "Município", desc: "Busca municípios (paginado)", category: "localizacao",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "cidade", placeholder: "Cidade" }, { name: "uf", placeholder: "UF (ex: SP)" }] },
   { path: "local-stock", label: "Local Estoque", desc: "Busca locais de estoque", category: "localizacao",
-    params: [{ name: "codFilial", placeholder: "Cod. filial" }, { name: "codLocal", placeholder: "Cod. local" }, { name: "descLocal", placeholder: "Descricao local" }] },
+    params: [{ name: "codFilial", placeholder: "Cod. filial" }, { name: "codLocal", placeholder: "Cod. local" }, { name: "descLocal", placeholder: "Descrição local" }] },
 
   // ── Produto - Classificação ──
   { path: "brand", label: "Marca", desc: "Busca marcas de produto", category: "produto",
-    params: [{ name: "codMarca", placeholder: "Cod. marca" }, { name: "descMarca", placeholder: "Descricao marca" }] },
-  { path: "division-one", label: "Divisao 1 (Secao)", desc: "Busca secoes de produto", category: "produto",
-    params: [{ name: "codDivisao", placeholder: "Cod. divisao" }, { name: "descDivisao", placeholder: "Descricao" }] },
-  { path: "division-two", label: "Divisao 2 (Grupo)", desc: "Busca grupos de produto", category: "produto",
-    params: [{ name: "codDivisao", placeholder: "Cod. divisao" }, { name: "descDivisao", placeholder: "Descricao" }] },
-  { path: "division-three", label: "Divisao 3 (SubGrupo)", desc: "Busca subgrupos de produto", category: "produto",
-    params: [{ name: "codDivisao", placeholder: "Cod. divisao" }, { name: "descDivisao", placeholder: "Descricao" }] },
+    params: [{ name: "codMarca", placeholder: "Cod. marca" }, { name: "descMarca", placeholder: "Descrição marca" }] },
+  { path: "division-one", label: "Divisão 1 (Seção)", desc: "Busca seções de produto", category: "produto",
+    params: [{ name: "codDivisao", placeholder: "Cod. divisão" }, { name: "descDivisao", placeholder: "Descrição" }] },
+  { path: "division-two", label: "Divisão 2 (Grupo)", desc: "Busca grupos de produto", category: "produto",
+    params: [{ name: "codDivisao", placeholder: "Cod. divisão" }, { name: "descDivisao", placeholder: "Descrição" }] },
+  { path: "division-three", label: "Divisão 3 (SubGrupo)", desc: "Busca subgrupos de produto", category: "produto",
+    params: [{ name: "codDivisao", placeholder: "Cod. divisão" }, { name: "descDivisao", placeholder: "Descrição" }] },
   { path: "group", label: "Grupo", desc: "Busca grupos de produto", category: "produto",
-    params: [{ name: "codGrupo", placeholder: "Cod. grupo" }, { name: "descricao", placeholder: "Descricao" }] },
+    params: [{ name: "codGrupo", placeholder: "Cod. grupo" }, { name: "descricao", placeholder: "Descrição" }] },
   { path: "grate", label: "Grade", desc: "Busca grades de produto", category: "produto",
-    params: [{ name: "codGrade", placeholder: "Cod. grade" }, { name: "descricao", placeholder: "Descricao" }, { name: "status", placeholder: "Status (A=Ativo, I=Inativo)" }] },
+    params: [{ name: "codGrade", placeholder: "Cod. grade" }, { name: "descricao", placeholder: "Descrição" }, { name: "status", placeholder: "Status (A=Ativo, I=Inativo)" }] },
   { path: "unit", label: "Unidade", desc: "Busca unidades de medida", category: "produto",
-    params: [{ name: "codUnidade", placeholder: "Cod. unidade" }, { name: "descUnidade", placeholder: "Descricao" }, { name: "permiteQtdFracionaria", placeholder: "Fracionaria (S/N)" }] },
-  { path: "risk", label: "Risco", desc: "Busca classificacoes de risco", category: "produto",
-    params: [{ name: "codRisco", placeholder: "Cod. risco" }, { name: "descricao", placeholder: "Descricao" }] },
-  { path: "fiscal-classfication", label: "Classificacao Fiscal", desc: "Busca NCM/IPI (paginado)", category: "produto",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codCf", placeholder: "Cod. CF" }, { name: "codIpi", placeholder: "Cod. IPI" }, { name: "descIpi", placeholder: "Descricao" }, { name: "tributado", placeholder: "Tributado (S/N)" }] },
+    params: [{ name: "codUnidade", placeholder: "Cod. unidade" }, { name: "descUnidade", placeholder: "Descrição" }, { name: "permiteQtdFracionaria", placeholder: "Fracionária (S/N)" }] },
+  { path: "risk", label: "Risco", desc: "Busca classificações de risco", category: "produto",
+    params: [{ name: "codRisco", placeholder: "Cod. risco" }, { name: "descricao", placeholder: "Descrição" }] },
+  { path: "fiscal-classfication", label: "Classificação Fiscal", desc: "Busca NCM/IPI (paginado)", category: "produto",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codCf", placeholder: "Cod. CF" }, { name: "codIpi", placeholder: "Cod. IPI" }, { name: "descIpi", placeholder: "Descrição" }, { name: "tributado", placeholder: "Tributado (S/N)" }] },
   { path: "group-limit", label: "Grupo Limite", desc: "Busca grupos de limite (paginado)", category: "produto",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codGrupoLimite", placeholder: "Cod. grupo limite" }, { name: "codMoeda", placeholder: "Cod. moeda" }, { name: "nome", placeholder: "Nome" }, { name: "bloqueiaGrupo", placeholder: "Bloqueia (S/N)" }] },
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codGrupoLimite", placeholder: "Cod. grupo limite" }, { name: "codMoeda", placeholder: "Cod. moeda" }, { name: "nome", placeholder: "Nome" }, { name: "bloqueiaGrupo", placeholder: "Bloqueia (S/N)" }] },
 
   // ── Produto - Dados & Saldo ──
   { path: "list-product", label: "Lista Produtos", desc: "Busca lista de produtos (paginado)", category: "dados",
-    params: [{ name: "page", placeholder: "Pagina (padrao 1)" }, { name: "perPage", placeholder: "Por pagina (padrao 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referencia" }, { name: "descricao", placeholder: "Descricao" }, { name: "dataAlteracao", placeholder: "Data alteracao (YYYY-MM-DD)" }, { name: "enviaEcommerce", placeholder: "Envia ecommerce (S/N)" }] },
-  { path: "list-product-overview", label: "Visao Geral Produtos", desc: "Busca visao geral dos produtos (paginado)", category: "dados",
-    params: [{ name: "page", placeholder: "Pagina (padrao 1)" }, { name: "perPage", placeholder: "Por pagina (padrao 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referencia" }, { name: "descProdutoEst", placeholder: "Descricao" }, { name: "tipoProduto", placeholder: "Tipo (P/K)" }, { name: "statusProduto", placeholder: "Status" }, { name: "codDivisao1", placeholder: "Divisao 1" }, { name: "codDivisao2", placeholder: "Divisao 2" }, { name: "codDivisao3", placeholder: "Divisao 3" }, { name: "codLista", placeholder: "Cod. lista" }, { name: "codLocal", placeholder: "Cod. local" }, { name: "estruturaProduto", placeholder: "Estrutura" }] },
-  { path: "reference", label: "Referencias", desc: "Busca referencias dos produtos (paginado)", category: "dados",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codRef", placeholder: "Cod. referencia" }, { name: "ean", placeholder: "EAN" }, { name: "status", placeholder: "Status" }, { name: "codProdFabricante", placeholder: "Cod. fabricante" }, { name: "ncm", placeholder: "NCM" }, { name: "codGrupoComissionado", placeholder: "Grupo comissionado" }, { name: "enviaEcommerce", placeholder: "Ecommerce (S/N)" }] },
+    params: [{ name: "page", placeholder: "Página (padrão 1)" }, { name: "perPage", placeholder: "Por página (padrão 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referência" }, { name: "descricao", placeholder: "Descrição" }, { name: "dataAlteracao", placeholder: "Data alteração (YYYY-MM-DD)" }, { name: "enviaEcommerce", placeholder: "Envia ecommerce (S/N)" }] },
+  { path: "list-product-overview", label: "Visão Geral Produtos", desc: "Busca visão geral dos produtos (paginado)", category: "dados",
+    params: [{ name: "page", placeholder: "Página (padrão 1)" }, { name: "perPage", placeholder: "Por página (padrão 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referência" }, { name: "descProdutoEst", placeholder: "Descrição" }, { name: "tipoProduto", placeholder: "Tipo (P/K)" }, { name: "statusProduto", placeholder: "Status" }, { name: "codDivisao1", placeholder: "Divisão 1" }, { name: "codDivisao2", placeholder: "Divisão 2" }, { name: "codDivisao3", placeholder: "Divisão 3" }, { name: "codLista", placeholder: "Cod. lista" }, { name: "codLocal", placeholder: "Cod. local" }, { name: "estruturaProduto", placeholder: "Estrutura" }] },
+  { path: "reference", label: "Referências", desc: "Busca referências dos produtos (paginado)", category: "dados",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codRef", placeholder: "Cod. referência" }, { name: "ean", placeholder: "EAN" }, { name: "status", placeholder: "Status" }, { name: "codProdFabricante", placeholder: "Cod. fabricante" }, { name: "ncm", placeholder: "NCM" }, { name: "codGrupoComissionado", placeholder: "Grupo comissionado" }, { name: "enviaEcommerce", placeholder: "Ecommerce (S/N)" }] },
   { path: "balance-v2", label: "Saldo Produto V2", desc: "Busca saldos dos produtos. Tipo: P=Produto, K=Kit", category: "dados",
-    params: [{ name: "page", placeholder: "Pagina (padrao 1)" }, { name: "perPage", placeholder: "Por pagina (padrao 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referencia" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codLocal", placeholder: "Cod. local estoque" }, { name: "tipoProduto", placeholder: "Tipo (P/K)" }] },
-  { path: "promotion", label: "Promocoes", desc: "Busca promocoes de produtos (paginado)", category: "dados",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referencia" }, { name: "dataInicio", placeholder: "Data inicio (YYYY-MM-DD)" }, { name: "dataFim", placeholder: "Data fim (YYYY-MM-DD)" }, { name: "qtdeMin", placeholder: "Qtde minima" }, { name: "qtdeMax", placeholder: "Qtde maxima" }, { name: "qtdePromocao", placeholder: "Qtde promocao" }] },
+    params: [{ name: "page", placeholder: "Página (padrão 1)" }, { name: "perPage", placeholder: "Por página (padrão 50)" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referência" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codLocal", placeholder: "Cod. local estoque" }, { name: "tipoProduto", placeholder: "Tipo (P/K)" }] },
+  { path: "promotion", label: "Promoções", desc: "Busca promoções de produtos (paginado)", category: "dados",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referência" }, { name: "dataInicio", placeholder: "Data início (YYYY-MM-DD)" }, { name: "dataFim", placeholder: "Data fim (YYYY-MM-DD)" }, { name: "qtdeMin", placeholder: "Qtde mínima" }, { name: "qtdeMax", placeholder: "Qtde máxima" }, { name: "qtdePromocao", placeholder: "Qtde promoção" }] },
 
   // ── Financeiro & Operacional ──
-  { path: "currency", label: "Moeda", desc: "Busca moedas disponiveis", category: "financeiro",
-    params: [{ name: "codMoeda", placeholder: "Cod. moeda" }, { name: "descMoeda", placeholder: "Descricao" }] },
-  { path: "payment-condition", label: "Cond. Pagamento", desc: "Busca condicoes de pagamento", category: "financeiro",
-    params: [{ name: "codCondPgto", placeholder: "Cod. condicao" }, { name: "descCondPgto", placeholder: "Descricao" }, { name: "qtdeParcela", placeholder: "Qtde parcelas" }, { name: "qtdeDiasEntreParcelas", placeholder: "Dias entre parcelas" }] },
-  { path: "situation", label: "Situacao", desc: "Busca situacoes de cadastro (status)", category: "financeiro",
-    params: [{ name: "codSituacao", placeholder: "Cod. situacao" }, { name: "nomeSituacao", placeholder: "Nome situacao" }] },
+  { path: "currency", label: "Moeda", desc: "Busca moedas disponíveis", category: "financeiro",
+    params: [{ name: "codMoeda", placeholder: "Cod. moeda" }, { name: "descMoeda", placeholder: "Descrição" }] },
+  { path: "payment-condition", label: "Cond. Pagamento", desc: "Busca condições de pagamento", category: "financeiro",
+    params: [{ name: "codCondPgto", placeholder: "Cod. condição" }, { name: "descCondPgto", placeholder: "Descrição" }, { name: "qtdeParcela", placeholder: "Qtde parcelas" }, { name: "qtdeDiasEntreParcelas", placeholder: "Dias entre parcelas" }] },
+  { path: "situation", label: "Situação", desc: "Busca situações de cadastro (status)", category: "financeiro",
+    params: [{ name: "codSituacao", placeholder: "Cod. situação" }, { name: "nomeSituacao", placeholder: "Nome situação" }] },
   { path: "type-document", label: "Tipo Documento", desc: "Busca tipos de documento", category: "financeiro",
-    params: [{ name: "codDocto", placeholder: "Cod. documento" }, { name: "classe", placeholder: "Classe (S=Saidas, N=Entradas)" }, { name: "descDocumento", placeholder: "Descricao" }] },
+    params: [{ name: "codDocto", placeholder: "Cod. documento" }, { name: "classe", placeholder: "Classe (S=Saídas, N=Entradas)" }, { name: "descDocumento", placeholder: "Descrição" }] },
   { path: "type-moviment", label: "Tipo Movimento", desc: "Busca tipos de movimento", category: "financeiro",
-    params: [{ name: "codTipoMv", placeholder: "Cod. tipo movimento" }, { name: "codDocto", placeholder: "Cod. documento" }, { name: "descricao", placeholder: "Descricao" }] },
+    params: [{ name: "codTipoMv", placeholder: "Cod. tipo movimento" }, { name: "codDocto", placeholder: "Cod. documento" }, { name: "descricao", placeholder: "Descrição" }] },
   { path: "type-register", label: "Tipo Cadastro", desc: "Busca tipos de cadastro", category: "financeiro",
-    params: [{ name: "tipoCadastro", placeholder: "Tipo cadastro" }, { name: "codSituacao", placeholder: "Cod. situacao" }, { name: "descCadastro", placeholder: "Descricao" }] },
-  { path: "sequence", label: "Sequencia", desc: "Busca sequencias de documentos (paginado)", category: "financeiro",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codDocto", placeholder: "Cod. documento" }, { name: "statusSequencia", placeholder: "Status" }] },
+    params: [{ name: "tipoCadastro", placeholder: "Tipo cadastro" }, { name: "codSituacao", placeholder: "Cod. situação" }, { name: "descCadastro", placeholder: "Descrição" }] },
+  { path: "sequence", label: "Sequência", desc: "Busca sequências de documentos (paginado)", category: "financeiro",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codFilial", placeholder: "Cod. filial" }, { name: "codDocto", placeholder: "Cod. documento" }, { name: "statusSequencia", placeholder: "Status" }] },
 
-  // ── Lista de Precos ──
-  { path: "list-price", label: "Lista Preco", desc: "Busca listas de precos", category: "precos",
-    params: [{ name: "codLista", placeholder: "Cod. lista (ou multiplos, virgula)" }, { name: "descLista", placeholder: "Descricao da lista" }] },
-  { path: "list-price-items", label: "Items Lista Preco", desc: "Busca items das listas de precos (paginado)", category: "precos",
-    params: [{ name: "limit", placeholder: "Limite (padrao 50)" }, { name: "offset", placeholder: "Pagina (padrao 1)" }, { name: "codLista", placeholder: "Cod. lista" }, { name: "codMoeda", placeholder: "Cod. moeda" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referencia" }] },
+  // ── Lista de Preços ──
+  { path: "list-price", label: "Lista Preço", desc: "Busca listas de preços", category: "precos",
+    params: [{ name: "codLista", placeholder: "Cod. lista (ou múltiplos, vírgula)" }, { name: "descLista", placeholder: "Descrição da lista" }] },
+  { path: "list-price-items", label: "Itens Lista Preço", desc: "Busca itens das listas de preços (paginado)", category: "precos",
+    params: [{ name: "limit", placeholder: "Limite (padrão 50)" }, { name: "offset", placeholder: "Página (padrão 1)" }, { name: "codLista", placeholder: "Cod. lista" }, { name: "codMoeda", placeholder: "Cod. moeda" }, { name: "codProduto", placeholder: "Cod. produto" }, { name: "codRef", placeholder: "Cod. referência" }] },
 
   // ── Rastreio ──
-  { path: "tracking", label: "Rastreio", desc: "Busca rastreio pelo numero do pedido do site", category: "rastreio",
-    params: [{ name: "_pathId", placeholder: "ID do pedido *", hint: "Parametro de path obrigatorio" }] },
+  { path: "tracking", label: "Rastreio", desc: "Busca rastreio pelo número do pedido do site", category: "rastreio",
+    params: [{ name: "_pathId", placeholder: "ID do pedido *", hint: "Parâmetro de path obrigatório" }] },
 ];
 
 interface SigeDepModuleProps {
@@ -140,9 +140,9 @@ export function SigeDepModule({ isConnected }: SigeDepModuleProps) {
   const [searchFilter, setSearchFilter] = useState("");
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const selectEndpoint = (ep: DepEndpoint) => {
@@ -217,7 +217,7 @@ export function SigeDepModule({ isConnected }: SigeDepModuleProps) {
         <div className="text-left flex-1">
           <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Dependencias</h4>
           <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>
-            Tabelas auxiliares, saldos, referencias e rastreio — {ENDPOINTS.length} endpoints
+            Tabelas auxiliares, saldos, referências e rastreio — {ENDPOINTS.length} endpoints
           </p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
@@ -376,7 +376,7 @@ export function SigeDepModule({ isConnected }: SigeDepModuleProps) {
           <div className="space-y-2">
             <div className="flex items-center gap-3 mb-2">
               <p className="text-gray-500" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
-                Documentacao dos endpoints ({ENDPOINTS.length} total)
+                Documentação dos endpoints ({ENDPOINTS.length} total)
               </p>
               <div className="relative flex-1 max-w-[220px]">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />

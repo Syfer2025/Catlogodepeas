@@ -1,1 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Self-hosted Inter Variable font — eliminates Google Fonts external dependency */
+/* This removes 2 DNS lookups (fonts.googleapis.com + fonts.gstatic.com) and */
+/* avoids render-blocking / FOIT/FOUT from the external stylesheet. */
+@import '@fontsource-variable/inter';
+
+/* Override font-display to swap — prevents FOIT (invisible text during load).
+   The browser shows fallback system font immediately, then swaps to Inter
+   once it's downloaded. This eliminates render-blocking text. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-display: swap;
+  src: local('Inter Variable');
+}

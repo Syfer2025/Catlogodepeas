@@ -128,8 +128,11 @@ export function AdminResetPasswordPage() {
 
   // ─── Password validation ───
   const validatePassword = (): string | null => {
-    if (newPassword.length < 6) return "A senha deve ter pelo menos 6 caracteres.";
-    if (newPassword !== confirmPassword) return "As senhas nao coincidem.";
+    if (newPassword.length < 8) return "A senha deve ter pelo menos 8 caracteres.";
+    if (!/[A-Z]/.test(newPassword)) return "A senha deve conter pelo menos uma letra maiúscula.";
+    if (!/[a-z]/.test(newPassword)) return "A senha deve conter pelo menos uma letra minúscula.";
+    if (!/[0-9]/.test(newPassword)) return "A senha deve conter pelo menos um número.";
+    if (newPassword !== confirmPassword) return "As senhas não coincidem.";
     return null;
   };
 
@@ -145,7 +148,7 @@ export function AdminResetPasswordPage() {
 
     const rid = ridRef.current;
     if (!rid) {
-      setError("Sessao de recuperacao perdida. Tente novamente.");
+      setError("Sessão de recuperação perdida. Tente novamente.");
       setMode("no-session");
       return;
     }
@@ -182,8 +185,8 @@ export function AdminResetPasswordPage() {
       setMode("success");
       setTimeout(() => navigate("/admin"), 3000);
     } catch (err: any) {
-      console.error("Excecao ao redefinir senha:", err);
-      setError(err.message || "Erro de conexao. Tente novamente.");
+      console.error("Exceção ao redefinir senha:", err);
+      setError(err.message || "Erro de conexão. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -193,13 +196,13 @@ export function AdminResetPasswordPage() {
   const getStrength = () => {
     if (!newPassword) return { level: 0, label: "", color: "" };
     let s = 0;
-    if (newPassword.length >= 6) s++;
     if (newPassword.length >= 8) s++;
+    if (newPassword.length >= 12) s++;
     if (/[A-Z]/.test(newPassword)) s++;
     if (/[0-9]/.test(newPassword)) s++;
     if (/[^A-Za-z0-9]/.test(newPassword)) s++;
     if (s <= 1) return { level: 1, label: "Fraca", color: "bg-red-500" };
-    if (s <= 2) return { level: 2, label: "Razoavel", color: "bg-orange-500" };
+    if (s <= 2) return { level: 2, label: "Razoável", color: "bg-orange-500" };
     if (s <= 3) return { level: 3, label: "Boa", color: "bg-yellow-500" };
     if (s <= 4) return { level: 4, label: "Forte", color: "bg-green-500" };
     return { level: 5, label: "Excelente", color: "bg-emerald-500" };
@@ -209,9 +212,9 @@ export function AdminResetPasswordPage() {
 
   const subtitle =
     mode === "waiting"
-      ? "Aguardando verificacao por email"
+      ? "Aguardando verificação por e-mail"
       : mode === "no-session"
-      ? "Sessao nao encontrada"
+      ? "Sessão não encontrada"
       : mode === "success"
       ? "Senha alterada com sucesso!"
       : "Defina sua nova senha de acesso";
@@ -240,7 +243,7 @@ export function AdminResetPasswordPage() {
               {logoUrl ? (
                 <img
                   src={logoUrl}
-                  alt="Carretao Auto Pecas"
+                  alt="Carretão Auto Peças"
                   className="h-14 w-auto max-w-[220px] object-contain"
                   onError={() => {
                     setLogoUrl(null);
@@ -273,11 +276,11 @@ export function AdminResetPasswordPage() {
                   <div className="absolute inset-0 border-3 border-gray-700 border-t-red-500 rounded-full animate-spin" />
                 </div>
                 <p className="text-gray-300 mb-2" style={{ fontSize: "0.95rem", fontWeight: 500 }}>
-                  Aguardando verificacao...
+                  Aguardando verificação...
                 </p>
                 <p className="text-gray-500 leading-relaxed" style={{ fontSize: "0.8rem" }}>
-                  Abra seu email e clique no link de recuperacao que enviamos.
-                  Esta pagina detectara automaticamente quando voce clicar.
+                  Abra seu e-mail e clique no link de recuperação que enviamos.
+                  Esta página detectará automaticamente quando você clicar.
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-2 text-gray-600" style={{ fontSize: "0.75rem" }}>
                   <div className="w-2 h-2 bg-red-500/60 rounded-full animate-pulse" />
@@ -293,10 +296,10 @@ export function AdminResetPasswordPage() {
                 <div className="bg-red-900/30 border border-red-800/50 rounded-xl p-5 mb-5">
                   <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
                   <p className="text-red-300 mb-1" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
-                    Sessao de recuperacao nao encontrada
+                    Sessão de recuperação não encontrada
                   </p>
                   <p className="text-red-400/70" style={{ fontSize: "0.8rem" }}>
-                    Use o botao "Esqueci minha senha" na tela de login para iniciar o processo.
+                    Use o botão "Esqueci minha senha" na tela de login para iniciar o processo.
                   </p>
                 </div>
                 <Link
@@ -339,7 +342,7 @@ export function AdminResetPasswordPage() {
                         type={showPassword ? "text" : "password"}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Minimo 6 caracteres"
+                        placeholder="Mínimo 8 caracteres"
                         className="w-full pl-11 pr-12 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-500 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
                         style={{ fontSize: "0.9rem" }}
                         autoComplete="new-password"
@@ -358,7 +361,7 @@ export function AdminResetPasswordPage() {
                           ))}
                         </div>
                         <p className="text-gray-500" style={{ fontSize: "0.7rem" }}>
-                          Forca: <span className="text-gray-400">{strength.label}</span>
+                          Força: <span className="text-gray-400">{strength.label}</span>
                         </p>
                       </div>
                     )}
@@ -392,7 +395,7 @@ export function AdminResetPasswordPage() {
                       </button>
                     </div>
                     {confirmPassword && confirmPassword !== newPassword && (
-                      <p className="text-red-400 mt-1.5" style={{ fontSize: "0.75rem" }}>As senhas nao coincidem</p>
+                      <p className="text-red-400 mt-1.5" style={{ fontSize: "0.75rem" }}>As senhas não coincidem</p>
                     )}
                   </div>
 
@@ -427,7 +430,7 @@ export function AdminResetPasswordPage() {
                     Senha redefinida com sucesso!
                   </p>
                   <p className="text-green-400/70" style={{ fontSize: "0.8rem" }}>
-                    Voce sera redirecionado ao painel em instantes...
+                    Você será redirecionado ao painel em instantes...
                   </p>
                 </div>
                 <Loader2 className="w-5 h-5 text-green-500 animate-spin mx-auto" />

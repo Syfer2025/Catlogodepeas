@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { PagHiperConfig, PagHiperTransaction } from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
@@ -32,9 +33,8 @@ import {
    ═══════════════════════════════════════════════ */
 
 async function getToken(): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  if (!token) throw new Error("Sessao expirada. Faca login novamente.");
+  const token = await getValidAdminToken();
+  if (!token) throw new Error("Sessão expirada. Faça login novamente.");
   return token;
 }
 
@@ -103,9 +103,9 @@ export function AdminPagHiper() {
       {/* Nav */}
       <div className="bg-white rounded-xl border border-gray-200 p-1.5 flex gap-1 overflow-x-auto">
         {([
-          { id: "config" as const, label: "Configuracao", icon: CreditCard },
-          { id: "transactions" as const, label: "Transacoes", icon: FileText },
-          { id: "new-charge" as const, label: "Nova Cobranca", icon: Plus },
+          { id: "config" as const, label: "Configuração", icon: CreditCard },
+          { id: "transactions" as const, label: "Transações", icon: FileText },
+          { id: "new-charge" as const, label: "Nova Cobrança", icon: Plus },
         ]).map((item) => (
           <button
             key={item.id}
@@ -164,7 +164,7 @@ function PagHiperConfigSection() {
 
   const handleSave = async () => {
     if (!apiKey.trim() || !token.trim()) {
-      setError("API Key e Token sao obrigatorios.");
+      setError("API Key e Token são obrigatórios.");
       return;
     }
     setSaving(true);
@@ -237,7 +237,7 @@ function PagHiperConfigSection() {
           <>
             <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0" />
             <div>
-              <p className="text-yellow-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>PagHiper Nao Configurado</p>
+              <p className="text-yellow-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>PagHiper Não Configurado</p>
               <p className="text-yellow-600" style={{ fontSize: "0.78rem" }}>
                 Insira sua API Key e Token para habilitar pagamentos.
               </p>
@@ -266,7 +266,7 @@ function PagHiperConfigSection() {
               type={showApiKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={config?.configured ? "••••••••• (ja configurado)" : "Insira sua API Key"}
+              placeholder={config?.configured ? "••••••••• (já configurado)" : "Insira sua API Key"}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all pr-10"
               style={{ fontSize: "0.85rem" }}
             />
@@ -287,7 +287,7 @@ function PagHiperConfigSection() {
               type={showToken ? "text" : "password"}
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder={config?.configured ? "••••••••• (ja configurado)" : "Insira seu Token"}
+              placeholder={config?.configured ? "••••••••• (já configurado)" : "Insira seu Token"}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all pr-10"
               style={{ fontSize: "0.85rem" }}
             />
@@ -343,9 +343,9 @@ function PagHiperConfigSection() {
 
       {/* Notification URL info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
-        <p className="text-blue-700 mb-1" style={{ fontSize: "0.85rem", fontWeight: 500 }}>URL de Notificacao (Webhook)</p>
+        <p className="text-blue-700 mb-1" style={{ fontSize: "0.85rem", fontWeight: 500 }}>URL de Notificação (Webhook)</p>
         <p className="text-blue-600 mb-2" style={{ fontSize: "0.78rem" }}>
-          Configure esta URL no painel do PagHiper para receber notificacoes automaticas de pagamento:
+          Configure esta URL no painel do PagHiper para receber notificações automáticas de pagamento:
         </p>
         <div className="flex items-center gap-2">
           <code className="flex-1 bg-white border border-blue-200 rounded px-3 py-2 text-blue-800 break-all" style={{ fontSize: "0.78rem" }}>
@@ -410,7 +410,7 @@ function TransactionsSection() {
   };
 
   const cancelTx = async (tx: PagHiperTransaction) => {
-    if (!confirm(`Cancelar transacao ${tx.transaction_id}?`)) return;
+    if (!confirm(`Cancelar transação ${tx.transaction_id}?`)) return;
     setCancelingId(tx.transaction_id);
     try {
       const tk = await getToken();
@@ -518,7 +518,7 @@ function TransactionsSection() {
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500" style={{ fontSize: "0.9rem" }}>
-            {transactions.length === 0 ? "Nenhuma transacao registrada." : "Nenhuma transacao encontrada com os filtros aplicados."}
+            {transactions.length === 0 ? "Nenhuma transação registrada." : "Nenhuma transação encontrada com os filtros aplicados."}
           </p>
         </div>
       ) : (
@@ -586,7 +586,7 @@ function TransactionsSection() {
                       <p className="text-gray-800" style={{ fontSize: "0.82rem" }}>{tx.payer_cpf_cnpj}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500" style={{ fontSize: "0.72rem" }}>Data Criacao</p>
+                      <p className="text-gray-500" style={{ fontSize: "0.72rem" }}>Data Criação</p>
                       <p className="text-gray-800" style={{ fontSize: "0.82rem" }}>{formatDate(tx.created_at)}</p>
                     </div>
                     {tx.paid_date && (
@@ -600,7 +600,7 @@ function TransactionsSection() {
                   {/* PIX specific */}
                   {tx.type === "pix" && tx.emv && (
                     <div>
-                      <p className="text-gray-500 mb-1" style={{ fontSize: "0.72rem" }}>Codigo PIX (Copia e Cola)</p>
+                      <p className="text-gray-500 mb-1" style={{ fontSize: "0.72rem" }}>Código PIX (Copia e Cola)</p>
                       <div className="flex items-center gap-2">
                         <code className="flex-1 bg-white border border-gray-200 rounded px-3 py-2 text-gray-700 break-all" style={{ fontSize: "0.75rem" }}>
                           {tx.emv}
@@ -620,7 +620,7 @@ function TransactionsSection() {
                     <div className="space-y-2">
                       {tx.bank_slip.digitable_line && (
                         <div>
-                          <p className="text-gray-500 mb-1" style={{ fontSize: "0.72rem" }}>Linha Digitavel</p>
+                          <p className="text-gray-500 mb-1" style={{ fontSize: "0.75rem" }}>Linha Digitável</p>
                           <div className="flex items-center gap-2">
                             <code className="flex-1 bg-white border border-gray-200 rounded px-3 py-2 text-gray-700 break-all" style={{ fontSize: "0.75rem" }}>
                               {tx.bank_slip.digitable_line}
@@ -724,13 +724,13 @@ function NewChargeSection() {
     setResult(null);
 
     if (!orderId.trim() || !payerName.trim() || !payerEmail.trim() || !payerCpf.trim() || !itemPrice.trim()) {
-      setError("Preencha todos os campos obrigatorios.");
+      setError("Preencha todos os campos obrigatórios.");
       return;
     }
 
     const priceCents = Math.round(parseFloat(itemPrice.replace(",", ".")) * 100);
     if (isNaN(priceCents) || priceCents <= 0) {
-      setError("Valor invalido.");
+      setError("Valor inválido.");
       return;
     }
 
@@ -773,7 +773,7 @@ function NewChargeSection() {
         setResult({ type: "boleto", ...res });
       }
     } catch (e: any) {
-      setError(e.message || "Erro ao criar cobranca.");
+      setError(e.message || "Erro ao criar cobrança.");
       console.error("[PagHiper] Create charge error:", e);
     } finally {
       setCreating(false);
@@ -784,7 +784,7 @@ function NewChargeSection() {
     <div className="space-y-4">
       {/* Type selector */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-gray-700 mb-3" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Tipo de Cobranca</p>
+        <p className="text-gray-700 mb-3" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Tipo de Cobrança</p>
         <div className="flex gap-3">
           <button
             onClick={() => setChargeType("pix")}
@@ -795,7 +795,7 @@ function NewChargeSection() {
             <QrCode className={`w-6 h-6 ${chargeType === "pix" ? "text-green-600" : "text-gray-400"}`} />
             <div className="text-left">
               <p className={chargeType === "pix" ? "text-green-700" : "text-gray-700"} style={{ fontSize: "0.9rem", fontWeight: 600 }}>PIX</p>
-              <p className="text-gray-400" style={{ fontSize: "0.75rem" }}>Pagamento instantaneo</p>
+              <p className="text-gray-400" style={{ fontSize: "0.75rem" }}>Pagamento instantâneo</p>
             </div>
           </button>
           <button
@@ -807,7 +807,7 @@ function NewChargeSection() {
             <FileText className={`w-6 h-6 ${chargeType === "boleto" ? "text-blue-600" : "text-gray-400"}`} />
             <div className="text-left">
               <p className={chargeType === "boleto" ? "text-blue-700" : "text-gray-700"} style={{ fontSize: "0.9rem", fontWeight: 600 }}>Boleto</p>
-              <p className="text-gray-400" style={{ fontSize: "0.75rem" }}>Boleto bancario</p>
+              <p className="text-gray-400" style={{ fontSize: "0.75rem" }}>Boleto bancário</p>
             </div>
           </button>
         </div>
@@ -816,7 +816,7 @@ function NewChargeSection() {
       {/* Form */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
         <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
-          Dados da Cobranca
+          Dados da Cobrança
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -878,7 +878,7 @@ function NewChargeSection() {
         {/* Boleto address */}
         {chargeType === "boleto" && (
           <>
-            <h4 className="text-gray-700 pt-2" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Endereco (Boleto)</h4>
+            <h4 className="text-gray-700 pt-2" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Endereço (Boleto)</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Rua</label>
@@ -887,7 +887,7 @@ function NewChargeSection() {
                   style={{ fontSize: "0.85rem" }} />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Numero</label>
+                <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Número</label>
                 <input type="text" value={payerNumber} onChange={(e) => setPayerNumber(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all"
                   style={{ fontSize: "0.85rem" }} />
@@ -926,10 +926,10 @@ function NewChargeSection() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-1">
             <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-              Descricao
+              Descrição
             </label>
             <input type="text" value={itemDesc} onChange={(e) => setItemDesc(e.target.value)}
-              placeholder="Descricao do item"
+              placeholder="Descrição do item"
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all"
               style={{ fontSize: "0.85rem" }} />
           </div>
@@ -941,7 +941,7 @@ function NewChargeSection() {
           </div>
           <div>
             <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-              Valor unitario (R$) <span className="text-red-500">*</span>
+              Valor unitário (R$) <span className="text-red-500">*</span>
             </label>
             <input type="text" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)}
               placeholder="99,90"
@@ -974,7 +974,7 @@ function NewChargeSection() {
           ) : (
             <FileText className="w-4 h-4" />
           )}
-          {creating ? "Criando..." : `Criar Cobranca ${chargeType === "pix" ? "PIX" : "Boleto"}`}
+          {creating ? "Criando..." : `Criar Cobrança ${chargeType === "pix" ? "PIX" : "Boleto"}`}
         </button>
       </div>
 
@@ -986,7 +986,7 @@ function NewChargeSection() {
           <div className="flex items-center gap-2">
             <CheckCircle2 className={`w-5 h-5 ${result.type === "pix" ? "text-green-600" : "text-blue-600"}`} />
             <h3 className={result.type === "pix" ? "text-green-800" : "text-blue-800"} style={{ fontSize: "1rem", fontWeight: 600 }}>
-              Cobranca criada com sucesso!
+              Cobrança criada com sucesso!
             </h3>
           </div>
 
@@ -1018,7 +1018,7 @@ function NewChargeSection() {
               />
               {result.emv && (
                 <div className="w-full">
-                  <p className="text-gray-500 text-center mb-2" style={{ fontSize: "0.75rem" }}>Codigo Copia e Cola:</p>
+                  <p className="text-gray-500 text-center mb-2" style={{ fontSize: "0.75rem" }}>Código Copia e Cola:</p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-700 break-all" style={{ fontSize: "0.72rem" }}>
                       {result.emv}
@@ -1040,7 +1040,7 @@ function NewChargeSection() {
             <div className="space-y-3 bg-white rounded-xl p-6 border border-blue-200">
               {result.bank_slip.digitable_line && (
                 <div>
-                  <p className="text-gray-500 mb-1" style={{ fontSize: "0.75rem" }}>Linha Digitavel:</p>
+                  <p className="text-gray-500 mb-1" style={{ fontSize: "0.75rem" }}>Linha Digitável:</p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-700 break-all" style={{ fontSize: "0.75rem" }}>
                       {result.bank_slip.digitable_line}

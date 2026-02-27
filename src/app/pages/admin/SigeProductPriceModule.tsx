@@ -20,9 +20,9 @@ import {
   Zap,
   ArrowRight,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
+import { getValidAdminToken } from "./adminAuth";
 
 interface Props {
   isConnected: boolean;
@@ -57,9 +57,9 @@ export function SigeProductPriceModule({ isConnected }: Props) {
   const [cacheMsg, setCacheMsg] = useState("");
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -105,7 +105,7 @@ export function SigeProductPriceModule({ isConnected }: Props) {
     const trimmed = sku.trim();
     const priceVal = parseFloat(customPrice);
     if (!trimmed) { setCustomMsg("Informe o SKU."); return; }
-    if (isNaN(priceVal) || priceVal <= 0) { setCustomMsg("Informe um preco valido."); return; }
+    if (isNaN(priceVal) || priceVal <= 0) { setCustomMsg("Informe um preço válido."); return; }
     setSettingCustom(true); setCustomMsg("");
     try {
       const token = await getAccessToken();
@@ -170,7 +170,7 @@ export function SigeProductPriceModule({ isConnected }: Props) {
         </div>
         <div className="text-left flex-1">
           <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Preco</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Consultar precos por SKU com V1/V2/V3, custom e cache — 4 endpoints</p>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Consultar preços por SKU com V1/V2/V3, custom e cache — 4 endpoints</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -185,7 +185,7 @@ export function SigeProductPriceModule({ isConnected }: Props) {
           {!isConnected && (
             <p className="text-amber-600 flex items-center gap-1.5" style={{ fontSize: "0.75rem" }}>
               <AlertTriangle className="w-3.5 h-3.5" />
-              Conecte-se ao SIGE primeiro para buscar precos do ERP. Precos custom funcionam sem conexao.
+              Conecte-se ao SIGE primeiro para buscar preços do ERP. Preços custom funcionam sem conexão.
             </p>
           )}
 
@@ -194,32 +194,32 @@ export function SigeProductPriceModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-amber-600 hover:text-amber-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de endpoints
+            {showHelp ? "Ocultar" : "Ver"} referência de endpoints
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
           {showHelp && (
             <div className="bg-gray-900 rounded-lg p-3">
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
-                <code>{`GET  /produtos/preco/:sku     — Busca preco (custom > SIGE)
-PUT  /produtos/preco/:sku     — Define preco custom (admin)
-DEL  /produtos/preco/:sku     — Remove preco custom (admin)
-GET  /produtos/custom-prices  — Lista todos os precos custom
-DEL  /price-cache             — Limpa cache de precos
-GET  /sige/list-price         — Lista tabelas de preco do SIGE
-GET  /sige/list-price-items   — Itens de lista de preco (por codProduto)
+                <code>{`GET  /produtos/preco/:sku     — Busca preço (custom > SIGE)
+PUT  /produtos/preco/:sku     — Define preço custom (admin)
+DEL  /produtos/preco/:sku     — Remove preço custom (admin)
+GET  /produtos/custom-prices  — Lista todos os preços custom
+DEL  /price-cache             — Limpa cache de preços
+GET  /sige/list-price         — Lista tabelas de preço do SIGE
+GET  /sige/list-price-items   — Itens de lista de preço (por codProduto)
 
-Estrategias de busca (em ordem):
-  1. Preco custom (price_custom_<sku>)
+Estratégias de busca (em ordem):
+  1. Preço custom (price_custom_<sku>)
   2. Cache (10min found / 2min not found)
   3. Encontrar produto: mapping > codProduto > base > clean
-  4. Buscar precos: GET /list-price-items?codProduto={id}
+  4. Buscar preços: GET /list-price-items?codProduto={id}
   5. Mapear listas para V1/V2/V3 (config ou auto)
 
-Fonte de precos:
+Fonte de preços:
   SIGE /list-price-items retorna itens por codLista.
-  Cada codLista e mapeado para V1, V2 ou V3.
-  Configure o mapeamento em Config > Precos.
+  Cada codLista é mapeado para V1, V2 ou V3.
+  Configure o mapeamento em Config > Preços.
   Sem mapeamento: auto-atribui por ordem de codLista.`}</code>
               </pre>
             </div>
@@ -253,7 +253,7 @@ Fonte de precos:
               </div>
               <div className="p-3 space-y-3">
                 <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                  Busca o preco de um produto por SKU. Verifica preco custom, cache e depois consulta o SIGE com multiplas estrategias.
+                  Busca o preço de um produto por SKU. Verifica preço custom, cache e depois consulta o SIGE com múltiplas estratégias.
                 </p>
 
                 <div className="flex items-center gap-2">
@@ -299,7 +299,7 @@ Fonte de precos:
                           )}
                           <span className={`font-semibold ${result.found ? "text-green-800" : "text-gray-600"}`}
                             style={{ fontSize: "0.88rem" }}>
-                            {result.found ? "Preco encontrado" : "Preco nao encontrado"}
+                            {result.found ? "Preço encontrado" : "Preço não encontrado"}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -361,7 +361,7 @@ Fonte de precos:
                       <div className="mt-3 space-y-1">
                         {result.descricao && (
                           <div className="flex items-center gap-2 text-gray-600" style={{ fontSize: "0.75rem" }}>
-                            <span className="text-gray-400 shrink-0">Descricao:</span>
+                            <span className="text-gray-400 shrink-0">Descrição:</span>
                             <span className="font-medium truncate">{result.descricao}</span>
                           </div>
                         )}
@@ -375,7 +375,7 @@ Fonte de precos:
                           <div className="flex items-center gap-2 text-gray-600" style={{ fontSize: "0.75rem" }}>
                             <span className="text-gray-400 shrink-0">showPrice:</span>
                             <span className={result.showPrice ? "text-green-600" : "text-red-500"}>
-                              {result.showPrice ? "Sim (preco visivel)" : "Nao (preco oculto)"}
+                              {result.showPrice ? "Sim (preço visível)" : "Não (preço oculto)"}
                             </span>
                           </div>
                         )}
@@ -393,7 +393,7 @@ Fonte de precos:
                           {/* Price list items found */}
                           <p className="text-gray-500 flex items-center gap-1" style={{ fontSize: "0.68rem", fontWeight: 600 }}>
                             <Database className="w-3 h-3" />
-                            Listas de preco SIGE: {result._priceListItems ?? 0} item(ns) via <code className="bg-gray-100 px-1 rounded">GET /list-price-items</code>
+                            Listas de preço SIGE: {result._priceListItems ?? 0} item(ns) via <code className="bg-gray-100 px-1 rounded">GET /list-price-items</code>
                           </p>
 
                           {/* Detected list codes with prices */}
@@ -475,8 +475,8 @@ Fonte de precos:
                             <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-100 rounded-lg">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                               <p className="text-amber-700" style={{ fontSize: "0.72rem" }}>
-                                Nenhum item de lista de preco encontrado para este produto no SIGE.
-                                Verifique se o produto possui precos cadastrados em alguma lista de preco no SIGE
+                                Nenhum item de lista de preço encontrado para este produto no SIGE.
+                                Verifique se o produto possui preços cadastrados em alguma lista de preço no SIGE
                                 (<code className="bg-amber-100 px-1 rounded">GET /list-price-items?codProduto={result.sigeId}</code>).
                               </p>
                             </div>
@@ -489,7 +489,7 @@ Fonte de precos:
                     <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-lg space-y-2">
                       <p className="text-purple-700 flex items-center gap-1.5" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
                         <DollarSign className="w-3.5 h-3.5" />
-                        Gerenciar preco custom para {sku.trim()}
+                        Gerenciar preço custom para {sku.trim()}
                       </p>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
@@ -558,7 +558,7 @@ Fonte de precos:
               </div>
               <div className="p-3 space-y-3">
                 <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                  Consulte precos de varios SKUs de uma vez. Separe por linha, virgula ou ponto-e-virgula.
+                  Consulte preços de vários SKUs de uma vez. Separe por linha, vírgula ou ponto-e-vírgula.
                 </p>
 
                 <textarea value={batchSkus} onChange={(e) => setBatchSkus(e.target.value)}
@@ -659,7 +659,7 @@ Fonte de precos:
           <div className="flex items-center gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
             <div className="flex-1">
               <p className="text-blue-700" style={{ fontSize: "0.75rem" }}>
-                <strong>Cache de precos:</strong> 10 min para encontrados, 2 min para nao encontrados.
+                <strong>Cache de preços:</strong> 10 min para encontrados, 2 min para não encontrados.
               </p>
               {cacheMsg && (
                 <p className={`mt-1 ${cacheMsg.startsWith("Erro") ? "text-red-600" : "text-green-600"}`}

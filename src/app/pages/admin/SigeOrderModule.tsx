@@ -17,7 +17,7 @@ import {
   FileDigit,
   ToggleLeft,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -85,7 +85,7 @@ const STATUS_OPTIONS = [
 const STATUS_CTB_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "S", label: "S - Faturado" },
-  { value: "N", label: "N - Nao Faturado" },
+  { value: "N", label: "N - Não Faturado" },
 ];
 
 export function SigeOrderModule({ isConnected }: Props) {
@@ -131,9 +131,9 @@ export function SigeOrderModule({ isConnected }: Props) {
   const [showFilters, setShowFilters] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -294,13 +294,13 @@ export function SigeOrderModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`// Regras de filtros do GET /order:
 // status:    A=Aberto | C=Cancelado | F=Faturado | N=?
-// statusCtb: S=Faturado | N=Nao Faturado
+// statusCtb: S=Faturado | N=Não Faturado
 // dataMovto: YYYY-MM-DD (>=data) ou YYYY-MM-DD,YYYY-MM-DD (entre)
-// limit: max 50 (padrao) | offset: pagina (padrao 1)
+// limit: max 50 (padrão) | offset: página (padrão 1)
 
-// POST /order — campos obrigatorios:
+// POST /order — campos obrigatórios:
 //   codCliFor, codTipoMv, items[]
-// Tags opcionais usam config padrao do SIGE se omitidas
+// Tags opcionais usam config padrão do SIGE se omitidas
 // codVendComp: buscar em /customer tipoCadastro>V
 // codTransportador1: buscar em /customer tipoCadastro>T
 
@@ -320,7 +320,7 @@ export function SigeOrderModule({ isConnected }: Props) {
               </div>
               <div className="p-3 space-y-3">
                 <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                  Busca pedidos (orders) com ate 17 filtros opcionais.
+                  Busca pedidos (orders) com até 17 filtros opcionais.
                 </p>
 
                 {/* Basic filters */}
@@ -506,7 +506,7 @@ export function SigeOrderModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra um novo pedido. Campos obrigatorios: <code className="bg-gray-100 px-1 rounded">codCliFor</code>,
+                    Cadastra um novo pedido. Campos obrigatórios: <code className="bg-gray-100 px-1 rounded">codCliFor</code>,
                     <code className="bg-gray-100 px-1 rounded ml-1">codTipoMv</code>,
                     <code className="bg-gray-100 px-1 rounded ml-1">items[]</code>.
                   </p>
@@ -538,10 +538,10 @@ export function SigeOrderModule({ isConnected }: Props) {
 
               <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
                 <p className="text-orange-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Dica:</strong> Campos obrigatorios: <code className="bg-orange-100 px-1 rounded">codCliFor</code>,
+                  <strong>Dica:</strong> Campos obrigatórios: <code className="bg-orange-100 px-1 rounded">codCliFor</code>,
                   <code className="bg-orange-100 px-1 rounded mx-1">codTipoMv</code> e
                   <code className="bg-orange-100 px-1 rounded">items[]</code>.
-                  Demais tags usam configuracoes padrao do SIGE se omitidas. Use <code className="bg-orange-100 px-1 rounded">/customer</code> com
+                  Demais tags usam configurações padrão do SIGE se omitidas. Use <code className="bg-orange-100 px-1 rounded">/customer</code> com
                   tipoCadastro V/T para obter codVendComp e codTransportador1.
                 </p>
               </div>

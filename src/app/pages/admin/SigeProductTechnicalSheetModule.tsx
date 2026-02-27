@@ -16,7 +16,7 @@ import {
   Tag,
   Type,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -58,9 +58,9 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -159,7 +159,7 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
         </div>
         <div className="text-left flex-1">
           <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Ficha Tecnica</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Observacoes/textos por referencia do produto — 3 endpoints</p>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Observações/textos por referência do produto — 3 endpoints</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -208,16 +208,16 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
           {showHelp && (
             <div className="bg-gray-900 rounded-lg p-3">
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
-                <code>{`// Ficha Tecnica = observacoes ("Texto") por referencia
+                <code>{`// Ficha Técnica = observações ("Texto") por referência
 
 // GET  /product/{id}/technical-sheet
-//   Filtros: codRef (multiplos por virgula), texto (similar/igual)
+//   Filtros: codRef (múltiplos por vírgula), texto (similar/igual)
 
 // POST /product/{id}/technical-sheet
 // PUT  /product/{id}/technical-sheet
 //   Body: { "codRef": "", "texto": "" }
 
-// Nao envie tags desnecessarias no body.`}</code>
+// Não envie tags desnecessárias no body.`}</code>
               </pre>
             </div>
           )}
@@ -232,7 +232,7 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
               </div>
               <div className="p-3 space-y-3">
                 <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                  Busca as observacoes (textos) do produto por referencia.
+                  Busca as observações (textos) do produto por referência.
                 </p>
 
                 <div className="relative">
@@ -283,7 +283,7 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra uma ficha tecnica (texto) para uma referencia do produto.
+                    Cadastra uma ficha técnica (texto) para uma referência do produto.
                   </p>
 
                   <div className="relative">
@@ -325,7 +325,7 @@ export function SigeProductTechnicalSheetModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Atualiza a ficha tecnica (texto) de uma referencia do produto.
+                    Atualiza a ficha técnica (texto) de uma referência do produto.
                   </p>
 
                   <div className="relative">

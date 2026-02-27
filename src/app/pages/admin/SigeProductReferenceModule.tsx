@@ -17,7 +17,7 @@ import {
   ToggleLeft,
   ShoppingCart,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -92,9 +92,9 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -123,7 +123,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
       const res = await api.sigeProductReferenceCreate(token, cProductId.trim(), body);
       setCreateResult(res);
     } catch (e: any) {
-      setCreateError(e.message || "Erro ao cadastrar referencia.");
+      setCreateError(e.message || "Erro ao cadastrar referência.");
     } finally { setCreating(false); }
   };
 
@@ -137,7 +137,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
       const res = await api.sigeProductReferenceUpdate(token, uProductId.trim(), body);
       setUpdateResult(res);
     } catch (e: any) {
-      setUpdateError(e.message || "Erro ao alterar referencia.");
+      setUpdateError(e.message || "Erro ao alterar referência.");
     } finally { setUpdating(false); }
   };
 
@@ -193,8 +193,8 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
           <Bookmark className="w-5 h-5 text-indigo-600" />
         </div>
         <div className="text-left flex-1">
-          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Referencia</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar, cadastrar e alterar referencias do produto — 3 endpoints</p>
+          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Referência</h4>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar, cadastrar e alterar referências do produto — 3 endpoints</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -238,28 +238,28 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de campos
+            {showHelp ? "Ocultar" : "Ver"} referência de campos
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
           {showHelp && (
             <div className="bg-gray-900 rounded-lg p-3">
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
-                <code>{`// Campos da Referencia do Produto
+                <code>{`// Campos da Referência do Produto
 {
-  "codRef": "",              // codigo da referencia
-  "pesoBruto": 0,            // peso bruto (numerico)
-  "pesoLiquido": 0,          // peso liquido (numerico)
-  "ean": "",                 // codigo EAN/barras
-  "status": "",              // A=Ativo | I=Inativo | O=Inventario
-  "codProdFabricante": "",   // codigo do fabricante
-  "controlaLote": "",        // S=Sim | N=Nao
-  "composicao": "",          // S=Sim | N=Nao
-  "observacao1": "",         // observacao livre 1
-  "observacao2": "",         // observacao livre 2
-  "ncm": "",                 // NCM (classificacao fiscal)
-  "comissionado": "",        // S=Sim | N=Nao
-  "codGrupoComissionado": "",// codigo grupo comissao
+  "codRef": "",              // código da referência
+  "pesoBruto": 0,            // peso bruto (numérico)
+  "pesoLiquido": 0,          // peso líquido (numérico)
+  "ean": "",                 // código EAN/barras
+  "status": "",              // A=Ativo | I=Inativo | O=Inventário
+  "codProdFabricante": "",   // código do fabricante
+  "controlaLote": "",        // S=Sim | N=Não
+  "composicao": "",          // S=Sim | N=Não
+  "observacao1": "",         // observação livre 1
+  "observacao2": "",         // observação livre 2
+  "ncm": "",                 // NCM (classificação fiscal)
+  "comissionado": "",        // S=Sim | N=Não
+  "codGrupoComissionado": "",// código grupo comissão
   "cest": "",                // CEST
   "caminhoImagem1": "",      // URL/path imagem 1
   "caminhoImagem2": "",      // URL/path imagem 2
@@ -276,7 +276,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
 //   comissionado, enviaEcommerce
 
 // Filtros do GET (query params):
-//   codRef          -> multiplos separados por virgula
+//   codRef          -> múltiplos separados por vírgula
 //   status          -> A | I | O
 //   enviaEcommerce  -> S | N`}</code>
               </pre>
@@ -359,7 +359,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra uma nova referencia para um produto. Nao envie tags desnecessarias.
+                    Cadastra uma nova referência para um produto. Não envie tags desnecessárias.
                   </p>
 
                   <div className="relative">
@@ -385,7 +385,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                     {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    {creating ? "Cadastrando..." : "Cadastrar Referencia"}
+                    {creating ? "Cadastrando..." : "Cadastrar Referência"}
                   </button>
                   <ResultBlock result={createResult} error={createError}
                     label={`Resposta POST /product/${cProductId || "{id}"}/reference:`}
@@ -395,7 +395,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
 
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-blue-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Dica:</strong> Remova do body os campos que nao deseja preencher. Cada tag entra como parametro na criacao.
+                  <strong>Dica:</strong> Remova do body os campos que não deseja preencher. Cada tag entra como parâmetro na criação.
                   Campos <code className="bg-blue-100 px-1 rounded">S/N</code>: controlaLote, composicao, comissionado, enviaEcommerce.
                 </p>
               </div>
@@ -413,7 +413,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Atualiza uma referencia existente de um produto. Envie apenas os campos a alterar.
+                    Atualiza uma referência existente de um produto. Envie apenas os campos a alterar.
                   </p>
 
                   <div className="relative">
@@ -439,7 +439,7 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                     {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
-                    {updating ? "Alterando..." : "Alterar Referencia"}
+                    {updating ? "Alterando..." : "Alterar Referência"}
                   </button>
                   <ResultBlock result={updateResult} error={updateError}
                     label={`Resposta PUT /product/${uProductId || "{id}"}/reference:`}
@@ -450,8 +450,8 @@ export function SigeProductReferenceModule({ isConnected }: Props) {
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
                 <p className="text-amber-700" style={{ fontSize: "0.72rem" }}>
                   <strong>Dica:</strong> Use a aba "Buscar" para listar as referencias e obter o
-                  <code className="bg-amber-100 px-1 rounded mx-1">codRef</code> da referencia a alterar.
-                  Inclua <code className="bg-amber-100 px-1 rounded">codRef</code> no body para identificar qual referencia atualizar.
+                  <code className="bg-amber-100 px-1 rounded mx-1">codRef</code> da referência a alterar.
+                  Inclua <code className="bg-amber-100 px-1 rounded">codRef</code> no body para identificar qual referência atualizar.
                 </p>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { Link } from "react-router";
 import {
   Home,
@@ -16,10 +17,10 @@ import {
 import * as api from "../services/api";
 
 const subjectLabels: Record<string, string> = {
-  orcamento: "Solicitar Orcamento",
+  orcamento: "Solicitar Orçamento",
   disponibilidade: "Consultar Disponibilidade",
-  compatibilidade: "Compatibilidade de Peca",
-  troca: "Troca ou Devolucao",
+  compatibilidade: "Compatibilidade de Peça",
+  troca: "Troca ou Devolução",
   outro: "Outro Assunto",
 };
 
@@ -35,23 +36,23 @@ const CONTACT_INFO = [
   {
     icon: Mail,
     title: "E-mail",
-    lines: ["contato@autoparts.com.br", "vendas@autoparts.com.br"],
+    lines: ["contato@carretaoautopecas.com.br", "vendas@carretaoautopecas.com.br"],
     color: "text-purple-600",
     bg: "bg-purple-50",
     borderHover: "hover:border-purple-200",
   },
   {
     icon: MapPin,
-    title: "Endereco",
-    lines: ["Rua das Pecas, 1234", "Centro - Sao Paulo, SP", "CEP: 01000-000"],
+    title: "Endereço",
+    lines: ["Av. Colômbia, 5765", "Zona 05 - Maringá, PR", "CEP: 87015-200"],
     color: "text-red-600",
     bg: "bg-red-50",
     borderHover: "hover:border-red-200",
   },
   {
     icon: Clock,
-    title: "Horario",
-    lines: ["Seg a Sex: 8h - 18h", "Sabado: 8h - 13h", "Domingo: Fechado"],
+    title: "Horário",
+    lines: ["Seg a Sex: 8h - 18h", "Sábado: 8h - 13h", "Domingo: Fechado"],
     color: "text-amber-600",
     bg: "bg-amber-50",
     borderHover: "hover:border-amber-200",
@@ -59,6 +60,14 @@ const CONTACT_INFO = [
 ];
 
 export function ContactPage() {
+
+  useDocumentMeta({
+    title: "Fale Conosco - Carretão Auto Peças",
+    description: "Entre em contato com a Carretão Auto Peças. Televendas 0800 643 1170. Tire dúvidas, solicite orçamentos ou consulte disponibilidade de peças.",
+    ogTitle: "Fale Conosco - Carretão Auto Peças",
+    canonical: window.location.origin + "/contato",
+  });
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -102,7 +111,7 @@ export function ContactPage() {
           <nav className="flex items-center gap-2 text-gray-400" style={{ fontSize: "0.8rem" }}>
             <Link to="/" className="flex items-center gap-1 hover:text-red-600 transition-colors">
               <Home className="w-3.5 h-3.5" />
-              Inicio
+              Início
             </Link>
             <span>/</span>
             <span className="text-gray-700">Contato</span>
@@ -119,7 +128,7 @@ export function ContactPage() {
             Fale <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-400 to-red-500">Conosco</span>
           </h1>
           <p className="text-gray-400 max-w-lg mx-auto" style={{ fontSize: "0.95rem", lineHeight: 1.6 }}>
-            Estamos prontos para ajudar voce a encontrar as pecas certas para seu veiculo.
+            Estamos prontos para ajudar você a encontrar as peças certas para seu veículo.
           </p>
         </div>
       </div>
@@ -137,7 +146,7 @@ export function ContactPage() {
           </div>
           <div className="flex-1">
             <p className="text-green-800" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-              Prefere atendimento rapido? Fale pelo WhatsApp!
+              Prefere atendimento rápido? Fale pelo WhatsApp!
             </p>
             <p className="text-green-600" style={{ fontSize: "0.82rem" }}>
               (44) 99733-0202 — Resposta em poucos minutos
@@ -189,7 +198,7 @@ export function ContactPage() {
                     Envie sua Mensagem
                   </h2>
                   <p className="text-gray-400" style={{ fontSize: "0.75rem" }}>
-                    Responderemos em ate 24 horas uteis
+                    Responderemos em até 24 horas úteis
                   </p>
                 </div>
               </div>
@@ -203,11 +212,16 @@ export function ContactPage() {
                     Mensagem enviada com sucesso!
                   </h3>
                   <p className="text-green-600" style={{ fontSize: "0.9rem" }}>
-                    Responderemos em ate 24 horas uteis.
+                    Responderemos em até 24 horas úteis.
                   </p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Honeypot — hidden from humans */}
+                  <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", top: "-9999px", opacity: 0, height: 0, overflow: "hidden" }}>
+                    <label htmlFor="fax_number_contact">Fax</label>
+                    <input type="text" id="fax_number_contact" name="fax_number" tabIndex={-1} autoComplete="off" />
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.82rem", fontWeight: 600 }}>
@@ -265,10 +279,10 @@ export function ContactPage() {
                         style={{ fontSize: "0.9rem" }}
                       >
                         <option value="">Selecione...</option>
-                        <option value="orcamento">Solicitar Orcamento</option>
+                        <option value="orcamento">Solicitar Orçamento</option>
                         <option value="disponibilidade">Consultar Disponibilidade</option>
-                        <option value="compatibilidade">Compatibilidade de Peca</option>
-                        <option value="troca">Troca ou Devolucao</option>
+                        <option value="compatibilidade">Compatibilidade de Peça</option>
+                        <option value="troca">Troca ou Devolução</option>
                         <option value="outro">Outro Assunto</option>
                       </select>
                     </div>
@@ -284,7 +298,7 @@ export function ContactPage() {
                       value={formData.message}
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                       className="w-full border border-gray-200 rounded-xl px-4 py-2.5 bg-gray-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none transition-all resize-none"
-                      placeholder="Descreva sua duvida, informando modelo do veiculo, ano e peca desejada..."
+                      placeholder="Descreva sua dúvida, informando modelo do veículo, ano e peça desejada..."
                       style={{ fontSize: "0.9rem" }}
                     />
                   </div>

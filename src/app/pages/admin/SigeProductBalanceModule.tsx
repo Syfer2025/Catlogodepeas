@@ -16,7 +16,7 @@ import {
   Tag,
   Boxes,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -40,9 +40,9 @@ export function SigeProductBalanceModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -80,7 +80,7 @@ export function SigeProductBalanceModule({ isConnected }: Props) {
         </div>
         <div className="text-left flex-1">
           <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Saldo</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar saldos por filial, local, referencia e lote — 1 endpoint</p>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar saldos por filial, local, referência e lote — 1 endpoint</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -103,7 +103,7 @@ export function SigeProductBalanceModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-teal-600 hover:text-teal-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de filtros
+            {showHelp ? "Ocultar" : "Ver"} referência de filtros
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
@@ -112,11 +112,11 @@ export function SigeProductBalanceModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`GET /product/{id}/balance
 
-// Filtros (todos opcionais, multiplos separados por virgula):
-//   codFilial  -> codigo da filial (ex: "1" ou "1,2,3")
+// Filtros (todos opcionais, múltiplos separados por vírgula):
+//   codFilial  -> código da filial (ex: "1" ou "1,2,3")
 //   codLocal   -> local de estoque (ex: "01" ou "01,02")
-//   codRef     -> codigo de referencia (ex: "A1" ou "A1,B2")
-//   numLote    -> numero do lote (ex: "L001" ou "L001,L002")
+//   codRef     -> código de referência (ex: "A1" ou "A1,B2")
+//   numLote    -> número do lote (ex: "L001" ou "L001,L002")
 
 // Resposta: saldos do produto com detalhamento
 // por filial, local de estoque e referencias.`}</code>
@@ -132,7 +132,7 @@ export function SigeProductBalanceModule({ isConnected }: Props) {
             </div>
             <div className="p-3 space-y-3">
               <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                Busca saldos de um produto, com filtros opcionais por filial, local, referencia e lote.
+                Busca saldos de um produto, com filtros opcionais por filial, local, referência e lote.
               </p>
 
               <div className="relative">

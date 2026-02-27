@@ -14,7 +14,7 @@ import {
   Building2,
   Tag,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -36,9 +36,9 @@ export function SigeProductPcpModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -106,15 +106,15 @@ export function SigeProductPcpModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`GET /product/{id}/product-control-plan
 
-// Retorna informacoes de controle do produto:
+// Retorna informações de controle do produto:
 //   - Custo do produto
 //   - Margem de lucro
-//   - Classificacoes
-//   - Informacoes de vendas
+//   - Classificações
+//   - Informações de vendas
 
-// Filtros opcionais (multiplos separados por virgula):
-//   codFilial -> codigo da filial
-//   codRef    -> codigo de referencia`}</code>
+// Filtros opcionais (múltiplos separados por vírgula):
+//   codFilial -> código da filial
+//   codRef    -> código de referência`}</code>
               </pre>
             </div>
           )}
@@ -127,7 +127,7 @@ export function SigeProductPcpModule({ isConnected }: Props) {
             </div>
             <div className="p-3 space-y-3">
               <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                Busca o Plano de Controle de Produto (PCP): custo, margem de lucro, classificacoes e informacoes de vendas.
+                Busca o Plano de Controle de Produto (PCP): custo, margem de lucro, classificações e informações de vendas.
               </p>
 
               <div className="relative">

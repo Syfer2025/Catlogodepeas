@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import * as api from "../../services/api";
 import type { SigeMapping, SigeSyncResult } from "../../services/api";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 
 interface SigeStockSyncProps {
   onSyncComplete?: () => void;
@@ -31,8 +31,8 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
   const [manualMsg, setManualMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const getToken = async (): Promise<string> => {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    const token = await getValidAdminToken();
+    return token || "";
   };
 
   const loadMappings = useCallback(async () => {
@@ -73,7 +73,7 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
 
   const handleManualMap = async () => {
     if (!manualSku.trim() || !manualSigeId.trim()) {
-      setManualMsg({ type: "error", text: "SKU e SIGE ID sao obrigatorios." });
+      setManualMsg({ type: "error", text: "SKU e SIGE ID são obrigatórios." });
       return;
     }
     setManualLoading(true);
@@ -222,7 +222,7 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
             </button>
             <button
               onClick={() => {
-                if (confirm("Isso vai re-sincronizar TODOS os produtos. Os mapeamentos manuais serao substituidos. Continuar?")) {
+                if (confirm("Isso vai re-sincronizar TODOS os produtos. Os mapeamentos manuais serão substituídos. Continuar?")) {
                   runSync(true);
                 }
               }}
@@ -272,7 +272,7 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
                 </div>
                 <p className="text-green-600 mt-1" style={{ fontSize: "0.72rem" }}>
                   {syncResult.localProducts} produtos locais × {syncResult.sigeProducts} produtos SIGE
-                  {syncResult.skipped > 0 && ` (${syncResult.skipped} ja mapeados)`}
+                  {syncResult.skipped > 0 && ` (${syncResult.skipped} já mapeados)`}
                 </p>
               </div>
 
@@ -296,7 +296,7 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Buscar SKU, descricao..."
+                    placeholder="Buscar SKU, descrição..."
                     value={resultSearch}
                     onChange={(e) => setResultSearch(e.target.value)}
                     className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700"
@@ -393,12 +393,12 @@ export function SigeStockSync({ onSyncComplete }: SigeStockSyncProps) {
                 />
               </div>
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-gray-400 mb-1" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Descricao (opcional)</label>
+                <label className="block text-gray-400 mb-1" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Descrição (opcional)</label>
                 <input
                   type="text"
                   value={manualDesc}
                   onChange={(e) => setManualDesc(e.target.value)}
-                  placeholder="Descricao do produto SIGE"
+                  placeholder="Descrição do produto SIGE"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-gray-700 bg-white"
                   style={{ fontSize: "0.8rem" }}
                 />

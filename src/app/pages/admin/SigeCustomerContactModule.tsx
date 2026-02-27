@@ -17,7 +17,7 @@ import {
   Mail,
   FileText,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -80,9 +80,9 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -107,7 +107,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
     try {
       let body: any;
       try { body = JSON.parse(createJson); } catch { setCreateError("JSON invalido."); setCreating(false); return; }
-      if (!body.nome) { setCreateError("'nome' e obrigatorio no body."); setCreating(false); return; }
+      if (!body.nome) { setCreateError("'nome' é obrigatório no body."); setCreating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerContactCreate(token, createId.trim(), body);
       setCreateResult(result);
@@ -118,7 +118,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
 
   const handleUpdate = async () => {
     if (!updateId.trim()) { setUpdateError("Informe o ID do cliente."); return; }
-    if (!updateNome.trim()) { setUpdateError("Informe o nome do contato a alterar (query param obrigatorio)."); return; }
+    if (!updateNome.trim()) { setUpdateError("Informe o nome do contato a alterar (query param obrigatório)."); return; }
     setUpdating(true); setUpdateResult(null); setUpdateError("");
     try {
       let body: any;
@@ -228,7 +228,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-orange-600 hover:text-orange-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de campos
+            {showHelp ? "Ocultar" : "Ver"} referência de campos
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
@@ -237,7 +237,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`// Campos do Contato
 {
-  "nome": "",         // obrigatorio, deve ser unico por cadastro
+  "nome": "",         // obrigatório, deve ser único por cadastro
   "dataNascto": null, // formato: YYYY-MM-DD
   "cargo": null,      // cargo do contato
   "observacao": null,  
@@ -273,7 +273,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca contatos de um cliente pelo ID. Filtre por nome, email ou observacao opcionalmente.
+                    Busca contatos de um cliente pelo ID. Filtre por nome, email ou observação opcionalmente.
                   </p>
 
                   <div className="relative">
@@ -296,7 +296,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
                     <div className="relative">
                       <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                       <input type="text" value={filterObs} onChange={(e) => setFilterObs(e.target.value)}
-                        placeholder="observacao (similar)" className={inputClass} style={inputStyle} />
+                        placeholder="observação (similar)" className={inputClass} style={inputStyle} />
                     </div>
                   </div>
 
@@ -330,7 +330,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra um contato para o cliente. O <strong>nome</strong> deve ser unico por cadastro.
+                    Cadastra um contato para o cliente. O <strong>nome</strong> deve ser único por cadastro.
                   </p>
 
                   <div className="relative">
@@ -366,8 +366,8 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
 
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-blue-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Importante:</strong> O <code className="bg-blue-100 px-1 rounded">nome</code> de cada contato deve ser unico
-                  por cadastro. Nao e possivel criar dois contatos com o mesmo nome.
+                  <strong>Importante:</strong> O <code className="bg-blue-100 px-1 rounded">nome</code> de cada contato deve ser único
+                  por cadastro. Não é possível criar dois contatos com o mesmo nome.
                 </p>
               </div>
             </div>
@@ -384,7 +384,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Altera um contato existente. O query param <code className="bg-gray-100 px-1 rounded">nome</code> e <strong>obrigatorio</strong> para identificar qual contato alterar.
+                    Altera um contato existente. O query param <code className="bg-gray-100 px-1 rounded">nome</code> é <strong>obrigatório</strong> para identificar qual contato alterar.
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -429,7 +429,7 @@ export function SigeCustomerContactModule({ isConnected }: Props) {
                 <p className="text-amber-700" style={{ fontSize: "0.72rem" }}>
                   <strong>Dica:</strong> Use a aba "Buscar" para listar os contatos existentes e obter o
                   <code className="bg-amber-100 px-1 rounded ml-1">nome</code> exato do contato que deseja alterar.
-                  O nome e usado como identificador unico para o PUT.
+                  O nome é usado como identificador único para o PUT.
                 </p>
               </div>
             </div>

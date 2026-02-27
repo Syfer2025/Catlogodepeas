@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 lineHeight: 1.5,
               }}
             >
-              Ocorreu um erro inesperado. Tente recarregar a pagina.
+              Ocorreu um erro inesperado. Tente recarregar a página.
             </p>
             {this.state.error && (
               <pre
@@ -124,7 +124,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 fontWeight: 600,
               }}
             >
-              Recarregar Pagina
+              Recarregar Página
             </button>
           </div>
         </div>

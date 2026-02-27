@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { ArrowRight } from "lucide-react";
 import type { Category } from "../data/products";
+import { prefetchCatalog } from "../utils/prefetch";
 
 interface CategoryCardProps {
   category: Category;
@@ -12,6 +13,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
     <Link
       to={`/catalogo?categoria=${category.slug}`}
       className="group relative rounded-xl overflow-hidden aspect-[4/3] block"
+      onMouseEnter={() => { prefetchCatalog(); }}
     >
       <ImageWithFallback
         src={category.image}

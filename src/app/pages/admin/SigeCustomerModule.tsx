@@ -19,7 +19,7 @@ import {
   ChevronUp,
   Info,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -103,9 +103,9 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
   const [copied, setCopied] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -154,8 +154,8 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
     setCreating(true); setCreateResult(null); setCreateError("");
     try {
       let body: any;
-      try { body = JSON.parse(createJson); } catch { setCreateError("JSON invalido."); setCreating(false); return; }
-      if (!body.tipoCadastro || !body.nomeCadastro) { setCreateError("tipoCadastro e nomeCadastro sao obrigatorios."); setCreating(false); return; }
+      try { body = JSON.parse(createJson); } catch { setCreateError("JSON inválido."); setCreating(false); return; }
+      if (!body.tipoCadastro || !body.nomeCadastro) { setCreateError("tipoCadastro e nomeCadastro são obrigatórios."); setCreating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerCreate(token, body);
       setCreateResult(result);
@@ -169,7 +169,7 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
     setUpdating(true); setUpdateResult(null); setUpdateError("");
     try {
       let body: any;
-      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON invalido."); setUpdating(false); return; }
+      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON inválido."); setUpdating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerUpdate(token, updateId.trim(), body);
       setUpdateResult(result);
@@ -295,7 +295,7 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca cadastros de clientes com filtros, paginacao e includes opcionais.
+                    Busca cadastros de clientes com filtros, paginação e includes opcionais.
                   </p>
 
                   {/* Includes toggle */}
@@ -303,7 +303,7 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
                     <p className="text-gray-500 mb-1.5" style={labelStyle}>INCLUIR DADOS EXTRAS</p>
                     <div className="flex flex-wrap gap-2">
                       <ToggleChip label="Complemento" value={sComplemento} onChange={setSComplemento} />
-                      <ToggleChip label="Endereco" value={sEndereco} onChange={setSEndereco} />
+                      <ToggleChip label="Endereço" value={sEndereco} onChange={setSEndereco} />
                       <ToggleChip label="Contato" value={sContato} onChange={setSContato} />
                     </div>
                   </div>
@@ -315,12 +315,12 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
                       <div className="relative">
                         <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                         <input type="text" value={sLimit} onChange={(e) => setSLimit(e.target.value)}
-                          placeholder="limit (padrao 50)" className={inputClass} style={inputStyle} />
+                          placeholder="limit (padrão 50)" className={inputClass} style={inputStyle} />
                       </div>
                       <div className="relative">
                         <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                         <input type="text" value={sOffset} onChange={(e) => setSOffset(e.target.value)}
-                          placeholder="offset / pagina (padrao 1)" className={inputClass} style={inputStyle} />
+                          placeholder="offset / página (padrão 1)" className={inputClass} style={inputStyle} />
                       </div>
                     </div>
                   </div>
@@ -418,14 +418,14 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca um cliente especifico pelo seu ID, com includes opcionais.
+                    Busca um cliente específico pelo seu ID, com includes opcionais.
                   </p>
 
                   <div>
                     <p className="text-gray-500 mb-1.5" style={labelStyle}>INCLUIR DADOS EXTRAS</p>
                     <div className="flex flex-wrap gap-2">
                       <ToggleChip label="Complemento" value={gComplemento} onChange={setGComplemento} />
-                      <ToggleChip label="Endereco" value={gEndereco} onChange={setGEndereco} />
+                      <ToggleChip label="Endereço" value={gEndereco} onChange={setGEndereco} />
                       <ToggleChip label="Contato" value={gContato} onChange={setGContato} />
                     </div>
                   </div>
@@ -466,26 +466,26 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
                     Cadastra um novo cliente. Objetos opcionais: <code className="bg-gray-100 px-1 rounded">complemento</code>,
                     <code className="bg-gray-100 px-1 rounded ml-0.5">endereco</code>,
-                    <code className="bg-gray-100 px-1 rounded ml-0.5">contato</code> — so inclua se for preencher.
+                    <code className="bg-gray-100 px-1 rounded ml-0.5">contato</code> — só inclua se for preencher.
                   </p>
 
                   <button onClick={() => setShowCreateHelp(!showCreateHelp)}
                     className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 cursor-pointer"
                     style={{ fontSize: "0.72rem", fontWeight: 600 }}>
                     <Info className="w-3.5 h-3.5" />
-                    {showCreateHelp ? "Ocultar" : "Ver"} modelo completo com complemento/endereco/contato
+                    {showCreateHelp ? "Ocultar" : "Ver"} modelo completo com complemento/endereço/contato
                     {showCreateHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
 
                   {showCreateHelp && (
                     <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
                       <pre className="text-gray-300" style={{ fontSize: "0.7rem", lineHeight: 1.4 }}>
-                        <code>{`// Modelo completo (complemento, endereco e contato sao opcionais)
+                        <code>{`// Modelo completo (complemento, endereço e contato são opcionais)
 {
-  "tipoCadastro": "",     // obrigatorio — ver /type-register
-  "codFilial": "",        // obrigatorio — ver /branch
+  "tipoCadastro": "",     // obrigatório — ver /type-register
+  "codFilial": "",        // obrigatório — ver /branch
   "codArea": "",          // ver /area
-  "nomeCadastro": "",     // obrigatorio
+  "nomeCadastro": "",     // obrigatório
   "apelido": "",
   "cpfCgc": "",
   "rgIe": null,
@@ -493,7 +493,7 @@ export function SigeCustomerModule({ isConnected }: SigeCustomerModuleProps) {
   "observacao": null,
   "codRamo": null,        // ver /area-work
   "codCategoria": null,   // ver /category
-  "complemento": {        // OPCIONAL — so inclua se preencher
+  "complemento": {        // OPCIONAL — só inclua se preencher
     "codLista": 0,
     "codGrupoLimite": null,
     "codRisco": null,

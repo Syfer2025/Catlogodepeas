@@ -50,6 +50,23 @@
   display: none; /* Chrome/Safari/Opera */
 }
 
+/* ══ Performance: content-visibility for below-fold sections ══
+   Tells the browser to skip layout/paint for off-screen sections.
+   contain-intrinsic-size provides an estimated height so scrollbar
+   doesn't jump when sections become visible. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+.cv-auto-sm {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+}
+.cv-auto-lg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -135,6 +152,7 @@
 
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
   }
 
   /**
@@ -144,10 +162,13 @@
 
   html {
     font-size: var(--font-size);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    scroll-behavior: smooth;
+    /* scroll-behavior: smooth REMOVED — it causes window.scrollTo() to be
+       interrupted/cancelled by React Router re-renders, making pages appear
+       "stuck" at the previous scroll position after navigation. */
+    overflow-x: hidden;
   }
 
   h1 {

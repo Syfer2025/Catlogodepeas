@@ -34,6 +34,7 @@ import {
 import * as XLSX from "xlsx";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 
 // ═════════════════════════════════════════════
 // Types
@@ -510,7 +511,7 @@ export function AdminAttributes() {
   const handleFileSelect = async (selectedFile: File) => {
     const supported = /\.(xlsx?|xls|csv|txt)$/i.test(selectedFile.name);
     if (!supported) {
-      setUploadError("Formato nao suportado. Use CSV, TXT, XLS ou XLSX.");
+      setUploadError("Formato não suportado. Use CSV, TXT, XLS ou XLSX.");
       return;
     }
 
@@ -526,14 +527,14 @@ export function AdminAttributes() {
       const sheet = workbook.Sheets[sheetName];
 
       if (!sheet) {
-        setUploadError("O arquivo esta vazio ou nao foi possivel ler.");
+        setUploadError("O arquivo está vazio ou não foi possível ler.");
         return;
       }
 
       // Convert to clean semicolon-delimited CSV via SheetJS
       const csv = XLSX.utils.sheet_to_csv(sheet, { FS: ";" });
       if (!csv.trim()) {
-        setUploadError("O arquivo esta vazio.");
+        setUploadError("O arquivo está vazio.");
         return;
       }
 
@@ -673,10 +674,10 @@ export function AdminAttributes() {
     setUploadError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("Sessao expirada. Faca login novamente.");
+      const token = await getValidAdminToken();
+      if (!token) throw new Error("Sessão expirada. Faça login novamente.");
 
-      const result = await api.uploadAttributesCsv(fileToUpload, session.access_token);
+      const result = await api.uploadAttributesCsv(fileToUpload, token);
       setUploadResult(result);
       setStep("result");
       loadExistingCount();
@@ -707,9 +708,9 @@ export function AdminAttributes() {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("Sessao expirada.");
-      await api.deleteAttributesCsv(session.access_token);
+      const token = await getValidAdminToken();
+      if (!token) throw new Error("Sessão expirada.");
+      await api.deleteAttributesCsv(token);
       setExistingCount(0);
       setShowDeleteConfirm(false);
       resetAll();
@@ -875,7 +876,7 @@ export function AdminAttributes() {
             <div className="flex-1">
               <p className="text-gray-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>Confirmar remocao?</p>
               <p className="text-gray-500 mt-1" style={{ fontSize: "0.83rem" }}>
-                O arquivo sera removido do Storage. Os atributos ficam indisponiveis ate novo upload.
+                O arquivo será removido do Storage. Os atributos ficam indisponíveis até novo upload.
               </p>
               <div className="flex gap-3 mt-4">
                 <button onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
@@ -1009,7 +1010,7 @@ export function AdminAttributes() {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
                   <p className="text-blue-800" style={{ fontSize: "1.5rem", fontWeight: 700 }}>{analysis.allSkus.length}</p>
                   <p className="text-blue-600" style={{ fontSize: "0.78rem" }}>
-                    {analysis.isWooCommerce ? "Produtos no arquivo" : "SKUs unicos"}
+                    {analysis.isWooCommerce ? "Produtos no arquivo" : "SKUs únicos"}
                   </p>
                 </div>
                 <div className={`rounded-lg p-4 text-center border ${dbMatch.loading ? "bg-gray-50 border-gray-200" : "bg-green-50 border-green-200"}`}>
@@ -1057,7 +1058,7 @@ export function AdminAttributes() {
                 <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-amber-800" style={{ fontSize: "0.83rem", fontWeight: 500 }}>{analysis.duplicateSkus.length} SKU(s) duplicado(s) — serao mesclados automaticamente</p>
+                    <p className="text-amber-800" style={{ fontSize: "0.83rem", fontWeight: 500 }}>{analysis.duplicateSkus.length} SKU(s) duplicado(s) — serão mesclados automaticamente</p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {analysis.duplicateSkus.slice(0, 15).map((s, si) => (
                         <span key={`dup-${si}`} className="bg-white text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-mono" style={{ fontSize: "0.72rem" }}>{s}</span>
@@ -1072,7 +1073,7 @@ export function AdminAttributes() {
                 <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-amber-800" style={{ fontSize: "0.83rem", fontWeight: 500 }}>SKUs nao encontrados no banco (serao importados mesmo assim):</p>
+                    <p className="text-amber-800" style={{ fontSize: "0.83rem", fontWeight: 500 }}>SKUs não encontrados no banco (serão importados mesmo assim):</p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {dbMatch.unmatched.slice(0, 25).map((s, si) => (
                         <span key={`unm-${si}`} className="bg-white text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-mono" style={{ fontSize: "0.72rem" }}>{s}</span>
@@ -1146,7 +1147,7 @@ export function AdminAttributes() {
                 </div>
                 <p className="text-gray-500 mt-1" style={{ fontSize: "0.82rem" }}>
                   Estes {analysis.uniqueAttributes.length} nomes de atributos foram extraidos das colunas WooCommerce "Nome do atributo N".
-                  Desative os que nao deseja importar.
+                  Desative os que não deseja importar.
                 </p>
               </div>
 
@@ -1182,7 +1183,7 @@ export function AdminAttributes() {
                           </span>
 
                           <span className="text-gray-400 shrink-0 hidden md:inline" style={{ fontSize: "0.75rem" }}>
-                            {attr.uniqueValues} valor{attr.uniqueValues !== 1 && "es"} unico{attr.uniqueValues !== 1 && "s"}
+                            {attr.uniqueValues} valor{attr.uniqueValues !== 1 && "es"} único{attr.uniqueValues !== 1 && "s"}
                           </span>
 
                           <div className="flex gap-1 overflow-hidden min-w-0 hidden lg:flex">
@@ -1245,7 +1246,7 @@ export function AdminAttributes() {
                             </div>
                             <span className={`px-1.5 py-0.5 rounded ${fillColor}`} style={{ fontSize: "0.7rem", fontWeight: 600 }}>{col.filledPercent}%</span>
                           </div>
-                          <span className="text-gray-400 shrink-0 hidden sm:inline" style={{ fontSize: "0.75rem" }}>{col.uniqueCount} unico{col.uniqueCount !== 1 && "s"}</span>
+                          <span className="text-gray-400 shrink-0 hidden sm:inline" style={{ fontSize: "0.75rem" }}>{col.uniqueCount} único{col.uniqueCount !== 1 && "s"}</span>
                           {col.isMultiValue && !isSku && (
                             <span className="bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded shrink-0 hidden md:inline" style={{ fontSize: "0.68rem", fontWeight: 500 }}>Multi-valor</span>
                           )}
@@ -1379,7 +1380,7 @@ export function AdminAttributes() {
                 <p className="text-gray-800" style={{ fontSize: "0.95rem", fontWeight: 600 }}>Pronto para importar?</p>
                 <p className="text-gray-500 mt-0.5" style={{ fontSize: "0.82rem" }}>
                   {analysis.isWooCommerce
-                    ? `${analysis.pivotedProducts.length} produtos com ${enabledWooCount} atributo(s) serao convertidos em CSV limpo e enviados`
+                    ? `${analysis.pivotedProducts.length} produtos com ${enabledWooCount} atributo(s) serão convertidos em CSV limpo e enviados`
                     : `${analysis.allSkus.length} SKUs com ${enabledGenericCount} atributo(s)`
                   }
                   {!dbMatch.loading && dbMatch.matched.length > 0 && (
@@ -1492,7 +1493,7 @@ export function AdminAttributes() {
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-amber-800" style={{ fontSize: "0.85rem", fontWeight: 500 }}>SKUs nao encontrados ({uploadResult.unmatched}):</p>
+                    <p className="text-amber-800" style={{ fontSize: "0.85rem", fontWeight: 500 }}>SKUs não encontrados ({uploadResult.unmatched}):</p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {uploadResult.unmatchedSkus.slice(0, 50).map((sku, si) => (
                         <span key={`rsku-${si}`} className="bg-white text-amber-700 border border-amber-200 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.73rem" }}>{sku}</span>

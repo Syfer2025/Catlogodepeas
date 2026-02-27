@@ -15,7 +15,7 @@ import {
   Info,
   ChevronUp,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -27,7 +27,7 @@ type ActiveTab = "search" | "create" | "update";
 
 const ADDRESS_TYPES = [
   { value: "F", label: "F - Faturamento" },
-  { value: "C", label: "C - Cobranca" },
+  { value: "C", label: "C - Cobrança" },
   { value: "E", label: "E - Entrega" },
   { value: "R", label: "R - Residencial" },
   { value: "T", label: "T - Trabalho" },
@@ -87,9 +87,9 @@ export function SigeCustomerAddressModule({ isConnected }: Props) {
   const [showTipoHelp, setShowTipoHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -111,8 +111,8 @@ export function SigeCustomerAddressModule({ isConnected }: Props) {
     setCreating(true); setCreateResult(null); setCreateError("");
     try {
       let body: any;
-      try { body = JSON.parse(createJson); } catch { setCreateError("JSON invalido."); setCreating(false); return; }
-      if (!body.tipoEndereco) { setCreateError("tipoEndereco e obrigatorio no body."); setCreating(false); return; }
+      try { body = JSON.parse(createJson); } catch { setCreateError("JSON inválido."); setCreating(false); return; }
+      if (!body.tipoEndereco) { setCreateError("tipoEndereco é obrigatório no body."); setCreating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerAddressCreate(token, createId.trim(), body);
       setCreateResult(result);
@@ -126,8 +126,8 @@ export function SigeCustomerAddressModule({ isConnected }: Props) {
     setUpdating(true); setUpdateResult(null); setUpdateError("");
     try {
       let body: any;
-      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON invalido."); setUpdating(false); return; }
-      if (!body.tipoEndereco) { setUpdateError("tipoEndereco e obrigatorio no body."); setUpdating(false); return; }
+      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON inválido."); setUpdating(false); return; }
+      if (!body.tipoEndereco) { setUpdateError("tipoEndereco é obrigatório no body."); setUpdating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeCustomerAddressUpdate(token, updateId.trim(), body);
       setUpdateResult(result);
@@ -188,8 +188,8 @@ export function SigeCustomerAddressModule({ isConnected }: Props) {
           <MapPin className="w-5 h-5 text-teal-600" />
         </div>
         <div className="text-left flex-1">
-          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Cliente Endereco</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar, cadastrar e alterar enderecos de clientes — 3 endpoints</p>
+          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Cliente Endereço</h4>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar, cadastrar e alterar endereços de clientes — 3 endpoints</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -233,25 +233,25 @@ export function SigeCustomerAddressModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-teal-600 hover:text-teal-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showTipoHelp ? "Ocultar" : "Ver"} tipos de endereco
+            {showTipoHelp ? "Ocultar" : "Ver"} tipos de endereço
             {showTipoHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
           {showTipoHelp && (
             <div className="bg-gray-900 rounded-lg p-3">
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
-                <code>{`// Tipos de Endereco (tipoEndereco)
-C -> Cobranca
+                <code>{`// Tipos de Endereço (tipoEndereco)
+C -> Cobrança
 E -> Entrega
-F -> Faturamento   (padrao SIGE — priorizar na criacao)
+F -> Faturamento   (padrão SIGE — priorizar na criação)
 R -> Residencial
 T -> Trabalho
 
-// Pode enviar multiplos separados por virgula: "F,C"
-// Se nao enviar, retorna todos os 5 tipos
+// Pode enviar múltiplos separados por vírgula: "F,C"
+// Se não enviar, retorna todos os 5 tipos
 
-// codMunicipio: se nao informar, a API pesquisa
-// pela cidade + UF para encontrar o municipio`}</code>
+// codMunicipio: se não informar, a API pesquisa
+// pela cidade + UF para encontrar o município`}</code>
               </pre>
             </div>
           )}
@@ -267,7 +267,7 @@ T -> Trabalho
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca enderecos de um cliente pelo ID. Filtre por tipo de endereco opcionalmente.
+                    Busca endereços de um cliente pelo ID. Filtre por tipo de endereço opcionalmente.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="relative">
@@ -283,7 +283,7 @@ T -> Trabalho
                         {ADDRESS_TYPES.map(t => (
                           <option key={t.value} value={t.value}>{t.label}</option>
                         ))}
-                        <option value="F,C">F,C - Faturamento + Cobranca</option>
+                        <option value="F,C">F,C - Faturamento + Cobrança</option>
                         <option value="F,E">F,E - Faturamento + Entrega</option>
                       </select>
                     </div>
@@ -298,7 +298,7 @@ T -> Trabalho
                     className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                     {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                    {searching ? "Buscando..." : "Buscar Enderecos"}
+                    {searching ? "Buscando..." : "Buscar Endereços"}
                   </button>
                   <ResultBlock result={searchResult} error={searchError}
                     label={`Resposta GET /customer/${searchId || "{id}"}/address:`}
@@ -319,7 +319,7 @@ T -> Trabalho
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra um endereco para o cliente. O tipo <strong>F (Faturamento)</strong> e o padrao do SIGE — priorize-o na criacao.
+                    Cadastra um endereço para o cliente. O tipo <strong>F (Faturamento)</strong> é o padrão do SIGE — priorize-o na criação.
                   </p>
 
                   <div className="relative">
@@ -345,7 +345,7 @@ T -> Trabalho
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                     {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    {creating ? "Cadastrando..." : "Cadastrar Endereco"}
+                    {creating ? "Cadastrando..." : "Cadastrar Endereço"}
                   </button>
                   <ResultBlock result={createResult} error={createError}
                     label={`Resposta POST /customer/${createId || "{id}"}/address:`}
@@ -355,7 +355,7 @@ T -> Trabalho
 
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-blue-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Dica:</strong> Se nao informar <code className="bg-blue-100 px-1 rounded">codMunicipio</code>,
+                  <strong>Dica:</strong> Se não informar <code className="bg-blue-100 px-1 rounded">codMunicipio</code>,
                   a API SIGE pesquisa automaticamente pela <code className="bg-blue-100 px-1 rounded">cidade</code> +
                   <code className="bg-blue-100 px-1 rounded ml-0.5">uf</code>.
                 </p>
@@ -374,7 +374,7 @@ T -> Trabalho
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Altera o endereco de um cliente. O <code className="bg-gray-100 px-1 rounded">tipoEndereco</code> no body identifica qual endereco alterar.
+                    Altera o endereço de um cliente. O <code className="bg-gray-100 px-1 rounded">tipoEndereco</code> no body identifica qual endereço alterar.
                   </p>
 
                   <div className="relative">
@@ -400,7 +400,7 @@ T -> Trabalho
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                     style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                     {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pencil className="w-3.5 h-3.5" />}
-                    {updating ? "Alterando..." : "Alterar Endereco"}
+                    {updating ? "Alterando..." : "Alterar Endereço"}
                   </button>
                   <ResultBlock result={updateResult} error={updateError}
                     label={`Resposta PUT /customer/${updateId || "{id}"}/address:`}
@@ -410,8 +410,8 @@ T -> Trabalho
 
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
                 <p className="text-amber-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Dica:</strong> Use a aba "Buscar" para listar os enderecos existentes antes de alterar.
-                  O <code className="bg-amber-100 px-1 rounded">tipoEndereco</code> no body identifica qual tipo sera alterado.
+                  <strong>Dica:</strong> Use a aba "Buscar" para listar os endereços existentes antes de alterar.
+                  O <code className="bg-amber-100 px-1 rounded">tipoEndereco</code> no body identifica qual tipo será alterado.
                 </p>
               </div>
             </div>

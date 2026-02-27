@@ -18,10 +18,14 @@ import {
   Save,
   AlertCircle,
   CheckCircle2,
+  PackagePlus,
 } from "lucide-react";
 import * as api from "../../services/api";
 import type { CategoryNode } from "../../services/api";
 import { defaultCategoryTree, countNodes } from "../../data/categoryTree";
+import { AdminBulkCategoryAssign } from "./AdminBulkCategoryAssign";
+
+type SubTab = "tree" | "bulk-assign";
 
 // ─── helpers ───
 function slugify(text: string): string {
@@ -68,6 +72,7 @@ export function AdminCategories() {
   const [searchQ, setSearchQ] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [subTab, setSubTab] = useState<SubTab>("tree");
 
   // modal state
   const [modal, setModal] = useState<{
@@ -241,7 +246,7 @@ export function AdminCategories() {
     setDeleteConfirm(null);
   };
 
-  // ─── reset to defaults ───
+  // ���── reset to defaults ───
   const resetToDefaults = async () => {
     if (!confirm("Tem certeza? Isso substituira todas as categorias pelas pre-cadastradas.")) return;
     setSaving(true);
@@ -249,7 +254,7 @@ export function AdminCategories() {
       await api.saveCategoryTree(defaultCategoryTree);
       setTree(defaultCategoryTree);
       setDirty(false);
-      showToast("success", "Categorias resetadas para o padrao!");
+      showToast("success", "Categorias resetadas para o padrão!");
     } catch (e) {
       console.error("Error resetting:", e);
       showToast("error", "Erro ao resetar categorias.");
@@ -293,6 +298,31 @@ export function AdminCategories() {
         </div>
       )}
 
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setSubTab("tree")}
+          className={"flex items-center gap-2 px-4 py-2 rounded-lg transition-all " + (subTab === "tree" ? "bg-white text-gray-800 shadow-sm font-semibold" : "text-gray-500 hover:text-gray-700")}
+          style={{ fontSize: "0.85rem" }}
+        >
+          <FolderTree className="w-4 h-4" />
+          Arvore
+        </button>
+        <button
+          onClick={() => setSubTab("bulk-assign")}
+          className={"flex items-center gap-2 px-4 py-2 rounded-lg transition-all " + (subTab === "bulk-assign" ? "bg-white text-gray-800 shadow-sm font-semibold" : "text-gray-500 hover:text-gray-700")}
+          style={{ fontSize: "0.85rem" }}
+        >
+          <PackagePlus className="w-4 h-4" />
+          Alocacao em Massa
+        </button>
+      </div>
+
+      {/* Conditional content */}
+      {subTab === "bulk-assign" ? (
+        <AdminBulkCategoryAssign key="bulk-assign-view" />
+      ) : (
+      <div key="tree-view" className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -303,7 +333,7 @@ export function AdminCategories() {
           <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.85rem" }}>
             {stats.parents} categorias mae &bull; {stats.total} total
             {dirty && (
-              <span className="ml-2 text-amber-500 font-medium">(alteracoes nao salvas)</span>
+              <span className="ml-2 text-amber-500 font-medium">(alterações não salvas)</span>
             )}
           </p>
         </div>
@@ -319,7 +349,7 @@ export function AdminCategories() {
             onClick={resetToDefaults}
             className="flex items-center gap-1.5 text-gray-500 hover:text-red-600 border border-gray-200 px-3 py-2 rounded-lg transition-colors"
             style={{ fontSize: "0.8rem" }}
-            title="Resetar para categorias padrao"
+            title="Resetar para categorias padrão"
           >
             <Upload className="w-3.5 h-3.5" />
             Resetar
@@ -493,7 +523,7 @@ export function AdminCategories() {
               Excluir "{deleteConfirm.name}"?
             </h3>
             <p className="text-center text-gray-500 mb-5" style={{ fontSize: "0.85rem" }}>
-              Esta acao remove a categoria e todas as subcategorias filhas.
+              Esta ação remove a categoria e todas as subcategorias filhas.
             </p>
             <div className="flex gap-3">
               <button
@@ -513,6 +543,8 @@ export function AdminCategories() {
             </div>
           </div>
         </div>
+      )}
+      </div>
       )}
     </div>
   );

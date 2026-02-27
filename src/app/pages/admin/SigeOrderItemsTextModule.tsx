@@ -15,7 +15,7 @@ import {
   FileType2,
   Type,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -77,9 +77,9 @@ export function SigeOrderItemsTextModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -236,8 +236,8 @@ export function SigeOrderItemsTextModule({ isConnected }: Props) {
                 <code>{`// Rota: /order-items/{id}/text
 
 // GET - Filtros (query params):
-//   numItem     - numero do item (multiplos por virgula)
-//   numSubItem  - numero do sub-item (int)
+//   numItem     - número do item (múltiplos por vírgula)
+//   numSubItem  - número do sub-item (int)
 //   texto       - texto do item (similar/igual)
 //   campoV1..V6 - observacoes V1 a V6 (similar/igual)
 
@@ -269,7 +269,7 @@ export function SigeOrderItemsTextModule({ isConnected }: Props) {
               </div>
               <div className="p-3 space-y-3">
                 <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                  Busca os textos dos items de um pedido pela chave fato, com ate 9 filtros.
+                  Busca os textos dos itens de um pedido pela chave fato, com até 9 filtros.
                 </p>
 
                 <div className="relative">

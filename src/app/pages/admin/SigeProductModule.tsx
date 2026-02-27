@@ -17,7 +17,7 @@ import {
   FileText,
   ListFilter,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -50,13 +50,13 @@ const EMPTY_PRODUCT = {
 const TIPO_PRODUTO_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "PA", label: "PA - Produto Acabado" },
-  { value: "PC", label: "PC - Pecas Compradas" },
-  { value: "PF", label: "PF - Pecas Fabricadas" },
-  { value: "PP", label: "PP - Pecas Processadas" },
-  { value: "SE", label: "SE - Servicos" },
-  { value: "MP", label: "MP - Materia Prima" },
+  { value: "PC", label: "PC - Peças Compradas" },
+  { value: "PF", label: "PF - Peças Fabricadas" },
+  { value: "PP", label: "PP - Peças Processadas" },
+  { value: "SE", label: "SE - Serviços" },
+  { value: "MP", label: "MP - Matéria Prima" },
   { value: "MC", label: "MC - Material Consumo" },
-  { value: "FM", label: "FM - Formula" },
+  { value: "FM", label: "FM - Fórmula" },
 ];
 
 export function SigeProductModule({ isConnected }: Props) {
@@ -95,9 +95,9 @@ export function SigeProductModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -123,7 +123,7 @@ export function SigeProductModule({ isConnected }: Props) {
     setCreating(true); setCreateResult(null); setCreateError("");
     try {
       let body: any;
-      try { body = JSON.parse(createJson); } catch { setCreateError("JSON invalido."); setCreating(false); return; }
+      try { body = JSON.parse(createJson); } catch { setCreateError("JSON inválido."); setCreating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeProductCreate(token, body);
       setCreateResult(result);
@@ -137,7 +137,7 @@ export function SigeProductModule({ isConnected }: Props) {
     setUpdating(true); setUpdateResult(null); setUpdateError("");
     try {
       let body: any;
-      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON invalido."); setUpdating(false); return; }
+      try { body = JSON.parse(updateJson); } catch { setUpdateError("JSON inválido."); setUpdating(false); return; }
       const token = await getAccessToken();
       const result = await api.sigeProductUpdate(token, updateId.trim(), body);
       setUpdateResult(result);
@@ -243,7 +243,7 @@ export function SigeProductModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-sky-600 hover:text-sky-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de campos e tipos
+            {showHelp ? "Ocultar" : "Ver"} referência de campos e tipos
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
@@ -253,18 +253,18 @@ export function SigeProductModule({ isConnected }: Props) {
                 <code>{`// Campos do Produto
 {
   "tipoProduto": "",         // tipo do produto (ver tabela abaixo)
-  "descProdutoEst": "",      // descricao de estoque
-  "descProdutoNf": null,     // descricao nota fiscal
-  "descProdutoRot": null,    // descricao rotulo
-  "codDivisao1": "",         // codigo divisao 1
-  "codDivisao2": "",         // codigo divisao 2
-  "codDivisao3": "",         // codigo divisao 3
-  "codCf": null,             // codigo classificacao fiscal
-  "codGrade": null,          // codigo grade
-  "codGrupo": null,          // codigo grupo
-  "codMarca": null,          // codigo marca
-  "unidadeCompromentimento": "", // P=Primaria | A=Auxiliar
-  "codUnidadePri": "",       // unidade primaria
+  "descProdutoEst": "",      // descrição de estoque
+  "descProdutoNf": null,     // descrição nota fiscal
+  "descProdutoRot": null,    // descrição rótulo
+  "codDivisao1": "",         // código divisão 1
+  "codDivisao2": "",         // código divisão 2
+  "codDivisao3": "",         // código divisão 3
+  "codCf": null,             // código classificação fiscal
+  "codGrade": null,          // código grade
+  "codGrupo": null,          // código grupo
+  "codMarca": null,          // código marca
+  "unidadeCompromentimento": "", // P=Primária | A=Auxiliar
+  "codUnidadePri": "",       // unidade primária
   "codUnidadeAux": "",       // unidade auxiliar
   "codUnidadeCpa": "",       // unidade compra
   "codUnidadeVda": "",       // unidade venda
@@ -273,23 +273,23 @@ export function SigeProductModule({ isConnected }: Props) {
 
 // tipoProduto — valores aceitos:
 //   PA -> Produto Acabado
-//   PC -> Pecas Compradas
-//   PF -> Pecas Fabricadas
-//   PP -> Pecas Processadas
-//   SE -> Servicos
-//   MP -> Materia Prima
+//   PC -> Peças Compradas
+//   PF -> Peças Fabricadas
+//   PP -> Peças Processadas
+//   SE -> Serviços
+//   MP -> Matéria Prima
 //   MC -> Material Consumo
-//   FM -> Formula
+//   FM -> Fórmula
 
 // unidadeCompromentimento — valores aceitos:
-//   P -> Primaria
+//   P -> Primária
 //   A -> Auxiliar
 
-// Paginacao:
-//   limit  -> qtd por pagina (padrao: 50, min: 1, sem max)
-//   offset -> pagina (padrao: 1)
+// Paginação:
+//   limit  -> qtd por página (padrão: 50, min: 1, sem max)
+//   offset -> página (padrão: 1)
 
-// codProduto -> pode ser multiplos separados por virgula
+// codProduto -> pode ser múltiplos separados por vírgula
 //   Ex: "123,456,789"`}</code>
               </pre>
             </div>
@@ -306,7 +306,7 @@ export function SigeProductModule({ isConnected }: Props) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Busca produtos com paginacao e filtros opcionais. Padrao: 50 itens por pagina, pagina 1.
+                    Busca produtos com paginação e filtros opcionais. Padrão: 50 itens por página, página 1.
                   </p>
 
                   {/* Pagination row */}
@@ -319,7 +319,7 @@ export function SigeProductModule({ isConnected }: Props) {
                     <div className="relative">
                       <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                       <input type="number" value={sOffset} onChange={(e) => setSOffset(e.target.value)}
-                        placeholder="offset/pagina (1)" className={inputClass} style={inputStyle} min="1" />
+                        placeholder="offset/página (1)" className={inputClass} style={inputStyle} min="1" />
                     </div>
                     <div className="relative">
                       <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -352,7 +352,7 @@ export function SigeProductModule({ isConnected }: Props) {
                     <div className="relative">
                       <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                       <input type="text" value={sDescRot} onChange={(e) => setSDescRot(e.target.value)}
-                        placeholder="descProdutoRot (rotulo)" className={inputClass} style={inputStyle} />
+                        placeholder="descProdutoRot (rótulo)" className={inputClass} style={inputStyle} />
                     </div>
                   </div>
 
@@ -416,7 +416,7 @@ export function SigeProductModule({ isConnected }: Props) {
 
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-blue-700" style={{ fontSize: "0.72rem" }}>
-                  <strong>Dica:</strong> Use a referencia de campos para verificar os valores aceitos em
+                  <strong>Dica:</strong> Use a referência de campos para verificar os valores aceitos em
                   <code className="bg-blue-100 px-1 rounded mx-1">tipoProduto</code> e
                   <code className="bg-blue-100 px-1 rounded mx-1">unidadeCompromentimento</code>.
                 </p>

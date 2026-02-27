@@ -17,7 +17,7 @@ import {
   ArrowDown01,
   ArrowUp01,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -44,9 +44,9 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -65,7 +65,7 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
       const res = await api.sigeProductPromotionGet(token, productId.trim(), params);
       setResult(res);
     } catch (e: any) {
-      setError(e.message || "Erro ao buscar promocoes.");
+      setError(e.message || "Erro ao buscar promoções.");
     } finally { setSearching(false); }
   };
 
@@ -86,8 +86,8 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
           <Percent className="w-5 h-5 text-rose-600" />
         </div>
         <div className="text-left flex-1">
-          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Promocao</h4>
-          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar promocoes por filial, referencia, datas e quantidades — 1 endpoint</p>
+          <h4 className="text-gray-900" style={{ fontSize: "0.95rem", fontWeight: 700 }}>Produto Promoção</h4>
+          <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Buscar promoções por filial, referência, datas e quantidades — 1 endpoint</p>
         </div>
         <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full shrink-0"
           style={{ fontSize: "0.68rem", fontWeight: 600 }}>Implementado</span>
@@ -110,7 +110,7 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
             className="flex items-center gap-1.5 text-rose-600 hover:text-rose-700 cursor-pointer"
             style={{ fontSize: "0.72rem", fontWeight: 600 }}>
             <Info className="w-3.5 h-3.5" />
-            {showHelp ? "Ocultar" : "Ver"} referencia de filtros
+            {showHelp ? "Ocultar" : "Ver"} referência de filtros
             {showHelp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
 
@@ -119,16 +119,16 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
               <pre className="text-gray-300" style={{ fontSize: "0.72rem", lineHeight: 1.6 }}>
                 <code>{`GET /product/{id}/promotion
 
-// Retorna as promocoes ativas de um produto.
+// Retorna as promoções ativas de um produto.
 
-// Filtros opcionais (multiplos separados por virgula onde indicado):
-//   codFilial     -> codigo da filial (virgula p/ multiplos)
-//   codRef        -> codigo de referencia (virgula p/ multiplos)
-//   dataInicio    -> data de inicio (formato: YYYY-MM-DD)
+// Filtros opcionais (múltiplos separados por vírgula onde indicado):
+//   codFilial     -> código da filial (vírgula p/ múltiplos)
+//   codRef        -> código de referência (vírgula p/ múltiplos)
+//   dataInicio    -> data de início (formato: YYYY-MM-DD)
 //   dataFim       -> data final (formato: YYYY-MM-DD)
-//   qtdeMin       -> quantidade minima (inteiro)
-//   qtdeMax       -> quantidade maxima (inteiro)
-//   qtdePromocao  -> quantidade em promocao (inteiro)`}</code>
+//   qtdeMin       -> quantidade mínima (inteiro)
+//   qtdeMax       -> quantidade máxima (inteiro)
+//   qtdePromocao  -> quantidade em promoção (inteiro)`}</code>
               </pre>
             </div>
           )}
@@ -141,7 +141,7 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
             </div>
             <div className="p-3 space-y-3">
               <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                Busca promocoes de um produto, com filtros por filial, referencia, periodo e quantidades.
+                Busca promoções de um produto, com filtros por filial, referência, período e quantidades.
               </p>
 
               <div className="relative">
@@ -206,7 +206,7 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
                 className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                 style={{ fontSize: "0.82rem", fontWeight: 600 }}>
                 {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                {searching ? "Buscando..." : "Buscar Promocoes"}
+                {searching ? "Buscando..." : "Buscar Promoções"}
               </button>
 
               {error && (
@@ -242,7 +242,7 @@ export function SigeProductPromotionModule({ isConnected }: Props) {
           <div className="p-3 bg-rose-50 rounded-lg border border-rose-100">
             <p className="text-rose-700" style={{ fontSize: "0.72rem" }}>
               <strong>Dica:</strong> Use os campos de data no formato <code className="bg-rose-100 px-1 rounded">YYYY-MM-DD</code> para
-              filtrar promocoes por periodo. Os filtros de quantidade aceitam valores inteiros.
+              filtrar promoções por período. Os filtros de quantidade aceitam valores inteiros.
             </p>
           </div>
         </div>

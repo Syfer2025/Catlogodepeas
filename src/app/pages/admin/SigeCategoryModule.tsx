@@ -18,7 +18,7 @@ import {
   Check,
   X,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -66,9 +66,9 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
   const [copied, setCopied] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -300,7 +300,7 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
                 </div>
                 <div className="p-3 space-y-3">
                   <p className="text-gray-600" style={{ fontSize: "0.78rem" }}>
-                    Cadastra uma nova categoria na aplicacao SIGE.
+                    Cadastra uma nova categoria na aplicação SIGE.
                   </p>
                   <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
                     <pre className="text-gray-300" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>

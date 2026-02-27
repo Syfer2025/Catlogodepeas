@@ -23,7 +23,7 @@ import {
   Zap,
   Info,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -90,9 +90,9 @@ export function SigeStockExplorer({ isConnected }: Props) {
   const abortRef = useRef(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   // ── Search SIGE products ──
@@ -158,7 +158,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
       if (items.length === 0 && result && !result.error) {
         // Show a diagnostic warning
         const keys = result && typeof result === "object" ? Object.keys(result) : [];
-        setError(`A API SIGE respondeu mas nao conseguimos extrair produtos. Chaves na resposta: [${keys.join(", ")}]. Veja o JSON bruto abaixo.`);
+        setError(`A API SIGE respondeu mas não conseguimos extrair produtos. Chaves na resposta: [${keys.join(", ")}]. Veja o JSON bruto abaixo.`);
         setShowRaw(true);
       }
 
@@ -316,7 +316,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
   };
 
   const getProductId = (p: SigeProduct) => String(p.id || p.codProduto || p.codigo || "—");
-  const getProductDesc = (p: SigeProduct) => p.descProdutoEst || p.descricao || p.descProduto || "(sem descricao)";
+  const getProductDesc = (p: SigeProduct) => p.descProdutoEst || p.descricao || p.descProduto || "(sem descrição)";
 
   // Stats
   const withBalance = products.filter((p) => p.balance && !p.balance.loading && p.balance.found);
@@ -428,7 +428,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
                       <input
                         value={descFilter}
                         onChange={(e) => setDescFilter(e.target.value)}
-                        placeholder="Descricao..."
+                        placeholder="Descrição..."
                         className={inputClass}
                         style={inputStyle}
                       />
@@ -563,7 +563,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
                         <p className="text-amber-800" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
-                          Todos os saldos vieram zerados — possivel formato de campo nao reconhecido
+                          Todos os saldos vieram zerados — possível formato de campo não reconhecido
                         </p>
                         <p className="text-amber-700 mt-1" style={{ fontSize: "0.72rem" }}>
                           <strong>Chaves top-level da resposta de saldo:</strong> [{topKeys.join(", ")}]
@@ -594,7 +594,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
                         <tr className="bg-gray-50 border-b border-gray-200">
                           <th className="text-left px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>#</th>
                           <th className="text-left px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>ID/Cod</th>
-                          <th className="text-left px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Descricao</th>
+                          <th className="text-left px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Descrição</th>
                           <th className="text-left px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Tipo</th>
                           <th className="text-right px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Qtd</th>
                           <th className="text-right px-4 py-2.5 text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Reserv.</th>
@@ -813,7 +813,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
                   <p className="text-gray-600" style={{ fontSize: "0.75rem" }}>
                     Esta consulta usa o endpoint <code className="bg-gray-200 px-1 rounded text-red-600">GET /produtos/saldo/:sku</code> com
                     <strong> ?force=1&debug=1</strong>, que executa as 6 estrategias de busca sequenciais e retorna logs detalhados.
-                    Ideal para diagnosticar por que um produto nao esta sendo encontrado.
+                    Ideal para diagnosticar por que um produto não está sendo encontrado.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -915,7 +915,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
                       </div>
                     ) : (
                       <p className="text-amber-700 bg-amber-100/50 p-2 rounded-lg" style={{ fontSize: "0.78rem" }}>
-                        Produto nao encontrado no SIGE. Verifique os logs de debug abaixo para entender cada estrategia tentada.
+                        Produto não encontrado no SIGE. Verifique os logs de debug abaixo para entender cada estratégia tentada.
                       </p>
                     )}
 

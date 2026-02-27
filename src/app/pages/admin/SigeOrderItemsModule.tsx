@@ -13,7 +13,7 @@ import {
   ChevronUp,
   ListOrdered,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 
@@ -65,9 +65,9 @@ export function SigeOrderItemsModule({ isConnected }: Props) {
   const [showHelp, setShowHelp] = useState(false);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const handleSearch = async () => {
@@ -199,7 +199,7 @@ export function SigeOrderItemsModule({ isConnected }: Props) {
 // O body e um ARRAY de items:
 [
   {
-    "codProduto": "",       // codigo do produto
+    "codProduto": "",       // código do produto
     "codRef": "",           // referencia
     "qtdeUnd": 0,           // quantidade
     "valorUnitario": 0,     // valor unitario
@@ -211,7 +211,7 @@ export function SigeOrderItemsModule({ isConnected }: Props) {
     "numLote": "",          // lote
     "qtdeV1": 0,            // qtde v1
     "qtdeV2": 0,            // qtde v2
-    "codMensagem": "",      // codigo mensagem
+    "codMensagem": "",      // código mensagem
     "codCbenef": "",        // CBENEF
     "url": "",              // URL
     "ncm": ""               // NCM

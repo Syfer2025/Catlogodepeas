@@ -46,8 +46,15 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
       setFetchError(null);
       return;
     }
-    // Self-fetch for standalone usage (e.g. ProductDetailPage)
-    fetchBalance(false);
+    // Debounce individual fetch by 300ms to let bulk/preloaded results arrive first.
+    // The auto-batching layer in api.ts now handles connection pooling, so we no
+    // longer need the old 1500ms debounce for that purpose.
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      fetchBalance(false);
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [sku, preloaded, fetchBalance]);
 
   // ─── Loading state ───
@@ -65,7 +72,7 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
     return (
       <div className="flex items-center gap-2 text-gray-400 py-3 px-4 rounded-xl border border-gray-100 bg-gray-50" style={{ fontSize: "0.8rem" }}>
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span>Consultando estoque...</span>
+        <span>Verificando disponibilidade...</span>
       </div>
     );
   }
@@ -82,7 +89,7 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
     return (
       <div className="flex items-center gap-2 text-gray-400 py-3 px-4 rounded-xl border border-gray-100 bg-gray-50" style={{ fontSize: "0.78rem" }}>
         <AlertTriangle className="w-4 h-4 text-amber-400" />
-        <span className="flex-1">{fetchError || balance?.error || "Estoque indisponivel"}</span>
+        <span className="flex-1">{fetchError || balance?.error || "Estoque indisponível"}</span>
         <button onClick={() => fetchBalance(true)} className="p-1 rounded-full hover:bg-gray-200 transition-colors" title="Tentar novamente">
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
@@ -101,7 +108,7 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
     return (
       <div className="flex items-center gap-2 text-amber-600 py-3 px-4 rounded-xl border border-amber-100 bg-amber-50" style={{ fontSize: "0.78rem" }}>
         <AlertTriangle className="w-4 h-4" />
-        <span className="flex-1">SKU nao localizado no sistema SIGE</span>
+        <span className="flex-1">SKU não localizado no sistema SIGE</span>
         <button onClick={() => fetchBalance(true)} className="p-1 rounded-full hover:bg-amber-100 transition-colors" title="Forçar nova consulta (ignora cache)">
           <RefreshCw className="w-3.5 h-3.5" />
         </button>

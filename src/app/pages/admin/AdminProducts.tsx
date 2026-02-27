@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
-import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode } from "../../services/api";
+import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode, SigeMatchResult } from "../../services/api";
 import type { ProductBalance, StockSummary } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import { defaultCategoryTree } from "../../data/categoryTree";
 import { SigeStockSync } from "./SigeStockSync";
 import { PriceBadge } from "../../components/PriceBadge";
+import { convertImageToWebP, ProductImage as ProductImage2 } from "../../components/ProductImage";
 import {
   Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff,
   ChevronLeft, ChevronRight, Grid3X3, List, Database, X,
@@ -15,6 +17,16 @@ import {
   FileText, Tag, ExternalLink, Camera, PenLine,
   PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal,
   BarChart3, TrendingUp, TrendingDown, AlertOctagon,
+  DollarSign,
+  Truck,
+  Scale,
+  RotateCcw,
+  Info,
+  Zap,
+  Link2,
+  Weight,
+  Ruler,
+  Barcode,
 } from "lucide-react";
 
 const ITEMS_PER_PAGE = 20;
@@ -37,9 +49,19 @@ function Toast({ toast }: { toast: { type: "success" | "error"; msg: string } | 
 
 // ─── Thumb ───
 function ProductThumb({ sku, size = 40 }: { sku: string; size?: number }) {
-  const [err, setErr] = useState(false);
-  if (err) return <div className="rounded-lg bg-gray-100 flex items-center justify-center shrink-0" style={{ width: size, height: size }}><Package className="text-gray-300" style={{ width: size * 0.45, height: size * 0.45 }} /></div>;
-  return <img src={api.getProductMainImageUrl(sku)} alt={sku} className="rounded-lg bg-gray-100 object-contain border border-gray-200 shrink-0" style={{ width: size, height: size }} loading="lazy" onError={() => setErr(true)} />;
+  return (
+    <ProductImage2
+      sku={sku}
+      alt={sku}
+      className="rounded-lg bg-gray-100 object-contain border border-gray-200 shrink-0"
+      style={{ width: size, height: size }}
+      fallback={
+        <div className="rounded-lg bg-gray-100 flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+          <Package className="text-gray-300" style={{ width: size * 0.45, height: size * 0.45 }} />
+        </div>
+      }
+    />
+  );
 }
 
 // ─── Flatten category tree for dropdown ───
@@ -116,8 +138,7 @@ export function AdminProducts() {
   }, []);
 
   const getToken = async (): Promise<string> => {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    return await getValidAdminToken() || "";
   };
 
   const loadData = useCallback(async () => {
@@ -216,7 +237,8 @@ export function AdminProducts() {
     const current = metaMap[sku]?.visible !== false;
     setMetaMap((prev) => ({ ...prev, [sku]: { ...prev[sku], visible: !current } }));
     try {
-      await api.saveProductMeta(sku, { visible: !current });
+      const token = await getToken();
+      await api.saveProductMeta(sku, { visible: !current }, token);
       showToast("success", `Produto ${!current ? "ativado" : "desativado"}`);
     } catch (e: any) {
       setMetaMap((prev) => ({ ...prev, [sku]: { ...prev[sku], visible: current } }));
@@ -367,7 +389,7 @@ export function AdminProducts() {
                 onClick={runStockScan}
                 className="flex items-center gap-1 px-2.5 py-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
                 style={{ fontSize: "0.7rem", fontWeight: 600 }}
-                title={`${globalSummary.pending} produtos ainda nao verificados no SIGE`}
+                title={`${globalSummary.pending} produtos ainda não verificados no SIGE`}
               >
                 <RefreshCw className="w-3 h-3" />
                 Verificar {globalSummary.pending} pendentes
@@ -486,7 +508,7 @@ export function AdminProducts() {
                   </div>
                 </div>
                 <p className="text-amber-600" style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.1 }}>{s.notFound.toLocaleString("pt-BR")}</p>
-                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Nao Localizado SIGE</p>
+                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 500 }}>Não Localizado SIGE</p>
                 <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                   <div className="h-full bg-amber-400 rounded-full transition-all duration-700" style={{ width: `${pctNf}%` }} />
                 </div>
@@ -533,7 +555,7 @@ export function AdminProducts() {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar por titulo ou SKU..."
+          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar por título ou SKU..."
             className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all" style={{ fontSize: "0.85rem" }} />
           {searchQuery && <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>}
         </div>
@@ -602,7 +624,7 @@ export function AdminProducts() {
                       stockFilter === "not_found" ? "bg-amber-100 text-amber-700 ring-1 ring-amber-300" : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
                     }`}
                     style={{ fontSize: "0.72rem", fontWeight: 500 }}
-                    title="Nao encontrado no SIGE"
+                    title="Não encontrado no SIGE"
                   >
                     <AlertCircle className="w-3 h-3" />
                     <span>{stockStats.notFound}</span>
@@ -637,7 +659,7 @@ export function AdminProducts() {
                       <option value="all">Todos</option>
                       <option value="in_stock">Com estoque ({stockStats.inStock})</option>
                       <option value="out_of_stock">Sem estoque ({stockStats.outOfStock})</option>
-                      <option value="not_found">Nao localizado SIGE ({stockStats.notFound})</option>
+                      <option value="not_found">Não localizado SIGE ({stockStats.notFound})</option>
                     </select>
                     <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                   </div>
@@ -677,7 +699,7 @@ export function AdminProducts() {
                       className="w-full pl-8 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 appearance-none cursor-pointer transition-all"
                       style={{ fontSize: "0.82rem" }}
                     >
-                      <option value="default">Padrao</option>
+                      <option value="default">Padrão</option>
                       <option value="name_asc">Nome A → Z</option>
                       <option value="name_desc">Nome Z → A</option>
                       <option value="sku_asc">SKU A → Z</option>
@@ -699,7 +721,7 @@ export function AdminProducts() {
                       stockFilter === "out_of_stock" ? "bg-red-50 text-red-600 border-red-200" :
                       "bg-amber-50 text-amber-700 border-amber-200"
                     }`} style={{ fontSize: "0.75rem" }}>
-                      {stockFilter === "in_stock" ? "Com estoque" : stockFilter === "out_of_stock" ? "Sem estoque" : "Nao localizado"}
+                      {stockFilter === "in_stock" ? "Com estoque" : stockFilter === "out_of_stock" ? "Sem estoque" : "Não localizado"}
                       <button onClick={() => setStockFilter("all")} className="hover:opacity-70"><X className="w-3 h-3" /></button>
                     </span>
                   )}
@@ -728,7 +750,7 @@ export function AdminProducts() {
               {/* Result count when filtered */}
               {hasActiveFilters && (
                 <p className="mt-2 text-gray-400" style={{ fontSize: "0.78rem" }}>
-                  Mostrando {filteredProdutos.length} de {produtos.length} produtos nesta pagina
+                  Mostrando {filteredProdutos.length} de {produtos.length} produtos nesta página
                 </p>
               )}
             </div>
@@ -918,7 +940,7 @@ export function AdminProducts() {
       {!loading && !error && totalPages > 1 && (
         <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-gray-400 order-2 sm:order-1" style={{ fontSize: "0.85rem" }}>
-            Pagina {page} de {totalPages} — {total} produto{total !== 1 ? "s" : ""}
+            Página {page} de {totalPages} — {total} produto{total !== 1 ? "s" : ""}
             {hasActiveFilters && ` (${filteredProdutos.length} filtrado${filteredProdutos.length !== 1 ? "s" : ""})`}
           </p>
           <div className="flex items-center gap-1 order-1 sm:order-2">
@@ -1103,8 +1125,64 @@ function CreateProductModal({ onClose, onCreated, getToken, categoryTree }: {
   const [description, setDescription] = useState("");
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
+  const [price, setPrice] = useState("");
+  const [attrs, setAttrs] = useState<Record<string, string>>({});
+  const [showAttrs, setShowAttrs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // SIGE auto-match state
+  const [sigeMatch, setSigeMatch] = useState<SigeMatchResult | null>(null);
+  const [sigeSearching, setSigeSearching] = useState(false);
+  const [sigeSearched, setSigeSearched] = useState(false);
+  const [sigeAutoFilled, setSigeAutoFilled] = useState(false);
+  const sigeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced SIGE search on SKU change
+  useEffect(() => {
+    if (sigeTimerRef.current) clearTimeout(sigeTimerRef.current);
+    const trimmed = sku.trim();
+    if (trimmed.length < 2) {
+      setSigeMatch(null);
+      setSigeSearched(false);
+      setSigeAutoFilled(false);
+      return;
+    }
+    setSigeSearching(true);
+    sigeTimerRef.current = setTimeout(async () => {
+      try {
+        const token = await getToken();
+        const result = await api.sigeMatchProduct(trimmed, token);
+        setSigeMatch(result);
+        setSigeSearched(true);
+        // Auto-fill fields if SIGE match found and user hasn't edited yet
+        if (result.found && !sigeAutoFilled) {
+          if (result.titulo && !titulo.trim()) setTitulo(result.titulo);
+          if (result.marca && !brand.trim()) setBrand(result.marca);
+          if (result.observacao && !description.trim()) setDescription(result.observacao);
+          if (result.preco && result.preco > 0 && !price.trim()) setPrice(result.preco.toFixed(2));
+          setSigeAutoFilled(true);
+        }
+      } catch (err: any) {
+        console.error("[CreateProduct] SIGE match error:", err);
+        setSigeMatch(null);
+        setSigeSearched(true);
+      } finally {
+        setSigeSearching(false);
+      }
+    }, 700);
+    return () => { if (sigeTimerRef.current) clearTimeout(sigeTimerRef.current); };
+  }, [sku]);
+
+  // Explicit auto-fill from SIGE button
+  const applyMatchData = () => {
+    if (!sigeMatch || !sigeMatch.found) return;
+    if (sigeMatch.titulo) setTitulo(sigeMatch.titulo);
+    if (sigeMatch.marca) setBrand(sigeMatch.marca);
+    if (sigeMatch.observacao) setDescription(sigeMatch.observacao);
+    if (sigeMatch.preco && sigeMatch.preco > 0) setPrice(sigeMatch.preco.toFixed(2));
+    setSigeAutoFilled(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1113,43 +1191,276 @@ function CreateProductModal({ onClose, onCreated, getToken, categoryTree }: {
     setError("");
     try {
       const token = await getToken();
-      await api.createProduto(sku.trim(), titulo.trim(), { visible: true, description, brand, category }, token);
+      // Include SIGE-sourced physical data in meta if available
+      const extraMeta: Record<string, any> = { visible: true, description, brand, category };
+      if (Object.keys(attrs).length > 0) extraMeta.customAttributes = attrs;
+      if (sigeMatch && sigeMatch.found) {
+        if (sigeMatch.sigeId) extraMeta.sigeId = sigeMatch.sigeId;
+        if (sigeMatch.ncm) extraMeta.ncm = sigeMatch.ncm;
+        if (sigeMatch.codBarras) extraMeta.codBarras = sigeMatch.codBarras;
+        if (sigeMatch.unidade) extraMeta.unidade = sigeMatch.unidade;
+      }
+      await api.createProduto(sku.trim(), titulo.trim(), extraMeta, token);
+      // Save physical data if SIGE provided weight/dimensions
+      if (sigeMatch && sigeMatch.found && (sigeMatch.peso || sigeMatch.comprimento || sigeMatch.largura || sigeMatch.altura)) {
+        try {
+          await api.saveProductPhysical(token, sku.trim(), {
+            weight: sigeMatch.peso || 0,
+            length: sigeMatch.comprimento || 0,
+            width: sigeMatch.largura || 0,
+            height: sigeMatch.altura || 0,
+          });
+        } catch { /* ignore physical save failure */ }
+      }
+      // Save custom price if set
+      const parsedPrice = parseFloat(price.replace(",", "."));
+      if (!isNaN(parsedPrice) && parsedPrice > 0) {
+        try {
+          await api.setProductCustomPrice(sku.trim(), parsedPrice, token);
+        } catch { /* ignore price save failure */ }
+      }
       onCreated();
       onClose();
     } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
+  // Format currency
+  const fmtPrice = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-gray-200">
           <h3 className="text-gray-800 flex items-center gap-2" style={{ fontSize: "1.1rem", fontWeight: 600 }}><Plus className="w-5 h-5 text-red-600" /> Novo Produto</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg" style={{ fontSize: "0.8rem" }}>{error}</div>}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>SKU *</label>
-              <input type="text" required value={sku} onChange={(e) => setSku(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono" style={{ fontSize: "0.85rem" }} placeholder="ABC-123" />
-            </div>
-            <div>
-              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Marca</label>
-              <input type="text" value={brand} onChange={(e) => setBrand(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" style={{ fontSize: "0.85rem" }} placeholder="Ex: Bosch" />
+
+          {/* SKU + SIGE indicator */}
+          <div>
+            <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>SKU *</label>
+            <div className="relative">
+              <input type="text" required value={sku} onChange={(e) => { setSku(e.target.value); setSigeAutoFilled(false); }} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono pr-10" style={{ fontSize: "0.85rem" }} placeholder="Ex: ABC-123" />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                {sigeSearching && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
+                {!sigeSearching && sigeSearched && sigeMatch?.found && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                {!sigeSearching && sigeSearched && !sigeMatch?.found && <AlertCircle className="w-4 h-4 text-amber-400" />}
+              </div>
             </div>
           </div>
+
+          {/* SIGE match result banner */}
+          {sigeSearching && sku.trim().length >= 2 && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg" style={{ fontSize: "0.78rem" }}>
+              <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+              <span className="text-blue-700">Buscando no SIGE...</span>
+            </div>
+          )}
+          {!sigeSearching && sigeSearched && sigeMatch?.found && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-green-600 shrink-0" />
+                  <span className="text-green-800" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Encontrado no SIGE</span>
+                  <span className="text-green-600 font-mono bg-green-100 px-1.5 py-0.5 rounded" style={{ fontSize: "0.7rem" }}>ID: {sigeMatch.sigeId}</span>
+                </div>
+                <button type="button" onClick={applyMatchData} className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors" style={{ fontSize: "0.72rem", fontWeight: 500 }}>
+                  <RotateCcw className="w-3 h-3" /> Preencher
+                </button>
+              </div>
+              {/* SIGE data summary grid */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1" style={{ fontSize: "0.75rem" }}>
+                {sigeMatch.titulo && (
+                  <div className="col-span-2 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Titulo:</span>
+                    <span className="text-gray-800 truncate" style={{ fontWeight: 500 }}>{sigeMatch.titulo}</span>
+                  </div>
+                )}
+                {sigeMatch.marca && (
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Marca:</span>
+                    <span className="text-gray-800" style={{ fontWeight: 500 }}>{sigeMatch.marca}</span>
+                  </div>
+                )}
+                {sigeMatch.preco !== undefined && sigeMatch.preco > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <DollarSign className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Preco:</span>
+                    <span className="text-gray-800" style={{ fontWeight: 500 }}>{fmtPrice(sigeMatch.preco)}</span>
+                  </div>
+                )}
+                {sigeMatch.peso !== undefined && sigeMatch.peso > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Scale className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Peso:</span>
+                    <span className="text-gray-800" style={{ fontWeight: 500 }}>{sigeMatch.peso} kg</span>
+                  </div>
+                )}
+                {sigeMatch.ncm && (
+                  <div className="flex items-center gap-1.5">
+                    <Hash className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">NCM:</span>
+                    <span className="text-gray-800 font-mono" style={{ fontWeight: 500 }}>{sigeMatch.ncm}</span>
+                  </div>
+                )}
+                {sigeMatch.codBarras && (
+                  <div className="flex items-center gap-1.5">
+                    <Barcode className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">EAN:</span>
+                    <span className="text-gray-800 font-mono" style={{ fontWeight: 500 }}>{sigeMatch.codBarras}</span>
+                  </div>
+                )}
+                {(sigeMatch.comprimento || sigeMatch.largura || sigeMatch.altura) ? (
+                  <div className="flex items-center gap-1.5">
+                    <Ruler className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Dim:</span>
+                    <span className="text-gray-800" style={{ fontWeight: 500 }}>
+                      {sigeMatch.comprimento || 0} x {sigeMatch.largura || 0} x {sigeMatch.altura || 0} cm
+                    </span>
+                  </div>
+                ) : null}
+                {sigeMatch.estoqueOk && (
+                  <div className="col-span-2 flex items-center gap-1.5 mt-0.5">
+                    <Package className="w-3 h-3 text-green-500 shrink-0" />
+                    <span className="text-gray-500">Estoque:</span>
+                    <span className={`font-mono ${sigeMatch.disponivel && sigeMatch.disponivel > 0 ? "text-green-700" : "text-red-600"}`} style={{ fontWeight: 600 }}>
+                      {sigeMatch.disponivel ?? 0} disponível
+                    </span>
+                    {(sigeMatch.reservado ?? 0) > 0 && (
+                      <span className="text-amber-600 font-mono" style={{ fontSize: "0.7rem" }}>({sigeMatch.reservado} reservado)</span>
+                    )}
+                    <span className="text-gray-400 font-mono" style={{ fontSize: "0.68rem" }}>/ {sigeMatch.estoque ?? 0} total</span>
+                  </div>
+                )}
+              </div>
+              {sigeMatch.alternativas && sigeMatch.alternativas.length > 0 && (
+                <div className="pt-1 border-t border-green-200 mt-1" style={{ fontSize: "0.72rem" }}>
+                  <span className="text-green-700">+{sigeMatch.alternativas.length} resultado(s) similar(es) no SIGE</span>
+                </div>
+              )}
+            </div>
+          )}
+          {!sigeSearching && sigeSearched && !sigeMatch?.found && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg" style={{ fontSize: "0.78rem" }}>
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span className="text-amber-700">SKU não encontrado no SIGE — preencha manualmente</span>
+            </div>
+          )}
+
+          {/* Marca + Unidade */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                Marca
+                {sigeAutoFilled && sigeMatch?.marca && <span className="ml-1 text-green-500" style={{ fontSize: "0.68rem" }}>(SIGE)</span>}
+              </label>
+              <input type="text" value={brand} onChange={(e) => setBrand(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" style={{ fontSize: "0.85rem" }} placeholder="Ex: Bosch" />
+            </div>
+            <div>
+              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Unidade</label>
+              <input type="text" value={sigeMatch?.found ? (sigeMatch.unidade || "") : ""} readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-100 outline-none text-gray-500 font-mono" style={{ fontSize: "0.85rem" }} placeholder="—" />
+            </div>
+          </div>
+
+          {/* Preço + Estoque SIGE */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                Preço (R$)
+                {sigeAutoFilled && sigeMatch?.preco && sigeMatch.preco > 0 && <span className="ml-1 text-green-500" style={{ fontSize: "0.68rem" }}>(SIGE)</span>}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style={{ fontSize: "0.85rem" }}>R$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={price}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9.,]/g, "");
+                    setPrice(v);
+                  }}
+                  className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                  style={{ fontSize: "0.85rem" }}
+                  placeholder="0,00"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                Estoque SIGE
+              </label>
+              {sigeMatch?.found && sigeMatch.estoqueOk ? (
+                <div className="flex items-center gap-2 h-[42px] px-3 bg-gray-100 border border-gray-200 rounded-lg">
+                  {(sigeMatch.disponivel ?? 0) > 0 ? (
+                    <PackageCheck className="w-4 h-4 text-green-600 shrink-0" />
+                  ) : (
+                    <PackageX className="w-4 h-4 text-red-500 shrink-0" />
+                  )}
+                  <span className={`font-mono ${(sigeMatch.disponivel ?? 0) > 0 ? "text-green-700" : "text-red-600"}`} style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                    {sigeMatch.disponivel ?? 0}
+                  </span>
+                  <span className="text-gray-400" style={{ fontSize: "0.72rem" }}>disp.</span>
+                  {(sigeMatch.reservado ?? 0) > 0 && (
+                    <span className="text-amber-600 font-mono" style={{ fontSize: "0.72rem" }}>({sigeMatch.reservado} res.)</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 h-[42px] px-3 bg-gray-100 border border-gray-200 rounded-lg text-gray-400" style={{ fontSize: "0.8rem" }}>
+                  <Package className="w-4 h-4 shrink-0" />
+                  {sigeSearching ? "Buscando..." : sigeSearched && !sigeMatch?.found ? "—" : "Aguardando SKU"}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div>
-            <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Titulo *</label>
-            <input type="text" required value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" style={{ fontSize: "0.85rem" }} placeholder="Titulo do produto" />
+            <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+              Título *
+              {sigeAutoFilled && sigeMatch?.titulo && <span className="ml-1 text-green-500" style={{ fontSize: "0.68rem" }}>(SIGE)</span>}
+            </label>
+            <input type="text" required value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" style={{ fontSize: "0.85rem" }} placeholder="Título do produto" />
           </div>
           <div>
             <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Categoria</label>
             <CategorySelect value={category} onChange={setCategory} tree={categoryTree} />
           </div>
           <div>
-            <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Descricao</label>
-            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 resize-none" style={{ fontSize: "0.85rem" }} placeholder="Descricao breve..." />
+            <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+              Descrição
+              {sigeAutoFilled && sigeMatch?.observacao && <span className="ml-1 text-green-500" style={{ fontSize: "0.68rem" }}>(SIGE)</span>}
+            </label>
+            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 resize-none" style={{ fontSize: "0.85rem" }} placeholder="Descrição breve..." />
           </div>
+
+          {/* ── Ficha Técnica (collapsible) ── */}
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAttrs(!showAttrs)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-red-600" />
+                <span className="text-gray-700" style={{ fontSize: "0.85rem", fontWeight: 600 }}>Ficha Técnica</span>
+                {Object.keys(attrs).length > 0 && (
+                  <span className="bg-red-100 text-red-700 rounded-full px-2 py-0.5" style={{ fontSize: "0.68rem", fontWeight: 600 }}>{Object.keys(attrs).length}</span>
+                )}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showAttrs ? "rotate-180" : ""}`} />
+            </button>
+            {showAttrs && (
+              <div className="p-4 border-t border-gray-200 bg-white">
+                <p className="text-gray-500 mb-3" style={{ fontSize: "0.75rem" }}>
+                  Adicione atributos da ficha técnica (ex: Material, Voltagem, Compatibilidade). Esses dados aparecem na página do produto.
+                </p>
+                <FullAttributesEditor attributes={attrs} onChange={setAttrs} />
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
             <button type="button" onClick={onClose} className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors" style={{ fontSize: "0.85rem" }}>Cancelar</button>
             <button type="submit" disabled={saving || !sku.trim() || !titulo.trim()} className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center gap-2" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
@@ -1177,7 +1488,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
   categoryTree: CategoryNode[];
   navigate: (path: string) => void;
 }) {
-  const [tab, setTab] = useState<"geral" | "imagens" | "atributos">("geral");
+  const [tab, setTab] = useState<"geral" | "imagens" | "atributos" | "frete">("geral");
   const [titulo, setTitulo] = useState(initialTitulo);
   const [editingSku, setEditingSku] = useState(sku);
   const [skuEditing, setSkuEditing] = useState(false);
@@ -1193,10 +1504,41 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Physical data (weight/dimensions) state
+  const [physicalData, setPhysicalData] = useState<api.ProductPhysicalResponse | null>(null);
+  const [loadingPhysical, setLoadingPhysical] = useState(false);
+  const [physWeight, setPhysWeight] = useState("");
+  const [physLength, setPhysLength] = useState("");
+  const [physWidth, setPhysWidth] = useState("");
+  const [physHeight, setPhysHeight] = useState("");
+  const [savingPhysical, setSavingPhysical] = useState(false);
+  const [physicalLoaded, setPhysicalLoaded] = useState(false);
+
+  // Price editing state
+  const [priceData, setPriceData] = useState<api.ProductPrice | null>(null);
+  const [loadingPrice, setLoadingPrice] = useState(true);
+  const [priceMode, setPriceMode] = useState<"sige" | "custom">("sige");
+  const [customPriceInput, setCustomPriceInput] = useState("");
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceConfig, setPriceConfig] = useState<api.PriceConfig | null>(null);
+
   useEffect(() => {
     api.getProductMeta(sku).then(setMeta).catch(() => {}).finally(() => setLoadingMeta(false));
     api.getProductImages(sku).then((r) => setImages(r.images)).catch(() => {}).finally(() => setLoadingImages(false));
     api.getProductAttributes(sku).then((r) => setCsvAttrs(r.attributes)).catch(() => {}).finally(() => setLoadingAttrs(false));
+    // Load price data
+    setLoadingPrice(true);
+    api.getProductPrice(sku).then((data) => {
+      setPriceData(data);
+      if (data.source === "custom" && data.price !== null) {
+        setPriceMode("custom");
+        setCustomPriceInput(data.price.toFixed(2).replace(".", ","));
+      } else {
+        setPriceMode("sige");
+      }
+    }).catch((e) => console.error("[EditPanel] Price fetch error:", e)).finally(() => setLoadingPrice(false));
+    // Load price config (to know global tier)
+    api.getPriceConfig().then(setPriceConfig).catch(() => {});
   }, [sku]);
 
   const saveTitle = async () => {
@@ -1206,7 +1548,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
       const token = await getToken();
       await api.updateProdutoTitulo(sku, titulo.trim(), token);
       onUpdated(sku, titulo.trim());
-      showToast("success", "Titulo atualizado!");
+      showToast("success", "Título atualizado!");
     } catch (e: any) { showToast("error", e.message); } finally { setSavingTitle(false); }
   };
 
@@ -1225,7 +1567,8 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
   const saveMeta = async () => {
     setSavingMeta(true);
     try {
-      await api.saveProductMeta(sku, meta);
+      const token = await getToken();
+      await api.saveProductMeta(sku, meta, token);
       showToast("success", "Metadados salvos!");
     } catch (e: any) { showToast("error", e.message); } finally { setSavingMeta(false); }
   };
@@ -1238,12 +1581,20 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
       const token = await getToken();
       const nextNum = images.length > 0 ? Math.max(...images.map((i) => i.number)) + 1 : 1;
       for (let i = 0; i < files.length; i++) {
-        const ext = files[i].name.split(".").pop() || "webp";
-        await api.uploadProductImage(sku, files[i], `${sku}.${nextNum + i}.${ext}`, token);
+        // Convert any image format (PNG, JPG, GIF, BMP, etc.) to WebP before upload
+        var webpFile: File;
+        try {
+          webpFile = await convertImageToWebP(files[i], 0.85);
+        } catch (convErr) {
+          console.warn("[AdminProducts] WebP conversion failed, uploading original:", convErr);
+          webpFile = files[i];
+        }
+        var finalFilename = sku + "." + String(nextNum + i) + ".webp";
+        await api.uploadProductImage(sku, webpFile, finalFilename, token);
       }
       const result = await api.getProductImages(sku);
       setImages(result.images);
-      showToast("success", `${files.length} imagem(ns) enviada(s)!`);
+      showToast("success", files.length + " imagem(ns) convertida(s) para WebP e enviada(s)!");
     } catch (e: any) { showToast("error", e.message); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   };
 
@@ -1261,6 +1612,152 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
     try { const token = await getToken(); await api.deleteProduto(sku, token); onDeleted(sku); } catch (e: any) { showToast("error", e.message); }
   };
 
+  // ─── Price handlers ───
+  const refreshPriceData = async () => {
+    setLoadingPrice(true);
+    try {
+      const data = await api.getProductPrice(sku);
+      setPriceData(data);
+      if (data.source === "custom" && data.price !== null) {
+        setPriceMode("custom");
+        setCustomPriceInput(data.price.toFixed(2).replace(".", ","));
+      } else {
+        setPriceMode("sige");
+      }
+    } catch (e: any) {
+      console.error("[EditPanel] Price refresh error:", e);
+    } finally {
+      setLoadingPrice(false);
+    }
+  };
+
+  const saveCustomPrice = async () => {
+    const parsed = parseFloat(customPriceInput.replace(",", "."));
+    if (isNaN(parsed) || parsed < 0) {
+      showToast("error", "Informe um preço válido.");
+      return;
+    }
+    setSavingPrice(true);
+    try {
+      const token = await getToken();
+      await api.setProductCustomPrice(sku, parsed, token);
+      showToast("success", `Preço personalizado salvo: R$ ${parsed.toFixed(2)}`);
+      await refreshPriceData();
+    } catch (e: any) {
+      showToast("error", e.message);
+    } finally {
+      setSavingPrice(false);
+    }
+  };
+
+  const useSigePrice = async (tier: "v1" | "v2" | "v3") => {
+    if (!priceData) return;
+    const tierPrice = priceData[tier];
+    if (tierPrice === null || tierPrice === undefined || tierPrice <= 0) {
+      showToast("error", `Preço da lista ${tier.toUpperCase()} não disponível.`);
+      return;
+    }
+    setSavingPrice(true);
+    try {
+      const token = await getToken();
+      await api.setProductCustomPrice(sku, tierPrice, token);
+      showToast("success", `Preço da lista ${tier.toUpperCase()} aplicado: R$ ${tierPrice.toFixed(2)}`);
+      await refreshPriceData();
+    } catch (e: any) {
+      showToast("error", e.message);
+    } finally {
+      setSavingPrice(false);
+    }
+  };
+
+  const removeCustomPrice = async () => {
+    setSavingPrice(true);
+    try {
+      const token = await getToken();
+      await api.deleteProductCustomPrice(sku, token);
+      showToast("success", "Preço personalizado removido. Usando preço padrão SIGE.");
+      await refreshPriceData();
+    } catch (e: any) {
+      showToast("error", e.message);
+    } finally {
+      setSavingPrice(false);
+    }
+  };
+
+  const formatBRL = (v: number | null | undefined): string => {
+    if (v === null || v === undefined) return "—";
+    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
+  };
+
+  // ── Physical data load/save ──
+  const loadPhysicalData = useCallback(async () => {
+    if (physicalLoaded) return;
+    setLoadingPhysical(true);
+    try {
+      const token = await getToken();
+      const data = await api.getProductPhysical(token, sku);
+      setPhysicalData(data);
+      // Pre-fill fields: saved override > sige weight > attrs dims > sige dims
+      const s = data.saved;
+      const sigeW = data.sige?.weight || 0;
+      const sigeL = data.sige?.length || 0;
+      const sigeWd = data.sige?.width || 0;
+      const sigeHt = data.sige?.height || 0;
+      const attrL = data.attrs?.length || 0;
+      const attrW = data.attrs?.width || 0;
+      const attrH = data.attrs?.height || 0;
+      setPhysWeight(s?.weight ? String(s.weight) : sigeW ? String(sigeW) : "");
+      setPhysLength(s?.length ? String(s.length) : attrL ? String(attrL) : sigeL ? String(sigeL) : "");
+      setPhysWidth(s?.width ? String(s.width) : attrW ? String(attrW) : sigeWd ? String(sigeWd) : "");
+      setPhysHeight(s?.height ? String(s.height) : attrH ? String(attrH) : sigeHt ? String(sigeHt) : "");
+      setPhysicalLoaded(true);
+    } catch (e: any) {
+      console.error("Load physical error:", e);
+    } finally {
+      setLoadingPhysical(false);
+    }
+  }, [sku, physicalLoaded, getToken]);
+
+  // Load physical data when tab switches to "frete" or "geral" (quick-view card)
+  useEffect(() => {
+    if ((tab === "frete" || tab === "geral") && !physicalLoaded) loadPhysicalData();
+  }, [tab, physicalLoaded, loadPhysicalData]);
+
+  const savePhysicalData = async () => {
+    setSavingPhysical(true);
+    try {
+      const token = await getToken();
+      await api.saveProductPhysical(token, sku, {
+        weight: parseFloat(physWeight.replace(",", ".")) || 0,
+        length: parseFloat(physLength.replace(",", ".")) || 0,
+        width: parseFloat(physWidth.replace(",", ".")) || 0,
+        height: parseFloat(physHeight.replace(",", ".")) || 0,
+      });
+      showToast("success", "Peso e dimensoes salvos!");
+    } catch (e: any) {
+      showToast("error", e.message);
+    } finally {
+      setSavingPhysical(false);
+    }
+  };
+
+  const resetPhysicalData = async () => {
+    setSavingPhysical(true);
+    try {
+      const token = await getToken();
+      await api.deleteProductPhysical(token, sku);
+      setPhysicalLoaded(false);
+      setPhysicalData(null);
+      showToast("success", "Override removido. Dados serão detectados automaticamente.");
+      // Reload
+      setTimeout(() => loadPhysicalData(), 200);
+    } catch (e: any) {
+      showToast("error", e.message);
+    } finally {
+      setSavingPhysical(false);
+    }
+  };
+
   // Editable CSV attributes — merge into customAttributes for editing
   const allEditableAttrs: Record<string, string> = {};
   if (csvAttrs) { for (const [k, v] of Object.entries(csvAttrs)) { allEditableAttrs[k] = Array.isArray(v) ? v.join(", ") : v; } }
@@ -1270,6 +1767,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
     { id: "geral" as const, label: "Geral", icon: FileText },
     { id: "imagens" as const, label: `Imagens (${images.length})`, icon: Camera },
     { id: "atributos" as const, label: "Atributos", icon: Tag },
+    { id: "frete" as const, label: "Frete", icon: Truck },
   ];
 
   return (
@@ -1321,7 +1819,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
           {tab === "geral" && (
             <div className="space-y-5">
               <div>
-                <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.78rem", fontWeight: 600 }}>Titulo do Produto</label>
+                <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.78rem", fontWeight: 600 }}>Título do Produto</label>
                 <div className="flex gap-2">
                   <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" style={{ fontSize: "0.85rem" }} />
                   <button onClick={saveTitle} disabled={savingTitle || titulo.trim() === initialTitulo} className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
@@ -1355,8 +1853,8 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
                     </div>
                   </div>
                   <div>
-                    <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Descricao</label>
-                    <textarea rows={4} value={meta.description || ""} onChange={(e) => setMeta({ ...meta, description: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 resize-none" style={{ fontSize: "0.85rem" }} placeholder="Descricao detalhada..." />
+                    <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Descrição</label>
+                    <textarea rows={4} value={meta.description || ""} onChange={(e) => setMeta({ ...meta, description: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 resize-none" style={{ fontSize: "0.85rem" }} placeholder="Descrição detalhada..." />
                   </div>
                   <div>
                     <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 500 }}>Compatibilidade (uma por linha)</label>
@@ -1367,6 +1865,245 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
                   </button>
                 </>
               )}
+
+              {/* ── Weight Quick View ── */}
+              <div className="border-t border-gray-200 pt-5 mt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Weight className="w-4 h-4 text-red-600" />
+                    <p className="text-gray-800" style={{ fontSize: "0.88rem", fontWeight: 700 }}>Peso para Frete</p>
+                  </div>
+                  <button onClick={() => setTab("frete")} className="text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                    Editar na aba Frete <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+                {loadingPhysical ? (
+                  <div className="flex items-center gap-2 py-3 text-gray-400"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span style={{ fontSize: "0.8rem" }}>Carregando...</span></div>
+                ) : physicalData ? (
+                  <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                    <div className="grid grid-cols-4 gap-3">
+                      <div>
+                        <p className="text-gray-400 mb-0.5" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Peso</p>
+                        <p className="text-gray-800 font-mono" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                          {physicalData.saved?.weight || physicalData.sige?.weight || "\u2014"}
+                          {(physicalData.saved?.weight || physicalData.sige?.weight) ? <span className="text-gray-400 text-xs ml-0.5">kg</span> : null}
+                        </p>
+                        <p className="text-gray-400" style={{ fontSize: "0.6rem" }}>
+                          {physicalData.saved?.weight ? "manual" : physicalData.sige?.weight ? (physicalData.sige.matchedFields?.ref_pesoBruto !== undefined ? "ref SIGE" : "SIGE") : ""}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 mb-0.5" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Compr.</p>
+                        <p className="text-gray-800 font-mono" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                          {physicalData.saved?.length || physicalData.attrs?.length || physicalData.sige?.length || "\u2014"}
+                          {(physicalData.saved?.length || physicalData.attrs?.length || physicalData.sige?.length) ? <span className="text-gray-400 text-xs ml-0.5">cm</span> : null}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 mb-0.5" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Larg.</p>
+                        <p className="text-gray-800 font-mono" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                          {physicalData.saved?.width || physicalData.attrs?.width || physicalData.sige?.width || "\u2014"}
+                          {(physicalData.saved?.width || physicalData.attrs?.width || physicalData.sige?.width) ? <span className="text-gray-400 text-xs ml-0.5">cm</span> : null}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 mb-0.5" style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase" }}>Altura</p>
+                        <p className="text-gray-800 font-mono" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                          {physicalData.saved?.height || physicalData.attrs?.height || physicalData.sige?.height || "\u2014"}
+                          {(physicalData.saved?.height || physicalData.attrs?.height || physicalData.sige?.height) ? <span className="text-gray-400 text-xs ml-0.5">cm</span> : null}
+                        </p>
+                      </div>
+                    </div>
+                    {physicalData.sige?.matchedFields?.ref_pesoBruto !== undefined && (
+                      <p className="text-green-600 mt-2 flex items-center gap-1" style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                        <CheckCircle2 className="w-3 h-3" />
+                        {"Peso via Refer\u00eancia SIGE: pesoBruto=" + physicalData.sige.matchedFields.ref_pesoBruto + "kg, pesoLiquido=" + physicalData.sige.matchedFields.ref_pesoLiquido + "kg"}
+                        {physicalData.sige.matchedFields.ref_codRef && (" \u00b7 codRef=" + physicalData.sige.matchedFields.ref_codRef)}
+                      </p>
+                    )}
+                    {!physicalData.saved?.weight && !physicalData.sige?.weight && (
+                      <p className="text-amber-600 mt-2 flex items-center gap-1" style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                        <AlertCircle className="w-3 h-3" />
+                        {"Sem peso definido \u2014 ser\u00e1 usado o peso padr\u00e3o na config de frete. Defina na aba Frete."}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <button onClick={() => { loadPhysicalData(); }} className="text-gray-500 hover:text-red-600 flex items-center gap-1.5 py-2 cursor-pointer" style={{ fontSize: "0.78rem" }}>
+                    <Weight className="w-3.5 h-3.5" /> Carregar dados de peso
+                  </button>
+                )}
+              </div>
+
+              {/* ── Price Editor Section ── */}
+              <div className="border-t border-gray-200 pt-5 mt-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-red-600" />
+                    <p className="text-gray-800" style={{ fontSize: "0.88rem", fontWeight: 700 }}>Preço do Produto</p>
+                  </div>
+                  <button
+                    onClick={refreshPriceData}
+                    disabled={loadingPrice}
+                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50 rounded-lg hover:bg-gray-50"
+                    title="Atualizar precos"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingPrice ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+
+                {loadingPrice ? (
+                  <div className="flex items-center gap-2 py-6 justify-center text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span style={{ fontSize: "0.85rem" }}>Consultando precos...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Current price display */}
+                    <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-gray-500" style={{ fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          Preço Atual
+                        </span>
+                        {priceData?.source && (
+                          <span className={`px-2 py-0.5 rounded-full border ${
+                            priceData.source === "custom"
+                              ? "bg-blue-50 text-blue-600 border-blue-200"
+                              : priceData.source === "sige"
+                              ? "bg-green-50 text-green-600 border-green-200"
+                              : "bg-gray-100 text-gray-500 border-gray-200"
+                          }`} style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                            {priceData.source === "custom" ? "Personalizado" : priceData.source === "sige" ? `SIGE (${priceData.tier || "—"})` : "Sem preco"}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`${priceData?.found && priceData.price ? "text-red-600" : "text-gray-400"}`}
+                        style={{ fontSize: "1.5rem", fontWeight: 800, lineHeight: 1.1 }}>
+                        {priceData?.found && priceData.price !== null ? formatBRL(priceData.price) : "Sem preco"}
+                      </p>
+                      {priceConfig && (
+                        <p className="text-gray-400 mt-1" style={{ fontSize: "0.7rem" }}>
+                          Lista padrão global: <span className="font-mono font-semibold text-gray-600">{priceConfig.tier?.toUpperCase() || "V2"}</span>
+                          {" · "}Exibicao: <span className={priceConfig.showPrice !== false ? "text-green-600 font-semibold" : "text-red-500 font-semibold"}>
+                            {priceConfig.showPrice !== false ? "Ligada" : "Desligada"}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* SIGE Prices (v1, v2, v3) */}
+                    {priceData?.found && (priceData.v1 !== null || priceData.v2 !== null || priceData.v3 !== null) && (
+                      <div>
+                        <p className="text-gray-500 mb-2" style={{ fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          Listas de Preço SIGE
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["v1", "v2", "v3"] as const).map((tier) => {
+                            const tierPrice = priceData[tier];
+                            const isGlobalTier = priceConfig?.tier === tier;
+                            const isCurrentPrice = priceData.source === "custom" && priceData.price === tierPrice;
+                            const available = tierPrice !== null && tierPrice !== undefined && tierPrice > 0;
+                            return (
+                              <div
+                                key={tier}
+                                className={`relative rounded-xl border p-3 transition-all ${
+                                  available
+                                    ? "bg-white border-gray-200 hover:border-red-300 hover:shadow-sm"
+                                    : "bg-gray-50 border-gray-100"
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <span className="font-mono text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 700 }}>
+                                    {tier.toUpperCase()}
+                                  </span>
+                                  {isGlobalTier && (
+                                    <span className="bg-red-100 text-red-600 px-1.5 py-0 rounded" style={{ fontSize: "0.55rem", fontWeight: 700 }}>
+                                      PADRAO
+                                    </span>
+                                  )}
+                                </div>
+                                <p className={available ? "text-gray-800" : "text-gray-300"} style={{ fontSize: "1rem", fontWeight: 700 }}>
+                                  {available ? formatBRL(tierPrice) : "—"}
+                                </p>
+                                {available && (
+                                  <button
+                                    onClick={() => useSigePrice(tier)}
+                                    disabled={savingPrice || isCurrentPrice}
+                                    className={`mt-2 w-full py-1.5 rounded-lg text-center transition-colors flex items-center justify-center gap-1 ${
+                                      isCurrentPrice
+                                        ? "bg-green-50 text-green-600 border border-green-200 cursor-default"
+                                        : "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-40"
+                                    }`}
+                                    style={{ fontSize: "0.72rem", fontWeight: 600 }}
+                                  >
+                                    {isCurrentPrice ? (
+                                      <><CheckCircle2 className="w-3 h-3" /> Aplicado</>
+                                    ) : savingPrice ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <>Usar este preco</>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Custom Price Input */}
+                    <div>
+                      <p className="text-gray-500 mb-2" style={{ fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        Preço Manual
+                      </p>
+                      <div className="flex items-stretch gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style={{ fontSize: "0.85rem", fontWeight: 600 }}>R$</span>
+                          <input
+                            type="text"
+                            value={customPriceInput}
+                            onChange={(e) => {
+                              // Allow digits, comma, and dot
+                              const val = e.target.value.replace(/[^0-9.,]/g, "");
+                              setCustomPriceInput(val);
+                            }}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveCustomPrice(); }}
+                            className="w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                            style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                            placeholder="0,00"
+                          />
+                        </div>
+                        <button
+                          onClick={saveCustomPrice}
+                          disabled={savingPrice || !customPriceInput.trim()}
+                          className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors flex items-center gap-1.5 shrink-0"
+                          style={{ fontSize: "0.8rem", fontWeight: 600 }}
+                        >
+                          {savingPrice ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DollarSign className="w-3.5 h-3.5" />}
+                          Salvar Preco
+                        </button>
+                      </div>
+                      <p className="text-gray-400 mt-1.5" style={{ fontSize: "0.7rem" }}>
+                        O preço manual sobrescreve o preço da lista SIGE para este produto.
+                      </p>
+                    </div>
+
+                    {/* Remove custom price button */}
+                    {priceData?.source === "custom" && (
+                      <button
+                        onClick={removeCustomPrice}
+                        disabled={savingPrice}
+                        className="flex items-center gap-2 px-4 py-2.5 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-40 w-full justify-center"
+                        style={{ fontSize: "0.82rem", fontWeight: 500 }}
+                      >
+                        {savingPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                        Remover preço personalizado (usar padrão SIGE)
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="border-t border-gray-200 pt-5 mt-5">
                 <p className="text-red-600 mb-3" style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Zona de Perigo</p>
@@ -1386,7 +2123,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
                   {uploading ? <Loader2 className="w-8 h-8 text-red-500 animate-spin" /> : <div className="bg-red-50 rounded-full p-3"><ImagePlus className="w-6 h-6 text-red-600" /></div>}
                   <div>
                     <p className="text-gray-700" style={{ fontSize: "0.85rem", fontWeight: 500 }}>{uploading ? "Enviando..." : "Clique para adicionar imagens"}</p>
-                    <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.75rem" }}>PNG, JPG, WebP — multiplos arquivos</p>
+                    <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.75rem" }}>PNG, JPG, WebP, GIF — convertido automaticamente para WebP</p>
                   </div>
                 </button>
               </div>
@@ -1433,8 +2170,295 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
               )}
             </div>
           )}
+
+          {/* ── Tab Frete (Peso e Dimensoes) ── */}
+          {tab === "frete" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 mb-1">
+                <Scale className="w-4 h-4 text-red-600" />
+                <p className="text-gray-800" style={{ fontSize: "0.92rem", fontWeight: 700 }}>Peso e Dimensoes para Frete</p>
+              </div>
+              <p className="text-gray-500" style={{ fontSize: "0.78rem" }}>
+                Esses valores sao usados automaticamente no calculo de frete. O peso vem do SIGE e as dimensoes podem
+                vir das especificações técnicas (CSV). Você pode sobrescrever manualmente qualquer valor.
+              </p>
+
+              {loadingPhysical ? (
+                <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 text-gray-300 animate-spin" /></div>
+              ) : (
+                <>
+                  {/* Source info badges */}
+                  <div className="flex flex-wrap gap-2">
+                    {physicalData?.saved && (
+                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        <Save className="w-3 h-3" /> Override manual salvo
+                      </span>
+                    )}
+                    {physicalData?.sige?.found === false && (
+                      <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        <AlertCircle className="w-3 h-3" /> Produto não encontrado no SIGE
+                      </span>
+                    )}
+                    {physicalData?.sige?.found !== false && (physicalData?.sige?.weight ? (
+                      <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        <CheckCircle2 className="w-3 h-3" /> SIGE: peso {physicalData.sige.weight} kg
+                        {physicalData.sige.matchedFields?.ref_pesoBruto !== undefined && (
+                          <span className="text-green-600"> (Ref: bruto={physicalData.sige.matchedFields.ref_pesoBruto}kg, líq={physicalData.sige.matchedFields.ref_pesoLiquido}kg)</span>
+                        )}
+                      </span>
+                    ) : (
+                      physicalData?.sige?.matchedFields?.ref_pesoBruto !== undefined ? (
+                        <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                          <CheckCircle2 className="w-3 h-3" /> SIGE Ref: bruto={physicalData.sige.matchedFields.ref_pesoBruto}kg, líq={physicalData.sige.matchedFields.ref_pesoLiquido}kg
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                          <AlertCircle className="w-3 h-3" /> SIGE: sem peso nos campos conhecidos
+                        </span>
+                      )
+                    ))}
+                    {(physicalData?.attrs?.length || physicalData?.attrs?.width || physicalData?.attrs?.height) ? (
+                      <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        <CheckCircle2 className="w-3 h-3" /> CSV: {physicalData?.attrs?.length || "\u2014"}&times;{physicalData?.attrs?.width || "\u2014"}&times;{physicalData?.attrs?.height || "\u2014"} cm
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 border border-gray-200 rounded-full px-3 py-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        <Info className="w-3 h-3" /> CSV: sem dimensoes
+                      </span>
+                    )}
+                  </div>
+
+                  {/* SIGE diagnostics */}
+                  {physicalData?.sige && (
+                    <SigeDiagnostics sige={physicalData.sige} rawAttrs={physicalData.rawAttrs} />
+                  )}
+
+                  {/* Editable fields */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                          Peso (kg) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={physWeight}
+                          onChange={(e) => setPhysWeight(e.target.value.replace(/[^0-9.,]/g, ""))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                          style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                          placeholder="Ex: 1.5"
+                        />
+                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.65rem" }}>
+                          {physicalData?.sige?.weight ? "SIGE: " + physicalData.sige.weight + " kg" : "SIGE: não encontrado"}
+                          {physicalData?.sige?.matchedFields?.ref_pesoBruto !== undefined && (
+                            " | Ref: bruto=" + physicalData.sige.matchedFields.ref_pesoBruto + "kg, líq=" + physicalData.sige.matchedFields.ref_pesoLiquido + "kg"
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                          Comprimento (cm)
+                        </label>
+                        <input
+                          type="text"
+                          value={physLength}
+                          onChange={(e) => setPhysLength(e.target.value.replace(/[^0-9.,]/g, ""))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                          style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                          placeholder="Ex: 30"
+                        />
+                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.65rem" }}>
+                          {physicalData?.attrs?.length ? "CSV: " + physicalData.attrs.length + " cm" : ""}{physicalData?.attrs?.length && physicalData?.sige?.length ? " | " : ""}{physicalData?.sige?.length ? "SIGE: " + physicalData.sige.length + " cm" : ""}{!physicalData?.attrs?.length && !physicalData?.sige?.length ? "Nenhuma fonte encontrada" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                          Largura (cm)
+                        </label>
+                        <input
+                          type="text"
+                          value={physWidth}
+                          onChange={(e) => setPhysWidth(e.target.value.replace(/[^0-9.,]/g, ""))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                          style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                          placeholder="Ex: 20"
+                        />
+                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.65rem" }}>
+                          {physicalData?.attrs?.width ? "CSV: " + physicalData.attrs.width + " cm" : ""}{physicalData?.attrs?.width && physicalData?.sige?.width ? " | " : ""}{physicalData?.sige?.width ? "SIGE: " + physicalData.sige.width + " cm" : ""}{!physicalData?.attrs?.width && !physicalData?.sige?.width ? "Nenhuma fonte encontrada" : ""}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-gray-600 mb-1" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                          Altura (cm)
+                        </label>
+                        <input
+                          type="text"
+                          value={physHeight}
+                          onChange={(e) => setPhysHeight(e.target.value.replace(/[^0-9.,]/g, ""))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 font-mono"
+                          style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                          placeholder="Ex: 15"
+                        />
+                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.65rem" }}>
+                          {physicalData?.attrs?.height ? "CSV: " + physicalData.attrs.height + " cm" : ""}{physicalData?.attrs?.height && physicalData?.sige?.height ? " | " : ""}{physicalData?.sige?.height ? "SIGE: " + physicalData.sige.height + " cm" : ""}{!physicalData?.attrs?.height && !physicalData?.sige?.height ? "Nenhuma fonte encontrada" : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Save / Reset buttons */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        onClick={savePhysicalData}
+                        disabled={savingPhysical || !physWeight}
+                        className="flex-1 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                        style={{ fontSize: "0.85rem", fontWeight: 600 }}
+                      >
+                        {savingPhysical ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Salvar Peso e Dimensoes
+                      </button>
+                      {physicalData?.saved && (
+                        <button
+                          onClick={resetPhysicalData}
+                          disabled={savingPhysical}
+                          className="px-4 py-2.5 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors flex items-center gap-2 disabled:opacity-40 cursor-pointer"
+                          style={{ fontSize: "0.82rem", fontWeight: 500 }}
+                          title="Remover override e voltar a usar deteccao automatica"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Resetar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                    <p className="text-blue-700" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+                      <strong>Como funciona:</strong> Ao calcular frete, o sistema busca dados na seguinte prioridade:
+                      <br />1. <strong>Override manual</strong> (salvo aqui) — tem prioridade absoluta
+                      <br />2. <strong>SIGE Produto</strong> (peso direto) ou <strong>SIGE Referência</strong> (pesoBruto/pesoLiquido)
+                      <br />3. <strong>Especificações técnicas</strong> (dimensões do CSV)
+                      <br />4. <strong>Valores padrão</strong> (config de frete, caixa 20&times;15&times;10 cm)
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── SIGE Diagnostics Panel ───
+function SigeDiagnostics({ sige, rawAttrs }: {
+  sige: {
+    found: boolean;
+    weight: number;
+    length: number;
+    width: number;
+    height: number;
+    matchedFields: Record<string, any>;
+    weightCandidates: Record<string, any>;
+    dimCandidates: Record<string, any>;
+    allFields: Record<string, any>;
+  };
+  rawAttrs: Record<string, any> | null;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const hasWeightCandidates = Object.keys(sige.weightCandidates || {}).length > 0;
+  const hasDimCandidates = Object.keys(sige.dimCandidates || {}).length > 0;
+  const hasMatched = Object.keys(sige.matchedFields || {}).length > 0;
+  const allFieldEntries = Object.entries(sige.allFields || {});
+
+  return (
+    <div className="space-y-2">
+      {!sige.found && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <p className="text-red-700" style={{ fontSize: "0.75rem", fontWeight: 600 }}>Produto não encontrado no SIGE para este SKU.</p>
+        </div>
+      )}
+
+      {hasMatched && (
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <p className="text-green-700 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600 }}>Campos reconhecidos (listas conhecidas):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(sige.matchedFields).map(([k, v]) => (
+              <span key={k} className="bg-white text-green-800 border border-green-200 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.7rem" }}>
+                {k} = {String(v)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasWeightCandidates && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <p className="text-amber-700 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600 }}>Candidatos a PESO (busca fuzzy no SIGE):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(sige.weightCandidates).map(([k, v]) => (
+              <span key={k} className="bg-white text-amber-800 border border-amber-300 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.7rem", fontWeight: 600 }}>
+                {k} = {String(v)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasDimCandidates && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+          <p className="text-indigo-700 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600 }}>Candidatos a DIMENSAO (busca fuzzy no SIGE):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(sige.dimCandidates).map(([k, v]) => (
+              <span key={k} className="bg-white text-indigo-800 border border-indigo-300 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.7rem", fontWeight: 600 }}>
+                {k} = {String(v)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rawAttrs && Object.keys(rawAttrs).length > 0 && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
+          <p className="text-purple-700 mb-1.5" style={{ fontSize: "0.68rem", fontWeight: 600 }}>Atributos CSV (ficha tecnica):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(rawAttrs).map(([k, v]) => (
+              <span key={k} className="bg-white text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.7rem" }}>
+                {k} = {String(Array.isArray(v) ? v.join(", ") : v)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sige.found && allFieldEntries.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="text-gray-600 hover:text-gray-800 cursor-pointer flex items-center gap-1"
+            style={{ fontSize: "0.68rem", fontWeight: 600 }}
+          >
+            {showAll ? "Ocultar" : "Mostrar"} todos os {allFieldEntries.length} campos do SIGE
+            <ChevronDown className={"w-3 h-3 transition-transform " + (showAll ? "rotate-180" : "")} />
+          </button>
+          {showAll && (
+            <div className="mt-2 flex flex-wrap gap-1 max-h-64 overflow-y-auto">
+              {allFieldEntries.map(([k, v]) => {
+                const strVal = v === null ? "null" : String(v);
+                const isLong = strVal.length > 60;
+                return (
+                  <span key={k} className="bg-white text-gray-700 border border-gray-200 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.65rem" }} title={isLong ? strVal : undefined}>
+                    <strong>{k}</strong> = {isLong ? strVal.substring(0, 60) + "..." : strVal}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

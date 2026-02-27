@@ -13,7 +13,7 @@ import {
   Shield,
   RotateCcw,
 } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 
 interface TestDefinition {
@@ -44,7 +44,7 @@ const buildTests = (): TestDefinition[] => [
   {
     id: "user-me",
     module: "Usuarios",
-    name: "Dados do usuario autenticado",
+    name: "Dados do usuário autenticado",
     method: "GET",
     path: "/user/me",
     run: (t) => api.sigeUserMe(t),
@@ -167,9 +167,9 @@ export function SigeTestRunner({ isConnected }: Props) {
   const [totalDuration, setTotalDuration] = useState(0);
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const runAllTests = useCallback(async () => {
@@ -195,7 +195,7 @@ export function SigeTestRunner({ isConnected }: Props) {
     try {
       token = await getAccessToken();
     } catch {
-      setResults(initialResults.map((r) => ({ ...r, status: "skip" as const, error: "Sessao expirada" })));
+      setResults(initialResults.map((r) => ({ ...r, status: "skip" as const, error: "Sessão expirada" })));
       setRunning(false);
       return;
     }

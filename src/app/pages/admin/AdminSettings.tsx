@@ -1,34 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
-import type { SiteSettings, LogoMeta } from "../../services/api";
+import type { SiteSettings, LogoMeta, FaviconMeta } from "../../services/api";
 import {
   Save, Store, Globe, Bell, Palette, Shield, Check, Loader2, Database,
   Upload, Trash2, ImageIcon, FileWarning, X, DollarSign,
 } from "lucide-react";
 
 const defaultSettings: SiteSettings = {
-  storeName: "AutoParts",
+  storeName: "Carretão Auto Peças",
   storeSubtitle: "Catalogo de Pecas",
-  email: "contato@autoparts.com.br",
-  phone: "(11) 99999-9999",
-  address: "Rua das Pecas, 1234 - Centro, Sao Paulo - SP",
-  cep: "01000-000",
+  email: "contato@carretaoautopecas.com.br",
+  phone: "0800 643 1170",
+  address: "Av. Colômbia, 5765 - Zona 05, Maringá - PR",
+  cep: "87015-200",
   cnpj: "00.000.000/0001-00",
   freeShippingMin: "299.90",
   maxInstallments: "12",
   workdaysHours: "8h - 18h",
   saturdayHours: "8h - 13h",
-  whatsapp: "(11) 99999-9999",
-  facebook: "https://facebook.com/autoparts",
-  instagram: "https://instagram.com/autoparts",
-  youtube: "https://youtube.com/autoparts",
+  whatsapp: "(44) 99733-0202",
+  facebook: "https://facebook.com/carretaoautopecas",
+  instagram: "https://instagram.com/carretaoautopecas",
+  youtube: "",
   primaryColor: "#dc2626",
   emailNotifications: true,
   stockAlerts: true,
   newMessageAlerts: true,
   weeklyReport: false,
   maintenanceMode: false,
+  catalogMode: false,
 };
 
 function formatFileSize(bytes: number): string {
@@ -64,11 +66,13 @@ export function AdminSettings() {
     setSaving(true);
     try {
       await api.updateSettings(settings);
+      // Invalidate the settings cache so other components pick up the new values
+      api.getSettingsFresh();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
       console.error("Error saving settings:", e);
-      alert("Erro ao salvar configuracoes.");
+      alert("Erro ao salvar configurações.");
     } finally {
       setSaving(false);
     }
@@ -144,7 +148,7 @@ export function AdminSettings() {
           {activeTab === "general" && (
             <div className="space-y-5">
               <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
-                Informacoes Gerais
+                Informações Gerais
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -172,7 +176,7 @@ export function AdminSettings() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all" style={{ fontSize: "0.85rem" }} />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Endereco</label>
+                  <label className="block text-gray-600 mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Endereço</label>
                   <input type="text" value={settings.address}
                     onChange={(e) => setSettings({ ...settings, address: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 transition-all" style={{ fontSize: "0.85rem" }} />
@@ -256,10 +260,10 @@ export function AdminSettings() {
 
           {activeTab === "notifications" && (
             <div className="space-y-5">
-              <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>Preferencias de Notificacao</h3>
+              <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>Preferências de Notificação</h3>
               <div className="space-y-4">
                 {([
-                  { label: "Notificacoes por E-mail", desc: "Receba notificacoes de novos orcamentos por e-mail", key: "emailNotifications" as const },
+                  { label: "Notificações por E-mail", desc: "Receba notificações de novos orçamentos por e-mail", key: "emailNotifications" as const },
                   { label: "Alertas de Estoque", desc: "Receba alertas quando um produto estiver com estoque baixo", key: "stockAlerts" as const },
                   { label: "Novas Mensagens", desc: "Receba alerta quando uma nova mensagem de contato chegar", key: "newMessageAlerts" as const },
                   { label: "Relatorio Semanal", desc: "Receba um resumo semanal de atividades do site", key: "weeklyReport" as const },
@@ -289,6 +293,12 @@ export function AdminSettings() {
 
               {/* Footer Logo Upload */}
               <FooterLogoUploadSection />
+
+              {/* Divider */}
+              <div className="border-t border-gray-100" />
+
+              {/* Favicon Upload */}
+              <FaviconUploadSection />
 
               {/* Divider */}
               <div className="border-t border-gray-100" />
@@ -333,11 +343,22 @@ export function AdminSettings() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
                   <p className="text-gray-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Modo de Manutencao</p>
-                  <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>Ativa uma pagina de manutencao para visitantes</p>
+                  <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>Ativa uma página de manutenção para visitantes</p>
                 </div>
                 <button onClick={() => setSettings({ ...settings, maintenanceMode: !settings.maintenanceMode })}
                   className={`relative w-11 h-6 rounded-full transition-colors ${settings.maintenanceMode ? "bg-red-600" : "bg-gray-300"}`}>
                   <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.maintenanceMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="text-gray-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Modo Catalogo (sem precos)</p>
+                  <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>Oculta precos e bloqueia carrinho/checkout em todos os dominios</p>
+                </div>
+                <button onClick={() => setSettings({ ...settings, catalogMode: !settings.catalogMode })}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${settings.catalogMode ? "bg-amber-500" : "bg-gray-300"}`}>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.catalogMode ? "translate-x-5.5" : "translate-x-0.5"}`} />
                 </button>
               </div>
 
@@ -406,9 +427,8 @@ function LogoUploadSection() {
   }, [loadLogo]);
 
   const getToken = async (): Promise<string> => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) throw new Error("Sessao expirada. Faca login novamente.");
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada. Faça login novamente.");
     return token;
   };
 
@@ -419,13 +439,13 @@ function LogoUploadSection() {
     // Validate type
     const validTypes = ["image/avif", "image/png", "image/jpeg", "image/webp", "image/svg+xml"];
     if (!validTypes.includes(file.type)) {
-      setError("Formato nao suportado. Use AVIF, PNG, JPEG, WebP ou SVG.");
+      setError("Formato não suportado. Use AVIF, PNG, JPEG, WebP ou SVG.");
       return;
     }
 
     // Validate size
     if (file.size > 2 * 1024 * 1024) {
-      setError("Arquivo muito grande. Maximo: 2MB.");
+      setError("Arquivo muito grande. Máximo: 2MB.");
       return;
     }
 
@@ -501,7 +521,7 @@ function LogoUploadSection() {
         <div>
           <p className="text-gray-500 mb-3" style={{ fontSize: "0.82rem" }}>
             Envie o logo do site no formato <strong>AVIF</strong> (recomendado), PNG, JPEG, WebP ou SVG.
-            Tamanho maximo: 2MB. O logo sera exibido no header de todas as paginas.
+            Tamanho máximo: 2MB. O logo será exibido no header de todas as páginas.
           </p>
 
           {/* Drag-and-drop zone */}
@@ -627,7 +647,7 @@ function LogoUploadSection() {
         {/* Preview */}
         <div>
           <p className="text-gray-500 mb-2" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
-            Pre-visualizacao
+            Pré-visualização
           </p>
           <div className="border border-gray-200 rounded-xl bg-gray-50/50 p-4 flex flex-col items-center justify-center min-h-[180px]">
             {loading ? (
@@ -648,7 +668,7 @@ function LogoUploadSection() {
                   <div className="w-6 h-2 bg-gray-100 rounded-full" />
                 </div>
                 <p className="text-gray-400" style={{ fontSize: "0.68rem" }}>
-                  Simulacao do header
+                  Simulação do header
                 </p>
               </div>
             ) : (
@@ -696,9 +716,8 @@ function FooterLogoUploadSection() {
   }, [loadLogo]);
 
   const getToken = async (): Promise<string> => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) throw new Error("Sessao expirada. Faca login novamente.");
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada. Faça login novamente.");
     return token;
   };
 
@@ -709,13 +728,13 @@ function FooterLogoUploadSection() {
     // Validate type
     const validTypes = ["image/avif", "image/png", "image/jpeg", "image/webp", "image/svg+xml"];
     if (!validTypes.includes(file.type)) {
-      setError("Formato nao suportado. Use AVIF, PNG, JPEG, WebP ou SVG.");
+      setError("Formato não suportado. Use AVIF, PNG, JPEG, WebP ou SVG.");
       return;
     }
 
     // Validate size
     if (file.size > 2 * 1024 * 1024) {
-      setError("Arquivo muito grande. Maximo: 2MB.");
+      setError("Arquivo muito grande. Máximo: 2MB.");
       return;
     }
 
@@ -791,7 +810,7 @@ function FooterLogoUploadSection() {
         <div>
           <p className="text-gray-500 mb-3" style={{ fontSize: "0.82rem" }}>
             Envie o logo do rodape no formato <strong>AVIF</strong> (recomendado), PNG, JPEG, WebP ou SVG.
-            Tamanho maximo: 2MB. O logo sera exibido no rodape de todas as paginas.
+            Tamanho máximo: 2MB. O logo será exibido no rodapé de todas as páginas.
           </p>
 
           {/* Drag-and-drop zone */}
@@ -917,7 +936,7 @@ function FooterLogoUploadSection() {
         {/* Preview */}
         <div>
           <p className="text-gray-500 mb-2" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
-            Pre-visualizacao
+            Pré-visualização
           </p>
           <div className="border border-gray-200 rounded-xl bg-gray-50/50 p-4 flex flex-col items-center justify-center min-h-[180px]">
             {loading ? (
@@ -940,7 +959,7 @@ function FooterLogoUploadSection() {
                   </div>
                 </div>
                 <p className="text-gray-400" style={{ fontSize: "0.68rem" }}>
-                  Simulacao do rodape
+                  Simulação do rodapé
                 </p>
               </div>
             ) : (
@@ -957,12 +976,314 @@ function FooterLogoUploadSection() {
 }
 
 /* ═══════════════════════════════════════════════
+   Favicon Upload Section (self-contained)
+   ═══════════════════════════════════════════════ */
+
+function FaviconUploadSection() {
+  const [favicon, setFavicon] = useState<FaviconMeta | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadFavicon = useCallback(async () => {
+    try {
+      const data = await api.getFavicon();
+      setFavicon(data);
+    } catch (e) {
+      console.error("Error loading favicon:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFavicon();
+  }, [loadFavicon]);
+
+  const getToken = async (): Promise<string> => {
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada. Faça login novamente.");
+    return token;
+  };
+
+  const handleFile = async (file: File) => {
+    setError("");
+    setSuccess("");
+    const validTypes = ["image/png", "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      setError("Formato não suportado. Use PNG, ICO, SVG ou WebP.");
+      return;
+    }
+    if (file.size > 1 * 1024 * 1024) {
+      setError("Arquivo muito grande. Máximo: 1MB.");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    setUploading(true);
+    try {
+      const token = await getToken();
+      const result = await api.uploadFavicon(file, token);
+      setFavicon({ hasFavicon: true, url: result.url, filename: result.filename, contentType: result.contentType, size: result.size, uploadedAt: result.uploadedAt });
+      setSuccess("Favicon enviado com sucesso!");
+      // Apply favicon immediately
+      if (result.url) applyFaviconToPage(result.url);
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (e: any) {
+      setError(e.message || "Erro ao enviar favicon.");
+      setPreviewUrl(null);
+    } finally {
+      setUploading(false);
+      URL.revokeObjectURL(objectUrl);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError("");
+    try {
+      const token = await getToken();
+      await api.deleteFavicon(token);
+      setFavicon({ hasFavicon: false, url: null });
+      setPreviewUrl(null);
+      setSuccess("Favicon removido.");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (e: any) {
+      setError(e.message || "Erro ao remover favicon.");
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const onDragLeave = () => setDragOver(false);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    e.target.value = "";
+  };
+
+  const displayUrl = previewUrl || (favicon?.hasFavicon && favicon?.url ? favicon.url : null);
+
+  return (
+    <div>
+      <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
+        Favicon do Site
+      </h3>
+
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-[1fr_280px] gap-5">
+        {/* Upload area */}
+        <div>
+          <p className="text-gray-500 mb-3" style={{ fontSize: "0.82rem" }}>
+            Envie o favicon (ícone da aba do navegador) no formato <strong>PNG</strong> (recomendado), ICO, SVG ou WebP.
+            Tamanho ideal: 32x32px ou 64x64px. Máximo: 1MB.
+          </p>
+
+          {/* Drag-and-drop zone */}
+          <div
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            className={"relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 " +
+              (dragOver
+                ? "border-red-400 bg-red-50/60"
+                : "border-gray-200 hover:border-red-300 hover:bg-red-50/30"
+              )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".png,.ico,.svg,.webp"
+              onChange={onFileChange}
+              className="hidden"
+            />
+
+            {uploading ? (
+              <div className="flex flex-col items-center gap-2 py-2">
+                <Loader2 className="w-8 h-8 text-red-500 animate-spin" />
+                <p className="text-gray-500" style={{ fontSize: "0.85rem" }}>Enviando favicon...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-2">
+                <div className="bg-red-50 rounded-full p-3">
+                  <Upload className="w-6 h-6 text-red-500" />
+                </div>
+                <div>
+                  <p className="text-gray-700" style={{ fontSize: "0.88rem", fontWeight: 500 }}>
+                    Arraste o arquivo ou <span className="text-red-600 underline">clique para selecionar</span>
+                  </p>
+                  <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.75rem" }}>
+                    PNG, ICO, SVG ou WebP - max. 1MB
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+              <FileWarning className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <p className="text-red-600" style={{ fontSize: "0.82rem" }}>{error}</p>
+            </div>
+          )}
+
+          {/* Success */}
+          {success && (
+            <div className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+              <Check className="w-4 h-4 text-green-600 shrink-0" />
+              <p className="text-green-700" style={{ fontSize: "0.82rem" }}>{success}</p>
+            </div>
+          )}
+
+          {/* File info */}
+          {favicon?.hasFavicon && favicon.filename && (
+            <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="bg-white border border-gray-200 rounded-lg p-2 shrink-0">
+                    <ImageIcon className="w-4 h-4 text-gray-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-gray-700 truncate" style={{ fontSize: "0.82rem", fontWeight: 500 }}>
+                      {favicon.filename}
+                    </p>
+                    <div className="flex items-center gap-2 text-gray-400" style={{ fontSize: "0.72rem" }}>
+                      {favicon.size && <span>{formatFileSize(favicon.size)}</span>}
+                      {favicon.contentType && (
+                        <>
+                          <span className="w-1 h-1 bg-gray-300 rounded-full" />
+                          <span>{favicon.contentType.replace("image/", "").toUpperCase()}</span>
+                        </>
+                      )}
+                      {favicon.uploadedAt && (
+                        <>
+                          <span className="w-1 h-1 bg-gray-300 rounded-full" />
+                          <span>{new Date(favicon.uploadedAt).toLocaleDateString("pt-BR")}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Delete button */}
+                {showDeleteConfirm ? (
+                  <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="px-2.5 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                      style={{ fontSize: "0.75rem", fontWeight: 500 }}
+                    >
+                      {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirmar"}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0 ml-3"
+                    title="Remover favicon"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Preview */}
+        <div>
+          <p className="text-gray-500 mb-2" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+            Pré-visualização
+          </p>
+          <div className="border border-gray-200 rounded-xl bg-gray-50/50 p-4 flex flex-col items-center justify-center min-h-[180px]">
+            {loading ? (
+              <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+            ) : displayUrl ? (
+              <div className="flex flex-col items-center gap-3 w-full">
+                {/* Mock browser tab */}
+                <div className="w-full bg-gray-200 rounded-t-lg pt-2 px-2">
+                  <div className="bg-white rounded-t-md px-3 py-1.5 flex items-center gap-2 max-w-[200px]">
+                    <img
+                      src={displayUrl}
+                      alt="Favicon preview"
+                      className="w-4 h-4 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                    <span className="text-gray-600 truncate" style={{ fontSize: "0.7rem" }}>Carretão Auto Peças</span>
+                  </div>
+                </div>
+                <div className="w-full bg-white border border-gray-200 rounded-b-lg h-16" />
+                <p className="text-gray-400" style={{ fontSize: "0.68rem" }}>
+                  Simulação da aba do navegador
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-gray-300">
+                <ImageIcon className="w-10 h-10" />
+                <p style={{ fontSize: "0.78rem" }}>Nenhum favicon enviado</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Helper to apply favicon to the current page dynamically */
+function applyFaviconToPage(url: string) {
+  try {
+    var existing = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+    if (!existing) {
+      existing = document.createElement("link");
+      existing.rel = "icon";
+      document.head.appendChild(existing);
+    }
+    existing.href = url;
+  } catch (_e) { /* ignore */ }
+}
+
+/* ═══════════════════════════════════════════════
    Pricing Config Section (self-contained)
    ═══════════════════════════════════════════════ */
 
 function PricingConfigSection() {
   const [tier, setTier] = useState<"v1" | "v2" | "v3">("v2");
   const [showPrice, setShowPrice] = useState(true);
+  const [pixDiscountEnabled, setPixDiscountEnabled] = useState(false);
+  const [pixDiscountPercent, setPixDiscountPercent] = useState(5);
+  const [installmentsCount, setInstallmentsCount] = useState(0);
+  const [installmentsMinValue, setInstallmentsMinValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
@@ -999,6 +1320,10 @@ function PricingConfigSection() {
       .then((cfg: any) => {
         setTier(cfg.tier || "v2");
         setShowPrice(cfg.showPrice !== false);
+        setPixDiscountEnabled(cfg.pixDiscountEnabled === true);
+        setPixDiscountPercent(typeof cfg.pixDiscountPercent === "number" ? cfg.pixDiscountPercent : 5);
+        setInstallmentsCount(typeof cfg.installmentsCount === "number" ? cfg.installmentsCount : 0);
+        setInstallmentsMinValue(typeof cfg.installmentsMinValue === "number" ? cfg.installmentsMinValue : 0);
         if (cfg.listPriceMapping) {
           setListMappingV1(cfg.listPriceMapping.v1 || "");
           setListMappingV2(cfg.listPriceMapping.v2 || "");
@@ -1010,9 +1335,8 @@ function PricingConfigSection() {
   }, []);
 
   const getToken = async (): Promise<string> => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) throw new Error("Sessao expirada.");
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada.");
     return token;
   };
 
@@ -1025,8 +1349,8 @@ function PricingConfigSection() {
       if (listMappingV1.trim()) listPriceMapping.v1 = listMappingV1.trim();
       if (listMappingV2.trim()) listPriceMapping.v2 = listMappingV2.trim();
       if (listMappingV3.trim()) listPriceMapping.v3 = listMappingV3.trim();
-      await api.savePriceConfig({ tier, showPrice, listPriceMapping } as any, token);
-      setSuccess("Configuracao salva!");
+      await api.savePriceConfig({ tier, showPrice, pixDiscountEnabled, pixDiscountPercent, installmentsCount, installmentsMinValue, listPriceMapping } as any, token);
+      setSuccess("Configuração salva!");
       setTimeout(() => setSuccess(""), 3000);
     } catch (e: any) {
       setError(e.message || "Erro ao salvar.");
@@ -1052,7 +1376,7 @@ function PricingConfigSection() {
   const handleSetCustom = async () => {
     if (!customSku.trim() || !customPrice.trim()) return;
     const price = parseFloat(customPrice.replace(",", "."));
-    if (isNaN(price) || price < 0) { setCustomMsg("Preco invalido."); return; }
+    if (isNaN(price) || price < 0) { setCustomMsg("Preço inválido."); return; }
     setCustomSaving(true);
     setCustomMsg("");
     try {
@@ -1125,20 +1449,20 @@ function PricingConfigSection() {
   }
 
   const tiers = [
-    { id: "v1" as const, label: "Tabela V1", desc: "Primeira lista de preco mapeada (ou auto-atribuida)" },
-    { id: "v2" as const, label: "Tabela V2", desc: "Segunda lista de preco mapeada (ou auto-atribuida) — padrao" },
-    { id: "v3" as const, label: "Tabela V3", desc: "Terceira lista de preco mapeada (ou auto-atribuida)" },
+    { id: "v1" as const, label: "Tabela V1", desc: "Primeira lista de preço mapeada (ou auto-atribuída)" },
+    { id: "v2" as const, label: "Tabela V2", desc: "Segunda lista de preço mapeada (ou auto-atribuída) — padrão" },
+    { id: "v3" as const, label: "Tabela V3", desc: "Terceira lista de preço mapeada (ou auto-atribuída)" },
   ];
 
   return (
     <div className="space-y-6">
-      {/* ─── Tabela de Precos ─── */}
+      {/* ─── Tabela de Preços ─── */}
       <div>
         <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
-          Tabela de Precos do SIGE
+          Tabela de Preços do SIGE
         </h3>
         <p className="text-gray-500 mt-3 mb-4" style={{ fontSize: "0.82rem" }}>
-          Selecione qual tabela de preco do SIGE sera exibida no site. O padrao e V2.
+          Selecione qual tabela de preço do SIGE será exibida no site. O padrão é V2.
         </p>
         <div className="space-y-2">
           {tiers.map((t) => (
@@ -1159,11 +1483,11 @@ function PricingConfigSection() {
         </div>
       </div>
 
-      {/* ─── Exibir Precos Toggle ─── */}
+      {/* ─── Exibir Preços Toggle ─── */}
       <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
         <div>
-          <p className="text-gray-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Exibir precos no site</p>
-          <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>Quando desativado, os precos nao aparecem no catalogo</p>
+          <p className="text-gray-700" style={{ fontSize: "0.9rem", fontWeight: 500 }}>Exibir preços no site</p>
+          <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>Quando desativado, os preços não aparecem no catálogo</p>
         </div>
         <button onClick={() => setShowPrice(!showPrice)}
           className={`relative w-11 h-6 rounded-full transition-colors ${showPrice ? "bg-red-600" : "bg-gray-300"}`}>
@@ -1171,7 +1495,133 @@ function PricingConfigSection() {
         </button>
       </div>
 
-      {/* ─── Mapeamento Lista de Precos SIGE ─── */}
+      {/* ─── Desconto PIX ─── */}
+      <div className="border border-emerald-200 rounded-xl overflow-hidden">
+        <div className="bg-emerald-50 px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-emerald-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>Desconto PIX</p>
+              <p className="text-emerald-600" style={{ fontSize: "0.72rem" }}>Exibe o preço com desconto para pagamento via PIX</p>
+            </div>
+          </div>
+          <button onClick={() => setPixDiscountEnabled(!pixDiscountEnabled)}
+            className={"relative w-11 h-6 rounded-full transition-colors " + (pixDiscountEnabled ? "bg-emerald-600" : "bg-gray-300")}>
+            <span className={"absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform " + (pixDiscountEnabled ? "translate-x-5.5" : "translate-x-0.5")} />
+          </button>
+        </div>
+        {pixDiscountEnabled && (
+          <div className="px-5 py-4 bg-white space-y-4">
+            <div>
+              <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+                Percentual de desconto (%)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1"
+                  max="25"
+                  step="0.5"
+                  value={pixDiscountPercent}
+                  onChange={(e) => setPixDiscountPercent(parseFloat(e.target.value))}
+                  className="flex-1 accent-emerald-600"
+                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="50"
+                    step="0.5"
+                    value={pixDiscountPercent}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0 && v <= 50) setPixDiscountPercent(v);
+                    }}
+                    className="w-20 px-2 py-2 border border-gray-200 rounded-lg text-center text-gray-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+                    style={{ fontSize: "0.9rem", fontWeight: 700 }}
+                  />
+                  <span className="text-gray-500" style={{ fontSize: "0.85rem", fontWeight: 600 }}>%</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-emerald-50/60 rounded-lg p-3.5 border border-emerald-100">
+              <p className="text-emerald-700" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                Exemplo: Um produto de <strong>R$ 100,00</strong> será exibido como{" "}
+                <strong className="text-emerald-800">R$ {(100 * (1 - pixDiscountPercent / 100)).toFixed(2)}</strong> no PIX
+                ({pixDiscountPercent}% de desconto).
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Parcelamento ─── */}
+      <div className="border border-blue-200 rounded-xl overflow-hidden">
+        <div className="bg-blue-50 px-5 py-3 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <DollarSign className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-blue-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>Parcelamento</p>
+            <p className="text-blue-600" style={{ fontSize: "0.72rem" }}>Configura exibição de parcelas no catálogo (visual apenas)</p>
+          </div>
+        </div>
+        <div className="px-5 py-4 bg-white">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+                Número máximo de parcelas
+              </label>
+              <select
+                value={installmentsCount}
+                onChange={(e) => setInstallmentsCount(parseInt(e.target.value, 10))}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                style={{ fontSize: "0.85rem" }}
+              >
+                <option value={0}>Desativado</option>
+                <option value={2}>2x</option>
+                <option value={3}>3x</option>
+                <option value={4}>4x</option>
+                <option value={5}>5x</option>
+                <option value={6}>6x</option>
+                <option value={8}>8x</option>
+                <option value={10}>10x</option>
+                <option value={12}>12x</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+                Valor mínimo da parcela (R$)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="5"
+                value={installmentsMinValue}
+                onChange={(e) => setInstallmentsMinValue(parseFloat(e.target.value) || 0)}
+                placeholder="0 = sem mínimo"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                style={{ fontSize: "0.85rem" }}
+              />
+            </div>
+          </div>
+          {installmentsCount > 0 && (
+            <div className="bg-blue-50/60 rounded-lg p-3.5 border border-blue-100 mt-3">
+              <p className="text-blue-700" style={{ fontSize: "0.78rem", fontWeight: 500 }}>
+                Exemplo: Um produto de <strong>R$ 600,00</strong> será exibido como{" "}
+                <strong className="text-blue-800">{installmentsCount}x de R$ {(600 / installmentsCount).toFixed(2)}</strong> s/ juros.
+                {installmentsMinValue > 0 && (
+                  <span> Parcela mínima: R$ {installmentsMinValue.toFixed(2)}.</span>
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Mapeamento Lista de Preços SIGE ─── */}
       <div>
         <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
           Mapeamento de Listas de Preco
@@ -1224,7 +1674,7 @@ function PricingConfigSection() {
         {sigeListsLoaded && sigeLists.length === 0 && (
           <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg">
             <p className="text-amber-700" style={{ fontSize: "0.78rem" }}>
-              Nenhuma lista de preco encontrada no SIGE. Verifique se a conexao esta ativa.
+              Nenhuma lista de preço encontrada no SIGE. Verifique se a conexão está ativa.
             </p>
           </div>
         )}
@@ -1259,7 +1709,7 @@ function PricingConfigSection() {
           }`} style={{ fontSize: "0.85rem", fontWeight: 500 }}>
           {saving ? (<><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</>)
             : success ? (<><Check className="w-4 h-4" /> {success}</>)
-            : (<><Save className="w-4 h-4" /> Salvar Configuracao</>)}
+            : (<><Save className="w-4 h-4" /> Salvar Configuração</>)}
         </button>
         <button onClick={handleClearCache} disabled={cacheClearLoading}
           className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
@@ -1273,13 +1723,13 @@ function PricingConfigSection() {
 
       <div className="border-t border-gray-100" />
 
-      {/* ─── Preco Personalizado por Produto ─── */}
+      {/* ─── Preço Personalizado por Produto ─── */}
       <div>
         <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
-          Preco Personalizado por Produto
+          Preço Personalizado por Produto
         </h3>
         <p className="text-gray-500 mt-3 mb-4" style={{ fontSize: "0.82rem" }}>
-          Define um preco fixo para um produto especifico, sobrescrevendo o valor do SIGE.
+          Define um preço fixo para um produto específico, sobrescrevendo o valor do SIGE.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto_auto] gap-2 items-end">
           <div>
@@ -1310,11 +1760,11 @@ function PricingConfigSection() {
         {customMsg && <p className="mt-2 text-gray-600" style={{ fontSize: "0.8rem" }}>{customMsg}</p>}
       </div>
 
-      {/* ─── Lista de Precos Personalizados ─── */}
+      {/* ─── Lista de Preços Personalizados ─── */}
       <div>
         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
           <h3 className="text-gray-800" style={{ fontSize: "1rem", fontWeight: 600 }}>
-            Precos Personalizados Salvos
+            Preços Personalizados Salvos
           </h3>
           <button onClick={loadCustomPrices} disabled={customPricesLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
@@ -1328,7 +1778,7 @@ function PricingConfigSection() {
           <div className="mt-3">
             {customPrices.length === 0 ? (
               <p className="text-gray-400 py-4 text-center" style={{ fontSize: "0.82rem" }}>
-                Nenhum preco personalizado cadastrado.
+                Nenhum preço personalizado cadastrado.
               </p>
             ) : (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -1361,7 +1811,7 @@ function PricingConfigSection() {
                           <button
                             onClick={() => handleRemoveCustom(cp.sku)}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                            title="Remover preco personalizado"
+                            title="Remover preço personalizado"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1383,13 +1833,13 @@ function PricingConfigSection() {
 
       <div className="border-t border-gray-100" />
 
-      {/* ─── Testar Preco ─── */}
+      {/* ─── Testar Preço ─── */}
       <div>
         <h3 className="text-gray-800 pb-3 border-b border-gray-100" style={{ fontSize: "1rem", fontWeight: 600 }}>
-          Testar Preco de um Produto
+          Testar Preço de um Produto
         </h3>
         <p className="text-gray-500 mt-3 mb-4" style={{ fontSize: "0.82rem" }}>
-          Verifique o preco retornado pelo SIGE para qualquer SKU. Mostra V1, V2, V3 e os campos detectados.
+          Verifique o preço retornado pelo SIGE para qualquer SKU. Mostra V1, V2, V3 e os campos detectados.
         </p>
         <div className="flex gap-2 items-end">
           <div className="flex-1">
@@ -1433,7 +1883,7 @@ function PricingConfigSection() {
                 {/* V1, V2, V3 values */}
                 {testResult.source !== "custom" && (
                   <div className="bg-white border border-gray-200 rounded-lg p-3 mt-2">
-                    <p className="text-gray-600 mb-2" style={{ fontSize: "0.75rem", fontWeight: 600 }}>Tabelas de Preco SIGE:</p>
+                    <p className="text-gray-600 mb-2" style={{ fontSize: "0.75rem", fontWeight: 600 }}>Tabelas de Preço SIGE:</p>
                     <div className="grid grid-cols-3 gap-3">
                       {(["v1", "v2", "v3"] as const).map((v) => {
                         const label = v.toUpperCase();
@@ -1472,7 +1922,7 @@ function PricingConfigSection() {
                 )}
                 {testResult.descricao && (
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500" style={{ fontSize: "0.78rem", fontWeight: 500, minWidth: 100 }}>Descricao:</span>
+                    <span className="text-gray-500" style={{ fontSize: "0.78rem", fontWeight: 500, minWidth: 100 }}>Descrição:</span>
                     <span className="text-gray-700" style={{ fontSize: "0.82rem" }}>{testResult.descricao}</span>
                   </div>
                 )}
@@ -1480,7 +1930,7 @@ function PricingConfigSection() {
                 {/* Debug: price keys found */}
                 {testResult._priceKeys && testResult._priceKeys.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
-                    <p className="text-gray-500 mb-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Campos de preco detectados no SIGE:</p>
+                    <p className="text-gray-500 mb-1" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Campos de preço detectados no SIGE:</p>
                     <div className="flex flex-wrap gap-1">
                       {testResult._priceKeys.map((pk: string, i: number) => (
                         <span key={i} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono" style={{ fontSize: "0.68rem" }}>
@@ -1494,7 +1944,7 @@ function PricingConfigSection() {
                 {/* Not found message */}
                 {!testResult.found && testResult.source !== "none" && (
                   <p className="text-amber-600 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" style={{ fontSize: "0.8rem" }}>
-                    Produto nao encontrado no SIGE ou sem preco definido nas tabelas V1/V2/V3.
+                    Produto não encontrado no SIGE ou sem preço definido nas tabelas V1/V2/V3.
                   </p>
                 )}
                 {testResult.source === "none" && testResult.error && (

@@ -22,6 +22,7 @@ import {
 import * as api from "../../services/api";
 import type { ClientProfile } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 
 // Helpers
 function formatCpf(cpf: string): string {
@@ -87,12 +88,12 @@ export function AdminClients() {
     setLoading(true);
     setError(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setError("Sessao expirada. Faca login novamente.");
+      const token = await getValidAdminToken();
+      if (!token) {
+        setError("Sessão expirada. Faça login novamente.");
         return;
       }
-      const result = await api.getAdminClients(session.access_token);
+      const result = await api.getAdminClients(token);
       setClients(result.clients || []);
     } catch (err: any) {
       console.error("Error loading clients:", err);
@@ -169,7 +170,7 @@ export function AdminClients() {
 
   // Export CSV
   const exportCsv = () => {
-    const header = "Nome,Email,Telefone,CPF,Cidade,Estado,CEP,Endereco,Cadastro,Email Confirmado,Ultimo Acesso\n";
+    const header = "Nome,Email,Telefone,CPF,Cidade,Estado,CEP,Endereço,Cadastro,Email Confirmado,Último Acesso\n";
     const rows = sorted.map((c) =>
       [
         `"${(c.name || "").replace(/"/g, '""')}"`,
@@ -285,7 +286,7 @@ export function AdminClients() {
                 {activeCount}
               </p>
               <p className="text-gray-400" style={{ fontSize: "0.78rem" }}>
-                Ja Fizeram Login
+                Já Fizeram Login
               </p>
             </div>
           </div>
@@ -338,7 +339,7 @@ export function AdminClients() {
           <p className="text-gray-400 mt-1" style={{ fontSize: "0.8rem" }}>
             {search
               ? "Tente buscar com outros termos."
-              : "Os clientes aparecerao aqui quando se cadastrarem no site."}
+              : "Os clientes aparecerão aqui quando se cadastrarem no site."}
           </p>
         </div>
       ) : (
@@ -498,11 +499,11 @@ export function AdminClients() {
                   {isExpanded && (
                     <div className="border-t border-gray-100 px-4 py-4 space-y-3 bg-gray-50/50">
                       <DetailRow icon={Mail} label="Email" value={client.email} />
-                      <DetailRow icon={Phone} label="Telefone" value={client.phone ? formatPhone(client.phone) : "-"} />
-                      <DetailRow icon={CreditCard} label="CPF" value={client.cpf ? formatCpf(client.cpf) : "-"} mono />
+                      <DetailRow icon={Phone} label="Telefone" value={client.phone ? formatPhone(client.phone) : "Não informado"} />
+                      <DetailRow icon={CreditCard} label="CPF" value={client.cpf ? formatCpf(client.cpf) : "Não informado"} mono />
                       <DetailRow
                         icon={MapPin}
-                        label="Endereco"
+                        label="Endereço"
                         value={
                           [client.address, client.city && client.state ? `${client.city}/${client.state}` : client.city || client.state, client.cep ? `CEP: ${formatCep(client.cep)}` : ""]
                             .filter(Boolean)
@@ -600,7 +601,7 @@ function ExpandedClientDetail({
             Contato
           </p>
           <DetailRow icon={Mail} label="Email" value={client.email} />
-          <DetailRow icon={Phone} label="Telefone" value={client.phone ? formatPhone(client.phone) : "Nao informado"} />
+          <DetailRow icon={Phone} label="Telefone" value={client.phone ? formatPhone(client.phone) : "Não informado"} />
         </div>
 
         {/* Documents */}
@@ -608,22 +609,22 @@ function ExpandedClientDetail({
           <p className="text-gray-600 border-b border-gray-100 pb-1.5" style={{ fontSize: "0.78rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
             Documentos
           </p>
-          <DetailRow icon={CreditCard} label="CPF" value={client.cpf ? formatCpf(client.cpf) : "Nao informado"} mono />
+          <DetailRow icon={CreditCard} label="CPF" value={client.cpf ? formatCpf(client.cpf) : "Não informado"} mono />
         </div>
 
         {/* Address */}
         <div className="space-y-3">
           <p className="text-gray-600 border-b border-gray-100 pb-1.5" style={{ fontSize: "0.78rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Endereco
+            Endereço
           </p>
-          <DetailRow icon={MapPin} label="Endereco" value={client.address || "Nao informado"} />
+          <DetailRow icon={MapPin} label="Endereço" value={client.address || "Não informado"} />
           <DetailRow
             icon={MapPin}
             label="Cidade/UF"
             value={
               client.city && client.state
                 ? `${client.city} / ${client.state}`
-                : client.city || client.state || "Nao informado"
+                : client.city || client.state || "Não informado"
             }
           />
           {client.cep && (
@@ -653,7 +654,7 @@ function ExpandedClientDetail({
                   className={client.email_confirmed ? "text-green-700" : "text-amber-700"}
                   style={{ fontSize: "0.83rem" }}
                 >
-                  {client.email_confirmed ? "Sim - conta ativa" : "Nao - pendente de confirmacao"}
+                  {client.email_confirmed ? "Sim - conta ativa" : "Não - pendente de confirmação"}
                 </p>
               </div>
             </div>

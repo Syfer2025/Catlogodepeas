@@ -31,7 +31,9 @@ import {
   Hash,
 } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
+import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
+import { publicAnonKey } from "/utils/supabase/info";
 import { SigeDepModule } from "./SigeDepModule";
 import { SigeCategoryModule } from "./SigeCategoryModule";
 import { SigeCustomerModule } from "./SigeCustomerModule";
@@ -52,6 +54,9 @@ import { SigeOrderItemsModule } from "./SigeOrderItemsModule";
 import { SigeOrderItemsTextModule } from "./SigeOrderItemsTextModule";
 import { SigeTestRunner } from "./SigeTestRunner";
 import { SigeStockExplorer } from "./SigeStockExplorer";
+import { SigeIntegrationModule } from "./SigeIntegrationModule";
+import { SigeApiDocsModule } from "./SigeApiDocsModule";
+import { SigeOrderDiagnoseModule } from "./SigeOrderDiagnoseModule";
 
 interface SigeStatus {
   configured: boolean;
@@ -120,9 +125,9 @@ export function AdminApiSige() {
   const [resetError, setResetError] = useState("");
 
   const getAccessToken = useCallback(async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) throw new Error("Sessao expirada");
-    return session.access_token;
+    const token = await getValidAdminToken();
+    if (!token) throw new Error("Sessão expirada");
+    return token;
   }, []);
 
   const loadStatus = useCallback(async () => {
@@ -149,14 +154,14 @@ export function AdminApiSige() {
 
   const handleSaveConfig = async () => {
     if (!baseUrl.trim() || !email.trim() || !password.trim()) {
-      setError("Preencha todos os campos obrigatorios.");
+      setError("Preencha todos os campos obrigatórios.");
       return;
     }
     setSaving(true); setError(""); setSuccess("");
     try {
       const token = await getAccessToken();
       await api.sigeSaveConfig(token, { baseUrl: baseUrl.trim(), email: email.trim(), password });
-      setSuccess("Configuracao salva com sucesso!");
+      setSuccess("Configuração salva com sucesso!");
       setPassword("");
       await loadStatus();
     } catch (e: any) { setError(e.message || "Erro ao salvar."); }
@@ -174,7 +179,7 @@ export function AdminApiSige() {
       }
       const result = await api.sigeConnect(token);
       if (result.connected) {
-        setSuccess(`Conectado! Token ${result.hasToken ? "recebido" : "nao recebido"}. Chaves: ${result.responseKeys.join(", ")}`);
+        setSuccess(`Conectado! Token ${result.hasToken ? "recebido" : "não recebido"}. Chaves: ${result.responseKeys.join(", ")}`);
         setPassword(""); // Clear password after successful connect
       }
       await loadStatus();
@@ -270,12 +275,13 @@ export function AdminApiSige() {
     try {
       const token = await getAccessToken();
       // Use raw fetch to get full error details (attemptedUrl, sigeData)
-      const res = await fetch(`https://aztdgagxvrlylszieujs.supabase.co/functions/v1/make-server-b7b07654/sige/user/register`, {
+      // Pass user token via _ut query param to avoid Gateway 401 (it rejects user JWTs in Authorization)
+      const _baseApi = "https://aztdgagxvrlylszieujs.supabase.co/functions/v1/make-server-b7b07654";
+      const res = await fetch(_baseApi + "/sige/user/register?_ut=" + encodeURIComponent(token), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${(await import("/utils/supabase/info")).publicAnonKey}`,
-          "X-User-Token": token,
+          "Authorization": "Bearer " + publicAnonKey,
         },
         body: JSON.stringify({ name: regName.trim(), email: regEmail.trim(), password: regPassword, baseUrl: baseUrl.trim() }),
       });
@@ -400,7 +406,7 @@ export function AdminApiSige() {
             API SIGE
           </h2>
           <p className="text-gray-500 mt-1" style={{ fontSize: "0.85rem" }}>
-            Integracao com o sistema ERP SIGE
+            Integração com o sistema ERP SIGE
           </p>
         </div>
         <div className="shrink-0">
@@ -422,7 +428,7 @@ export function AdminApiSige() {
           ) : (
             <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-500 rounded-lg" style={{ fontSize: "0.82rem", fontWeight: 500 }}>
               <AlertTriangle className="w-4 h-4" />
-              Nao configurado
+              Não configurado
             </div>
           )}
         </div>
@@ -448,7 +454,7 @@ export function AdminApiSige() {
           <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
             <h3 className="text-gray-800 flex items-center gap-2" style={{ fontSize: "1rem", fontWeight: 600 }}>
               <Key className="w-4.5 h-4.5 text-gray-500" />
-              Configuracao da Conexao
+              Configuração da Conexão
             </h3>
           </div>
           <div className="p-5 space-y-4">
@@ -479,7 +485,7 @@ export function AdminApiSige() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder={status?.hasPassword ? "Senha ja salva — digite para alterar" : "Sua senha do SIGE"}
+                  placeholder={status?.hasPassword ? "Senha já salva — digite para alterar" : "Sua senha do SIGE"}
                   className="w-full pl-10 pr-12 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 focus:bg-white transition-all"
                   style={{ fontSize: "0.88rem" }} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -623,7 +629,7 @@ export function AdminApiSige() {
                 <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
                   <span className="text-gray-500" style={{ fontSize: "0.78rem" }}>Senha</span>
                   <span className={status.hasPassword ? "text-green-600" : "text-red-500"} style={{ fontSize: "0.78rem" }}>
-                    {status.hasPassword ? "Configurada" : "Nao configurada"}
+                    {status.hasPassword ? "Configurada" : "Não configurada"}
                   </span>
                 </div>
               </div>
@@ -632,12 +638,12 @@ export function AdminApiSige() {
         </div>
       </div>
 
-      {/* ═══ Criar Usuario SIGE (do zero, sem JWT) ═══ */}
+      {/* ═══ Criar Usuário SIGE (do zero, sem JWT) ═══ */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-purple-50/50">
           <h3 className="text-gray-800 flex items-center gap-2" style={{ fontSize: "1rem", fontWeight: 600 }}>
             <UserPlus className="w-5 h-5 text-blue-600" />
-            Criar Usuario no SIGE
+            Criar Usuário no SIGE
           </h3>
           <p className="text-gray-500 mt-0.5" style={{ fontSize: "0.78rem" }}>
             Primeiro passo: crie sua conta na API SIGE para depois conectar
@@ -647,8 +653,8 @@ export function AdminApiSige() {
           <div className="flex items-start gap-2.5 p-3.5 bg-blue-50 border border-blue-100 rounded-lg">
             <Shield className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
             <p className="text-blue-700" style={{ fontSize: "0.78rem" }}>
-              Este formulario chama <code className="bg-blue-100 px-1 rounded">POST /user/create</code> <strong>sem autenticacao JWT</strong>.
-              Ideal para criar seu primeiro usuario do zero. Apos criado, use as credenciais para conectar ao SIGE acima.
+              Este formulário chama <code className="bg-blue-100 px-1 rounded">POST /user/create</code> <strong>sem autenticação JWT</strong>.
+              Ideal para criar seu primeiro usuário do zero. Após criado, use as credenciais para conectar ao SIGE acima.
             </p>
           </div>
 
@@ -656,7 +662,7 @@ export function AdminApiSige() {
           <div>
             <label className="block text-gray-600 mb-1.5" style={{ fontSize: "0.8rem", fontWeight: 500 }}>
               URL Base da API SIGE *
-              {status?.baseUrl && <span className="text-green-600 font-normal ml-1">(preenchida da configuracao)</span>}
+              {status?.baseUrl && <span className="text-green-600 font-normal ml-1">(preenchida da configuração)</span>}
             </label>
             <div className="relative">
               <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -729,7 +735,7 @@ export function AdminApiSige() {
                 <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
                 <div className="flex-1">
                   <p className="text-green-800" style={{ fontSize: "0.88rem", fontWeight: 600 }}>
-                    Usuario criado com sucesso!
+                    Usuário criado com sucesso!
                   </p>
                   <p className="text-green-600 mt-0.5" style={{ fontSize: "0.78rem" }}>
                     Agora use as credenciais para se conectar ao SIGE.
@@ -746,7 +752,7 @@ export function AdminApiSige() {
                 className="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors cursor-pointer"
                 style={{ fontSize: "0.82rem", fontWeight: 500 }}>
                 <Key className="w-3.5 h-3.5" />
-                Usar credenciais na conexao acima
+                Usar credenciais na conexão acima
               </button>
 
               <div className="bg-gray-900 rounded-lg p-3.5 overflow-x-auto">
@@ -761,6 +767,17 @@ export function AdminApiSige() {
           )}
         </div>
       </div>
+
+      {/* ═══ API Docs Storage ═══ */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <SigeApiDocsModule isConnected={!!isConnected} />
+      </div>
+
+      {/* ═══ Integration Module (Sync + Sales) ═══ */}
+      <SigeIntegrationModule isConnected={!!isConnected} />
+
+      {/* ═══ Order Diagnostic (dry-run) ═══ */}
+      <SigeOrderDiagnoseModule isConnected={!!isConnected} />
 
       {/* ═══ Test Runner ═══ */}
       <SigeTestRunner isConnected={!!isConnected} />
@@ -819,7 +836,7 @@ export function AdminApiSige() {
               )}
             </div>
 
-            {/* ─── Module 2: Usuarios ─── */}
+            {/* ─── Module 2: Usuários ─── */}
             <div>
               <button onClick={() => toggleModule("usuarios")}
                 className="w-full p-5 flex items-center gap-3 hover:bg-gray-50/30 transition-colors cursor-pointer">
@@ -841,7 +858,7 @@ export function AdminApiSige() {
 
                   {/* ── POST /user/create ── */}
                   <EndpointCard method="POST" path="/user/create"
-                    description="Cria um usuario na aplicacao SIGE. Requer autenticacao JWT."
+                    description="Cria um usuário na aplicação SIGE. Requer autenticação JWT."
                     body={`// Request Body\n{\n  "name": "Desenvolvimento",\n  "email": "exemplo@dev.com",\n  "password": "sua senha"\n}\n\n// Responses: 200, 400, 401, 404, 500`}
                     proxyRoute="/sige/user/create">
                     <div className="mt-2 pt-3 border-t border-gray-100 space-y-3">
@@ -888,7 +905,7 @@ export function AdminApiSige() {
 
                   {/* ── GET /user/me ── */}
                   <EndpointCard method="GET" path="/user/me"
-                    description="Retorna os dados do usuario autenticado no SIGE. Util para verificar se o token esta funcionando corretamente."
+                    description="Retorna os dados do usuário autenticado no SIGE. Útil para verificar se o token está funcionando corretamente."
                     body={`// Sem body — apenas Authorization: Bearer {token}\n\n// Responses: 200, 400, 401, 404, 500`}
                     proxyRoute="/sige/user/me">
                     <div className="mt-2 pt-3 border-t border-gray-100 space-y-3">
@@ -912,7 +929,7 @@ export function AdminApiSige() {
 
                   {/* ── PATCH /user/reset/{id} ── */}
                   <EndpointCard method="PATCH" path="/user/reset/{id}"
-                    description='Altera a senha de um usuario pelo ID. Requer a senha atual e a nova senha.'
+                    description='Altera a senha de um usuário pelo ID. Requer a senha atual e a nova senha.'
                     body={`// Path: /user/reset/{id}\n\n// Request Body\n{\n  "password": "senha-atual",\n  "newPassword": "nova-senha"\n}\n\n// Responses: 200, 400, 401, 404, 500`}
                     proxyRoute="/sige/user/reset/:id">
                     <div className="mt-2 pt-3 border-t border-gray-100 space-y-3">
@@ -923,7 +940,7 @@ export function AdminApiSige() {
                         <div className="relative">
                           <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                           <input type="text" value={testResetId} onChange={(e) => setTestResetId(e.target.value)}
-                            placeholder="ID do usuario (ex: obtido via GET /user/me)" className={inputClass} style={inputStyle} />
+                            placeholder="ID do usuário (ex: obtido via GET /user/me)" className={inputClass} style={inputStyle} />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div className="relative">
@@ -963,7 +980,7 @@ export function AdminApiSige() {
                   {/* Tip */}
                   <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
                     <p className="text-purple-700" style={{ fontSize: "0.75rem" }}>
-                      <strong>Dica:</strong> Use "Buscar Meu Usuario" para obter o ID do usuario conectado. Depois, use esse ID no "Resetar Senha" para testar a alteracao de senha.
+                      <strong>Dica:</strong> Use "Buscar Meu Usuário" para obter o ID do usuário conectado. Depois, use esse ID no "Resetar Senha" para testar a alteração de senha.
                     </p>
                   </div>
                 </div>
@@ -990,7 +1007,7 @@ export function AdminApiSige() {
             <SigeProductReferenceModule isConnected={!!isConnected} />
             <SigeProductTechnicalSheetModule isConnected={!!isConnected} />
 
-            {/* ─── Module: Produto Preco ─── */}
+            {/* ─── Module: Produto Preço ─── */}
             <SigeProductPriceModule isConnected={!!isConnected} />
 
             {/* ─── Module 7: Pedidos ─── */}
@@ -1005,7 +1022,7 @@ export function AdminApiSige() {
               <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-gray-500 flex items-center gap-2" style={{ fontSize: "0.75rem" }}>
                   <Clock className="w-3.5 h-3.5" />
-                  Proximos modulos: Financeiro, Estoque... (envie a documentacao)
+                  Próximos módulos: Financeiro, Estoque... (envie a documentação)
                 </p>
               </div>
             </div>

@@ -16,6 +16,19 @@ import {
 } from "lucide-react";
 import { supabase } from "../services/supabaseClient";
 import * as api from "../services/api";
+import { useDocumentMeta } from "../hooks/useDocumentMeta";
+
+// ─── Google Logo SVG (inline for zero external dependency) ───
+function GoogleLogo() {
+  return (
+    <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+  );
+}
 
 type Tab = "login" | "register";
 type ForgotStep = "idle" | "form" | "sent";
@@ -24,6 +37,12 @@ type RegisterStep = "form" | "email-sent";
 export function UserAuthPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("login");
+
+  useDocumentMeta({
+    title: tab === "login" ? "Entrar - Carretão Auto Peças" : "Criar Conta - Carretão Auto Peças",
+    description: "Acesse sua conta na Carretão Auto Peças ou crie uma nova para acompanhar seus pedidos.",
+  });
+
   const [registerStep, setRegisterStep] = useState<RegisterStep>("form");
   const [registeredEmail, setRegisteredEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,13 +73,81 @@ export function UserAuthPage() {
   const [forgotStep, setForgotStep] = useState<ForgotStep>("idle");
   const [forgotEmail, setForgotEmail] = useState("");
 
-  // Check if already logged in
+  // Check if already logged in + handle OAuth callback
   useEffect(() => {
+    let redirected = false;
+
+    const goToAccount = () => {
+      if (redirected) return;
+      redirected = true;
+      console.log("[UserAuthPage] Redirecting to /minha-conta");
+      navigate("/", { replace: true });
+    };
+
+    // 0) Check if Supabase returned an OAuth error in the URL (?error=...&error_description=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const oauthError = urlParams.get("error");
+    const oauthErrorDesc = urlParams.get("error_description");
+    const oauthErrorCode = urlParams.get("error_code");
+    if (oauthError) {
+      const desc = oauthErrorDesc || oauthError;
+      console.error("[UserAuthPage] OAuth error from Supabase:", oauthError, oauthErrorCode, desc);
+      setError("Erro no login com Google: " + desc.replace(/\+/g, " ") + ". Tente novamente ou use email/senha.");
+      // Clean the URL
+      try {
+        window.history.replaceState({}, "", window.location.pathname);
+      } catch (_e) { /* ignore */ }
+      return; // Don't try to exchange code or check session — it failed
+    }
+
+    // 1) If URL has ?code=... from PKCE OAuth callback, try manual exchange
+    const code = urlParams.get("code");
+    if (code) {
+      console.log("[UserAuthPage] Detected PKCE code in URL, exchanging...");
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchErr }) => {
+        if (exchErr) {
+          console.error("[UserAuthPage] Code exchange failed:", exchErr.message);
+          setError("Falha ao completar login com Google: " + exchErr.message);
+          // Still try getSession as fallback
+          supabase.auth.getSession().then(({ data: d2 }) => {
+            if (d2.session?.access_token) goToAccount();
+          });
+        } else if (data.session?.access_token) {
+          console.log("[UserAuthPage] Code exchange succeeded");
+          goToAccount();
+        }
+      });
+      // Clean the URL (remove ?code=...) without causing a navigation
+      try {
+        window.history.replaceState({}, "", window.location.pathname);
+      } catch (_e) { /* ignore */ }
+    }
+
+    // 2) Check if user already has an active session
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.access_token) {
-        navigate("/minha-conta", { replace: true });
+      console.log("[UserAuthPage] getSession result:", data.session ? "has session" : "no session");
+      if (data.session?.access_token) goToAccount();
+    });
+
+    // 3) Listen for auth state changes (catches INITIAL_SESSION, SIGNED_IN, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[UserAuthPage] onAuthStateChange:", event, session ? "has session" : "no session");
+      if (session?.access_token) {
+        goToAccount();
       }
     });
+
+    // 4) Also check hash fragment for implicit flow tokens (#access_token=...)
+    if (window.location.hash && window.location.hash.includes("access_token")) {
+      console.log("[UserAuthPage] Detected tokens in hash fragment");
+      setTimeout(() => {
+        supabase.auth.getSession().then(({ data }) => {
+          if (data.session?.access_token) goToAccount();
+        });
+      }, 1000);
+    }
+
+    return () => { subscription.unsubscribe(); };
   }, [navigate]);
 
   // Phone mask
@@ -179,12 +266,40 @@ export function UserAuthPage() {
 
     setLoading(true);
     try {
+      // Step 1: Pre-login check (rate limit + brute-force lockout + honeypot)
+      // Read honeypot field value (bots will fill it, humans won't)
+      var honeypotVal = "";
+      try {
+        var hpEl = document.getElementById("website_url_login") as HTMLInputElement | null;
+        if (hpEl && hpEl.value) honeypotVal = hpEl.value;
+      } catch (_hp) {}
+      try {
+        const preCheck = await api.preLoginCheck(loginEmail.trim(), honeypotVal);
+        if (preCheck.locked || preCheck.error) {
+          setError(preCheck.error || "Conta temporariamente bloqueada.");
+          setLoading(false);
+          return;
+        }
+      } catch (preErr: any) {
+        // If pre-check fails with rate limit or lockout error, show it
+        if (preErr.message && (preErr.message.includes("Muitas tentativas") || preErr.message.includes("bloqueada") || preErr.message.includes("Aguarde"))) {
+          setError(preErr.message);
+          setLoading(false);
+          return;
+        }
+        // Otherwise continue (don't block login if pre-check itself fails)
+        console.warn("[Login] Pre-check error (continuing):", preErr);
+      }
+
+      // Step 2: Actual login
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
         email: loginEmail.trim(),
         password: loginPassword,
       });
 
       if (authErr) {
+        // Report failure for brute-force tracking (fire-and-forget)
+        api.reportLoginResult(loginEmail.trim(), false).catch(() => {});
         if (authErr.message.includes("Invalid login")) {
           setError("Email ou senha incorretos.");
         } else if (authErr.message.toLowerCase().includes("email not confirmed") || authErr.message.toLowerCase().includes("not confirmed")) {
@@ -195,11 +310,15 @@ export function UserAuthPage() {
         return;
       }
 
+      // Report success (clears failed attempt counter) — pass token so backend can verify
+      api.reportLoginResult(loginEmail.trim(), true, data.session?.access_token).catch(() => {});
+
       if (data.session?.access_token) {
-        navigate("/minha-conta", { replace: true });
+        navigate("/", { replace: true });
       }
     } catch (err: any) {
       console.error("Login error:", err);
+      api.reportLoginResult(loginEmail.trim(), false).catch(() => {});
       setError(err.message || "Erro ao fazer login.");
     } finally {
       setLoading(false);
@@ -242,8 +361,20 @@ export function UserAuthPage() {
       setError(cpfValidation.message || "CPF inválido.");
       return;
     }
-    if (regPassword.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres.");
+    if (regPassword.length < 8) {
+      setError("A senha deve ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (!/[A-Z]/.test(regPassword)) {
+      setError("A senha deve conter pelo menos uma letra maiúscula.");
+      return;
+    }
+    if (!/[a-z]/.test(regPassword)) {
+      setError("A senha deve conter pelo menos uma letra minúscula.");
+      return;
+    }
+    if (!/[0-9]/.test(regPassword)) {
+      setError("A senha deve conter pelo menos um número.");
       return;
     }
     if (regPassword !== regPasswordConfirm) {
@@ -310,13 +441,43 @@ export function UserAuthPage() {
     if (/[0-9]/.test(pwd)) s++;
     if (/[^A-Za-z0-9]/.test(pwd)) s++;
     if (s <= 1) return { level: 1, label: "Fraca", color: "bg-red-500" };
-    if (s <= 2) return { level: 2, label: "Razoavel", color: "bg-orange-500" };
+    if (s <= 2) return { level: 2, label: "Razoável", color: "bg-orange-500" };
     if (s <= 3) return { level: 3, label: "Boa", color: "bg-yellow-500" };
     if (s <= 4) return { level: 4, label: "Forte", color: "bg-green-500" };
     return { level: 5, label: "Excelente", color: "bg-emerald-500" };
   };
 
   const strength = getStrength(regPassword);
+
+  // ─── Google OAuth ───
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      // Do not forget to complete setup at https://supabase.com/docs/guides/auth/social-login/auth-google
+      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin + "/",
+        },
+      });
+      if (oauthErr) {
+        console.error("Google OAuth error:", oauthErr);
+        if (oauthErr.message.includes("provider is not enabled") || oauthErr.message.includes("not enabled")) {
+          setError("Login com Google ainda não está habilitado. Entre em contato com o administrador.");
+        } else {
+          setError(oauthErr.message || "Erro ao iniciar login com Google.");
+        }
+        setGoogleLoading(false);
+      }
+      // If no error, user is being redirected to Google — do NOT set googleLoading=false
+    } catch (err: any) {
+      console.error("Google OAuth exception:", err);
+      setError(err.message || "Erro ao conectar com Google.");
+      setGoogleLoading(false);
+    }
+  };
 
   // ─── Forgot password modal ───
   if (forgotStep !== "idle") {
@@ -563,6 +724,11 @@ export function UserAuthPage() {
             {/* ─── LOGIN FORM ─── */}
             {tab === "login" && (
               <form onSubmit={handleLogin} className="space-y-4">
+                {/* Honeypot — hidden from humans, bots fill it */}
+                <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", top: "-9999px", opacity: 0, height: 0, overflow: "hidden" }}>
+                  <label htmlFor="website_url_login">Website</label>
+                  <input type="text" id="website_url_login" name="website" tabIndex={-1} autoComplete="off" />
+                </div>
                 <div>
                   <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
                     Email
@@ -633,12 +799,42 @@ export function UserAuthPage() {
                     </>
                   )}
                 </button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 my-1">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+
+                {/* Google OAuth */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={googleLoading}
+                  className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
+                  style={{ fontSize: "0.9rem", fontWeight: 500 }}
+                >
+                  {googleLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  ) : (
+                    <>
+                      <GoogleLogo />
+                      Continuar com Google
+                    </>
+                  )}
+                </button>
               </form>
             )}
 
             {/* ─── REGISTER FORM ─── */}
             {tab === "register" && (
               <form onSubmit={handleRegister} className="space-y-4">
+                {/* Honeypot — hidden from humans */}
+                <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", top: "-9999px", opacity: 0, height: 0, overflow: "hidden" }}>
+                  <label htmlFor="company_url_reg">Company URL</label>
+                  <input type="text" id="company_url_reg" name="company_url" tabIndex={-1} autoComplete="off" />
+                </div>
                 {/* Nome */}
                 <div>
                   <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
@@ -903,7 +1099,42 @@ export function UserAuthPage() {
 
                 <p className="text-center text-gray-400 mt-3" style={{ fontSize: "0.75rem" }}>
                   Ao criar sua conta, você concorda com nossos termos de uso.
+                  <br />
+                  Este site é protegido pelo reCAPTCHA e a{" "}
+                  <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+                    Política de Privacidade
+                  </a>{" "}
+                  e{" "}
+                  <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+                    Termos de Serviço
+                  </a>{" "}
+                  do Google se aplicam.
                 </p>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 mt-4">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou cadastre-se com</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+
+                {/* Google OAuth */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={googleLoading}
+                  className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
+                  style={{ fontSize: "0.9rem", fontWeight: 500 }}
+                >
+                  {googleLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  ) : (
+                    <>
+                      <GoogleLogo />
+                      Continuar com Google
+                    </>
+                  )}
+                </button>
               </form>
             )}
           </div>
