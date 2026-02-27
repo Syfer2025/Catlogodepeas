@@ -319,6 +319,15 @@ function _checkRateLimit(key: string, maxReqs: number): { allowed: boolean; rema
   return { allowed: true, remaining: maxReqs - timestamps.length, retryAfterMs: 0 };
 }
 
+// Helper: return 429 with standard rate limit headers
+function _rl429(c: any, msg: string, rlResult: { remaining: number; retryAfterMs: number }): Response {
+  var retrySeconds = Math.ceil(rlResult.retryAfterMs / 1000);
+  return c.json({ error: msg, retryAfterMs: rlResult.retryAfterMs }, 429, {
+    "Retry-After": String(retrySeconds),
+    "X-RateLimit-Remaining": "0"
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Auth Brute-Force Protection — per-email lockout + auth rate limits
 // ═══════════════════════════════════════════════════════════════════════
@@ -405,10 +414,7 @@ function _checkAuthRateLimit(c: any, action: string): Response | null {
   if (!rl.allowed) {
     var retrySeconds = Math.ceil(rl.retryAfterMs / 1000);
     console.log("[AuthRateLimit] Blocked " + action + " from IP, retry in " + retrySeconds + "s");
-    return c.json({
-      error: "Muitas tentativas. Aguarde " + retrySeconds + " segundos antes de tentar novamente.",
-      retryAfterMs: rl.retryAfterMs
-    }, 429);
+    return _rl429(c, "Muitas tentativas. Aguarde " + retrySeconds + " segundos antes de tentar novamente.", rl);
   }
   return null;
 }
@@ -575,9 +581,10 @@ app.use("*", async function (c: any, next: any) {
   if (!rlResult.allowed) {
     var retrySeconds = Math.ceil(rlResult.retryAfterMs / 1000);
     console.log("[GlobalRateLimit] BLOCKED IP " + rlKey + " — retry in " + retrySeconds + "s");
-    return c.json({ error: "Too many requests. Retry after " + retrySeconds + " seconds." }, 429);
+    return _rl429(c, "Too many requests. Retry after " + retrySeconds + " seconds.", rlResult);
   }
-  return next();
+  await next();
+  c.header("X-RateLimit-Remaining", String(rlResult.remaining));
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -604,7 +611,7 @@ app.use(BASE + "/auth/user/signup", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 10);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED signup from " + rlKey);
-    return c.json({ error: "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds." }, 429);
+    return _rl429(c, "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds.", rlResult);
   }
   return next();
 });
@@ -615,7 +622,7 @@ app.use(BASE + "/auth/user/forgot-password", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 5);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED forgot-password from " + rlKey);
-    return c.json({ error: "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds." }, 429);
+    return _rl429(c, "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds.", rlResult);
   }
   return next();
 });
@@ -631,7 +638,7 @@ app.use(BASE + "/auth/user/*", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, RATE_LIMIT_AUTH_USER);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED auth/user from " + rlKey);
-    return c.json({ error: "Muitas requisições. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos." }, 429);
+    return _rl429(c, "Muitas requisições. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
 });
@@ -643,7 +650,7 @@ app.use(BASE + "/paghiper/notification", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED PagHiper webhook from " + rlKey);
-    return c.json({ error: "Too many requests" }, 429);
+    return _rl429(c, "Too many requests", rlResult);
   }
   return next();
 });
@@ -653,7 +660,7 @@ app.use(BASE + "/mercadopago/webhook", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED MP webhook from " + rlKey);
-    return c.json({ error: "Too many requests" }, 429);
+    return _rl429(c, "Too many requests", rlResult);
   }
   return next();
 });
@@ -663,7 +670,7 @@ app.use(BASE + "/safrapay/webhook", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED SafraPay webhook from " + rlKey);
-    return c.json({ error: "Too many requests" }, 429);
+    return _rl429(c, "Too many requests", rlResult);
   }
   return next();
 });
@@ -675,7 +682,7 @@ app.use(BASE + "/auth/user/login", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 10);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED login from " + rlKey);
-    return c.json({ error: "Muitas tentativas de login. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos." }, 429);
+    return _rl429(c, "Muitas tentativas de login. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
 });
@@ -878,6 +885,12 @@ app.get(BASE + "/captcha/site-key", (c) => {
 app.post(BASE + "/captcha/verify", async (c) => {
   try {
     var body = await c.req.json();
+    // Input validation for captcha verify
+    var captchaValid = validate(body, {
+      token: { type: "string", maxLen: 2000 },
+      action: { type: "string", maxLen: 50 },
+    });
+    if (!captchaValid.ok) return c.json({ error: captchaValid.errors[0] || "Dados invalidos." }, 400);
     var token = body.token || "";
     var action = body.action || "login";
     var minScore = 0.5;
@@ -905,7 +918,7 @@ app.post(BASE + "/seed", async (c) => {
     var seedRlKey = _getRateLimitKey(c, "seed");
     var seedRl = _checkRateLimit(seedRlKey, 3);
     if (!seedRl.allowed) {
-      return c.json({ error: "Too many seed requests." }, 429);
+      return _rl429(c, "Too many seed requests.", seedRl);
     }
     const wasSeeded = await seedData();
     return c.json({ seeded: wasSeeded });
@@ -945,11 +958,15 @@ app.post(BASE + "/auth/pre-login-check", async (c) => {
     if (lockout.locked) {
       var lockMinutes = Math.ceil(lockout.retryAfterMs / 60000);
       console.log("[BruteForce] Login blocked for locked email: " + email + " (" + lockMinutes + "min remaining)");
+      var lockRetrySeconds = Math.ceil(lockout.retryAfterMs / 1000);
       return c.json({
         error: "Conta temporariamente bloqueada por muitas tentativas. Tente novamente em " + lockMinutes + " minutos.",
         locked: true,
         retryAfterMs: lockout.retryAfterMs
-      }, 429);
+      }, 429, {
+        "Retry-After": String(lockRetrySeconds),
+        "X-RateLimit-Remaining": "0"
+      });
     }
     return c.json({ ok: true });
   } catch (e) {
@@ -1484,7 +1501,12 @@ app.post(BASE + "/auth/recovery-status", async (c) => {
     var rlBlock = _checkAuthRateLimit(c, "recovery_status");
     if (rlBlock) return rlBlock;
     var rsBody = await c.req.json();
-    var rid = sanitizeInput(String(rsBody.rid || "")).substring(0, 100);
+    // Input validation
+    var rsValid = validate(rsBody, {
+      rid: { required: true, type: "string", maxLen: 100 },
+    });
+    if (!rsValid.ok) return c.json({ status: "not_found" });
+    var rid = rsValid.sanitized.rid || "";
     if (!rid) return c.json({ status: "not_found" });
 
     const raw = await kv.get("recovery:" + rid);
@@ -1552,13 +1574,18 @@ app.post(BASE + "/auth/reset-password", async (c) => {
     var rlBlock = _checkAuthRateLimit(c, "reset_pw");
     if (rlBlock) return rlBlock;
     var rpBody = await c.req.json();
-    var rid = sanitizeInput(String(rpBody.rid || "")).substring(0, 100);
-    var newPassword = rpBody.newPassword || "";
+    // Input validation
+    var rpValid = validate(rpBody, {
+      rid: { required: true, type: "string", maxLen: 100 },
+      newPassword: { required: true, type: "string", minLen: 8, maxLen: 128, sanitize: false },
+    });
+    if (!rpValid.ok) {
+      return c.json({ error: rpValid.errors[0] || "Dados incompletos." }, 400);
+    }
+    var rid = rpValid.sanitized.rid || "";
+    var newPassword = rpValid.sanitized.newPassword || "";
     if (!rid || !newPassword) {
       return c.json({ error: "Dados incompletos." }, 400);
-    }
-    if (typeof newPassword !== "string" || newPassword.length > 128) {
-      return c.json({ error: "Senha invalida." }, 400);
     }
     var pwStrErr = _validatePasswordStrength(newPassword);
     if (pwStrErr) {
@@ -1925,7 +1952,14 @@ app.put(BASE + "/auth/user/avatar", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Token invalido ou expirado." }, 401);
     var body = await c.req.json();
-    var avatarId = body.avatarId || "";
+    // Input validation for avatar
+    var avatarValid = validate(body, {
+      avatarId: { required: true, type: "string", maxLen: 20 },
+    });
+    if (!avatarValid.ok) {
+      return c.json({ error: "Dados invalidos." }, 400);
+    }
+    var avatarId = avatarValid.sanitized.avatarId || "";
     var validIds = ["robot1","robot2","robot3","robot4","robot5","robot6","robot7","robot8","robot9","robot10","robot11","robot12","robot13","robot14","robot15","robot16"];
     if (!validIds.includes(avatarId)) {
       return c.json({ error: "Avatar invalido." }, 400);
@@ -2168,7 +2202,24 @@ app.put(BASE + "/auth/user/addresses/:id", async (c) => {
       return c.json({ error: "Token inválido ou expirado." }, 401);
     }
     var addrId = c.req.param("id");
+    if (!addrId || addrId.length > 100) return c.json({ error: "ID de endereço invalido." }, 400);
     const body = await c.req.json();
+    // Input validation for address update (all fields optional since it's a partial update)
+    var addrUpValid = validate(body, {
+      label: { maxLen: 50 },
+      cep: { maxLen: 10, custom: function (v: any) { if (v && !(/^\d{5}-?\d{3}$/).test(String(v))) return "CEP invalido."; return null; } },
+      street: { maxLen: 200 },
+      number: { maxLen: 20 },
+      complement: { maxLen: 100 },
+      neighborhood: { maxLen: 100 },
+      city: { maxLen: 100 },
+      state: { maxLen: 2 },
+      isDefault: { type: "boolean" },
+    });
+    if (!addrUpValid.ok) {
+      return c.json({ error: addrUpValid.errors[0] || "Dados de endereço invalidos." }, 400);
+    }
+    var sAddr = addrUpValid.sanitized;
 
     let addresses: any[] = [];
     try {
@@ -2188,15 +2239,15 @@ app.put(BASE + "/auth/user/addresses/:id", async (c) => {
 
     var updated = {
       ...addresses[idx],
-      label: _maxLen((body.label || "").trim(), 50) || addresses[idx].label,
-      street: _maxLen((body.street || "").trim(), 300) || addresses[idx].street,
-      number: body.number !== undefined ? _maxLen((body.number || "").trim(), 20) : addresses[idx].number,
-      complement: body.complement !== undefined ? _maxLen((body.complement || "").trim(), 100) : addresses[idx].complement,
-      neighborhood: body.neighborhood !== undefined ? _maxLen((body.neighborhood || "").trim(), 100) : addresses[idx].neighborhood,
-      city: _maxLen((body.city || "").trim(), 100) || addresses[idx].city,
-      state: _maxLen((body.state || "").trim(), 2) || addresses[idx].state,
-      cep: body.cep ? _maxLen((body.cep || "").replace(/\D/g, ""), 8) : addresses[idx].cep,
-      isDefault: body.isDefault !== undefined ? !!body.isDefault : addresses[idx].isDefault,
+      label: sAddr.label || addresses[idx].label,
+      street: sAddr.street || addresses[idx].street,
+      number: sAddr.number !== undefined ? sAddr.number : addresses[idx].number,
+      complement: sAddr.complement !== undefined ? sAddr.complement : addresses[idx].complement,
+      neighborhood: sAddr.neighborhood !== undefined ? sAddr.neighborhood : addresses[idx].neighborhood,
+      city: sAddr.city || addresses[idx].city,
+      state: sAddr.state || addresses[idx].state,
+      cep: sAddr.cep ? String(sAddr.cep).replace(/\D/g, "") : addresses[idx].cep,
+      isDefault: sAddr.isDefault !== undefined ? !!sAddr.isDefault : addresses[idx].isDefault,
     };
 
     if (updated.isDefault) {
@@ -2222,7 +2273,8 @@ app.delete(BASE + "/auth/user/addresses/:id", async (c) => {
     if (!userId) {
       return c.json({ error: "Token inválido ou expirado." }, 401);
     }
-    var addrId = c.req.param("id");
+    var addrId = (c.req.param("id") || "").substring(0, 100);
+    if (!addrId) return c.json({ error: "ID invalido." }, 400);
 
     let addresses: any[] = [];
     try {
@@ -2286,8 +2338,16 @@ app.post(BASE + "/auth/user/favorites", async (c) => {
       return c.json({ error: "Token inválido ou expirado." }, 401);
     }
     const body = await c.req.json();
-    var sku = sanitizeInput(String(body.sku || "")).substring(0, 100);
-    var titulo = sanitizeInput(String(body.titulo || "")).substring(0, 300);
+    // Input validation for favorites
+    var favValid = validate(body, {
+      sku: { required: true, type: "string", maxLen: 100 },
+      titulo: { type: "string", maxLen: 300 },
+    });
+    if (!favValid.ok) {
+      return c.json({ error: favValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var sku = favValid.sanitized.sku || "";
+    var titulo = favValid.sanitized.titulo || "";
     if (!sku) {
       return c.json({ error: "SKU obrigatorio." }, 400);
     }
@@ -2336,7 +2396,8 @@ app.delete(BASE + "/auth/user/favorites/:sku", async (c) => {
     if (!userId) {
       return c.json({ error: "Token inválido ou expirado." }, 401);
     }
-    var sku = decodeURIComponent(c.req.param("sku"));
+    var sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
 
     let favorites: any[] = [];
     try {
@@ -2575,7 +2636,8 @@ app.get(BASE + "/products", async (c) => {
 
 app.get(BASE + "/products/:id", async (c) => {
   try {
-    const id = c.req.param("id");
+    const id = (c.req.param("id") || "").substring(0, 200);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     const product = await kv.get(`product:${id}`);
     if (!product) {
       return c.json({ error: "Produto nao encontrado." }, 404);
@@ -2590,6 +2652,21 @@ app.get(BASE + "/products/:id", async (c) => {
 app.post(BASE + "/products", async (c) => {
   try {
     const body = await c.req.json();
+    // Input validation for product
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var prodCreateValid = validate(body, {
+      name: { type: "string", maxLen: 500 },
+      sku: { type: "string", maxLen: 100 },
+      description: { type: "string", maxLen: 10000 },
+      imageUrl: { type: "string", maxLen: 2000 },
+      category: { type: "string", maxLen: 200 },
+      brand: { type: "string", maxLen: 200 },
+    });
+    if (!prodCreateValid.ok) {
+      return c.json({ error: prodCreateValid.errors[0] || "Dados invalidos." }, 400);
+    }
     const id = body.id || "prod_" + Date.now();
     var prodFields = ["name","sku","price","description","imageUrl","category","active","featured","order","tags","brand","weight","width","height","length"];
     var product: Record<string, any> = { id: id };
@@ -2605,7 +2682,23 @@ app.post(BASE + "/products", async (c) => {
 app.put(BASE + "/products/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (!id || id.length > 200) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    // Input validation for product update
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var prodUpdateValid = validate(body, {
+      name: { type: "string", maxLen: 500 },
+      sku: { type: "string", maxLen: 100 },
+      description: { type: "string", maxLen: 10000 },
+      imageUrl: { type: "string", maxLen: 2000 },
+      category: { type: "string", maxLen: 200 },
+      brand: { type: "string", maxLen: 200 },
+    });
+    if (!prodUpdateValid.ok) {
+      return c.json({ error: prodUpdateValid.errors[0] || "Dados invalidos." }, 400);
+    }
     const existing = await kv.get("product:" + id);
     if (!existing) {
       return c.json({ error: "Produto nao encontrado para atualizacao." }, 404);
@@ -2623,7 +2716,8 @@ app.put(BASE + "/products/:id", async (c) => {
 
 app.delete(BASE + "/products/:id", async (c) => {
   try {
-    const id = c.req.param("id");
+    const id = (c.req.param("id") || "").substring(0, 200);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del(`product:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
@@ -2649,6 +2743,21 @@ app.get(BASE + "/categories", async (c) => {
 app.post(BASE + "/categories", async (c) => {
   try {
     const body = await c.req.json();
+    // Input validation for category
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var catCreateValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      slug: { type: "string", maxLen: 200 },
+      parentId: { type: "string", maxLen: 200 },
+      description: { type: "string", maxLen: 5000 },
+      imageUrl: { type: "string", maxLen: 2000 },
+      icon: { type: "string", maxLen: 200 },
+    });
+    if (!catCreateValid.ok) {
+      return c.json({ error: catCreateValid.errors[0] || "Dados invalidos." }, 400);
+    }
     const id = body.id || "cat_" + Date.now();
     var catFields = ["name","slug","parentId","order","active","imageUrl","description","icon","featured"];
     var category: Record<string, any> = { id: id };
@@ -2664,7 +2773,23 @@ app.post(BASE + "/categories", async (c) => {
 app.put(BASE + "/categories/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (!id || id.length > 200) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    // Input validation for category update
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var catUpdateValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      slug: { type: "string", maxLen: 200 },
+      parentId: { type: "string", maxLen: 200 },
+      description: { type: "string", maxLen: 5000 },
+      imageUrl: { type: "string", maxLen: 2000 },
+      icon: { type: "string", maxLen: 200 },
+    });
+    if (!catUpdateValid.ok) {
+      return c.json({ error: catUpdateValid.errors[0] || "Dados invalidos." }, 400);
+    }
     const existing = await kv.get("category:" + id);
     if (!existing) {
       return c.json({ error: "Categoria nao encontrada para atualizacao." }, 404);
@@ -2682,7 +2807,8 @@ app.put(BASE + "/categories/:id", async (c) => {
 
 app.delete(BASE + "/categories/:id", async (c) => {
   try {
-    const id = c.req.param("id");
+    const id = (c.req.param("id") || "").substring(0, 200);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del(`category:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
@@ -2711,6 +2837,13 @@ app.get(BASE + "/category-tree", async (c) => {
 app.put(BASE + "/category-tree", async (c) => {
   try {
     const body = await c.req.json();
+    // Input validation: category tree must be an array
+    if (!Array.isArray(body)) {
+      return c.json({ error: "Arvore de categorias deve ser um array." }, 400);
+    }
+    if (JSON.stringify(body).length > 500000) {
+      return c.json({ error: "Arvore de categorias excede o tamanho maximo." }, 400);
+    }
     await kv.set("category_tree", body);
     invalidateHomepageCache();
     invalidateMetaCache();
@@ -2779,16 +2912,26 @@ app.post(BASE + "/messages", async (c) => {
 app.put(BASE + "/messages/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (!id || id.length > 200) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    // Input validation for message update
+    var msgUpValid = validate(body, {
+      read: { type: "boolean" },
+      adminReply: { type: "string", maxLen: 5000 },
+      status: { type: "string", maxLen: 30 },
+    });
+    if (!msgUpValid.ok) {
+      return c.json({ error: msgUpValid.errors[0] || "Dados invalidos." }, 400);
+    }
     const existing = await kv.get("message:" + id);
     if (!existing) {
       return c.json({ error: "Mensagem nao encontrada." }, 404);
     }
     var msgObj = typeof existing === "string" ? JSON.parse(existing) : existing;
     // Only allow updating safe fields (read status, admin reply)
-    if (body.read !== undefined) msgObj.read = !!body.read;
-    if (typeof body.adminReply === "string") msgObj.adminReply = sanitizeInput(body.adminReply).substring(0, 5000);
-    if (typeof body.status === "string") msgObj.status = sanitizeInput(body.status).substring(0, 30);
+    if (msgUpValid.sanitized.read !== undefined) msgObj.read = !!msgUpValid.sanitized.read;
+    if (msgUpValid.sanitized.adminReply !== undefined) msgObj.adminReply = msgUpValid.sanitized.adminReply;
+    if (msgUpValid.sanitized.status !== undefined) msgObj.status = msgUpValid.sanitized.status;
     msgObj.updatedAt = new Date().toISOString();
     await kv.set("message:" + id, JSON.stringify(msgObj));
     return c.json(msgObj);
@@ -2800,7 +2943,8 @@ app.put(BASE + "/messages/:id", async (c) => {
 
 app.delete(BASE + "/messages/:id", async (c) => {
   try {
-    const id = c.req.param("id");
+    const id = (c.req.param("id") || "").substring(0, 200);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del(`message:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
@@ -2868,6 +3012,23 @@ app.get(BASE + "/ga4/config", async (c) => {
 app.put(BASE + "/ga4/config", async (c) => {
   try {
     const body = await c.req.json();
+    // Input validation for GA4 config
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var ga4Valid = validate(body, {
+      measurementId: { type: "string", maxLen: 30 },
+      enabled: { type: "boolean" },
+      trackPageViews: { type: "boolean" },
+      trackAddToCart: { type: "boolean" },
+      trackCheckout: { type: "boolean" },
+      trackPurchase: { type: "boolean" },
+      trackSearch: { type: "boolean" },
+      trackViewItem: { type: "boolean" },
+    });
+    if (!ga4Valid.ok) {
+      return c.json({ error: ga4Valid.errors[0] || "Dados invalidos." }, 400);
+    }
     var ga4Allowed = ["measurementId","enabled","trackPageViews","trackAddToCart","trackCheckout","trackPurchase","trackSearch","trackViewItem"];
     var ga4Safe: Record<string, any> = {};
     for (var gk of ga4Allowed) {
@@ -3039,6 +3200,9 @@ app.put(BASE + "/shipping/config", async (c) => {
 // POST test external shipping API (admin) - delegated to separate file
 app.post(BASE + "/shipping/test-api", async (c) => {
   var reqJson = await c.req.json();
+  // Input validation for shipping test-api
+  if (!reqJson || typeof reqJson !== "object" || Array.isArray(reqJson)) return c.json({ body: { error: "Body deve ser um objeto JSON." }, status: 400 });
+  if (JSON.stringify(reqJson).length > 10000) return c.json({ body: { error: "Payload excede o tamanho maximo." }, status: 400 });
   var result = await handleTestShippingApi(reqJson, getAuthUserId, c.req.raw);
   return c.json(result.body, result.status as any);
 });
@@ -3051,7 +3215,7 @@ app.post(BASE + "/shipping/calculate", async (c) => {
     // Rate limit: 30 shipping calculations per minute per IP (calls external API)
     var shipCalcRl = _getRateLimitKey(c, "ship_calc");
     var shipCalcRlResult = _checkRateLimit(shipCalcRl, 30);
-    if (!shipCalcRlResult.allowed) return c.json({ error: "Muitas consultas de frete. Aguarde um momento." }, 429);
+    if (!shipCalcRlResult.allowed) return _rl429(c, "Muitas consultas de frete. Aguarde um momento.", shipCalcRlResult);
     var shippingBody = await c.req.json();
     // Input validation for shipping calculation
     var shpValid = validate(shippingBody, {
@@ -3231,7 +3395,8 @@ app.post(BASE + "/shipping/calculate", async (c) => {
 // CEP lookup helper (public)
 app.get(BASE + "/shipping/cep/:cep", async (c) => {
   try {
-    const cep = c.req.param("cep");
+    const cep = (c.req.param("cep") || "").substring(0, 10);
+    if (!cep || !/^\d{5}-?\d{3}$/.test(cep)) return c.json({ error: "CEP invalido." }, 400);
     const info = await lookupCep(cep);
     if (!info) {
       return c.json({ error: "CEP não encontrado" }, 404);
@@ -3250,7 +3415,8 @@ app.get(BASE + "/produtos/physical/:sku", async (c) => {
   try {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var sku = decodeURIComponent(c.req.param("sku"));
+    var sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
 
     // 1. Read saved override from KV
     var saved: any = null;
@@ -3398,7 +3564,18 @@ app.put(BASE + "/produtos/physical/:sku", async (c) => {
     if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
 
     var sku = decodeURIComponent(c.req.param("sku"));
+    if (sku.length > 100) return c.json({ error: "SKU invalido." }, 400);
     var body = await c.req.json();
+    // Input validation for physical data override
+    var physValid = validate(body, {
+      weight: { type: "number", min: 0, max: 99999 },
+      length: { type: "number", min: 0, max: 99999 },
+      width: { type: "number", min: 0, max: 99999 },
+      height: { type: "number", min: 0, max: 99999 },
+    });
+    if (!physValid.ok) {
+      return c.json({ error: physValid.errors[0] || "Dados invalidos." }, 400);
+    }
     var data = {
       weight: parseFloat(body.weight) || 0,
       length: parseFloat(body.length) || 0,
@@ -3426,7 +3603,8 @@ app.delete(BASE + "/produtos/physical/:sku", async (c) => {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
 
-    var sku = decodeURIComponent(c.req.param("sku"));
+    var sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
     await kv.del("prod_physical:" + sku);
     memClear("_prod_phys_" + sku);
     return c.json({ ok: true });
@@ -3440,7 +3618,8 @@ app.get(BASE + "/shipping/debug-product/:sku", async (c) => {
   try {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
-    var sku = decodeURIComponent(c.req.param("sku"));
+    var sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
 
     // Fetch raw product from SIGE
     var res = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(sku) + "&limit=1&offset=1");
@@ -3493,7 +3672,20 @@ app.post(BASE + "/shipping/tables", async (c) => {
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
     const body = await c.req.json();
-    const { name, carrierName, carrierType, rows } = body;
+    // Input validation for shipping table
+    var shipTableValid = validate(body, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      carrierName: { type: "string", maxLen: 200 },
+      carrierType: { type: "string", maxLen: 50 },
+      rows: { required: true, type: "array", maxItems: 10000 },
+    });
+    if (!shipTableValid.ok) {
+      return c.json({ error: shipTableValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var name = shipTableValid.sanitized.name;
+    var carrierName = shipTableValid.sanitized.carrierName;
+    var carrierType = shipTableValid.sanitized.carrierType;
+    var rows = shipTableValid.sanitized.rows;
     if (!name || !rows || !Array.isArray(rows) || rows.length === 0) {
       return c.json({ error: "Nome e linhas da tabela são obrigatórios." }, 400);
     }
@@ -3569,7 +3761,8 @@ app.get(BASE + "/shipping/tables/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
-    const tableId = c.req.param("id");
+    const tableId = (c.req.param("id") || "").substring(0, 100);
+    if (!tableId) return c.json({ error: "ID invalido." }, 400);
     const table = await kv.get(`shipping_table:${tableId}`);
     if (!table) return c.json({ error: "Tabela não encontrada" }, 404);
     return c.json(table);
@@ -3585,7 +3778,8 @@ app.delete(BASE + "/shipping/tables/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
-    const tableId = c.req.param("id");
+    const tableId = (c.req.param("id") || "").substring(0, 100);
+    if (!tableId) return c.json({ error: "ID invalido." }, 400);
     await kv.del(`shipping_table:${tableId}`);
     console.log(`Freight table deleted: ${tableId}`);
     return c.json({ ok: true });
@@ -4757,7 +4951,8 @@ function extractImageNumber(filename: string): number {
 // List all images for a product SKU from Supabase Storage bucket "produtos"
 app.get(BASE + "/produtos/imagens/:sku", async (c) => {
   try {
-    const sku = decodeURIComponent(c.req.param("sku"));
+    const sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ sku: "", images: [], total: 0 });
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
 
     if (!supabaseUrl) {
@@ -4796,7 +4991,7 @@ app.get(BASE + "/produtos/imagens/:sku", async (c) => {
     return c.json({ sku, images, total: images.length });
   } catch (e) {
     console.log("Error listing product images:", e);
-    return c.json({ error: "Erro ao listar imagens.", sku: c.req.param("sku"), images: [], total: 0 }, 500);
+    return c.json({ error: "Erro ao listar imagens.", sku: sku, images: [], total: 0 }, 500);
   }
 });
 
@@ -5127,7 +5322,7 @@ async function getAtributosMap(): Promise<Map<string, Record<string, string | st
 // GET /produtos/atributos?sku=XYZ — return attributes for one SKU, or all if no sku param
 app.get(BASE + "/produtos/atributos", async (c) => {
   try {
-    const skuParam = (c.req.query("sku") || "").trim();
+    const skuParam = (c.req.query("sku") || "").trim().substring(0, 100);
     const map = await getAtributosMap();
 
     if (skuParam) {
@@ -5153,8 +5348,16 @@ app.get(BASE + "/produtos/atributos", async (c) => {
 app.post(BASE + "/parse-excel", async (c) => {
   try {
     var body = await c.req.json();
-    var b64 = body.data;
-    var filename = body.filename || "file.xlsx";
+    // Input validation for parse-excel
+    var excelValid = validate(body, {
+      data: { required: true, type: "string", maxLen: 14000000, sanitize: false, trim: false },
+      filename: { type: "string", maxLen: 255 },
+    });
+    if (!excelValid.ok) {
+      return c.json({ error: excelValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var b64 = excelValid.sanitized.data;
+    var filename = excelValid.sanitized.filename || "file.xlsx";
 
     if (!b64 || typeof b64 !== "string") {
       return c.json({ error: "Dados do arquivo não fornecidos." }, 400);
@@ -5458,7 +5661,14 @@ app.delete(BASE + "/produtos/atributos", async (c) => {
 app.post(BASE + "/produtos/match-skus", async (c) => {
   try {
     const body = await c.req.json();
-    const skus: string[] = body?.skus;
+    // Input validation
+    var matchSkusValid = validate(body, {
+      skus: { required: true, type: "array", maxItems: 10000 },
+    });
+    if (!matchSkusValid.ok) {
+      return c.json({ error: matchSkusValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    const skus: string[] = matchSkusValid.sanitized.skus;
 
     if (!Array.isArray(skus) || skus.length === 0) {
       return c.json({ error: "Campo 'skus' deve ser um array de strings não vazio." }, 400);
@@ -5513,7 +5723,7 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
       return c.json({ error: "Configuração incompleta do servidor." }, 500);
     }
 
-    const query = (c.req.query("q") || "").trim();
+    const query = (c.req.query("q") || "").trim().substring(0, 200);
     const limitResults = Math.min(parseInt(c.req.query("limit") || "8", 10), 20);
 
     if (!query || query.length < 2) {
@@ -5677,10 +5887,10 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
       return c.json({ error: "Configuração do servidor incompleta." }, 500);
     }
 
-    const page = parseInt(c.req.query("page") || "1", 10);
+    const page = Math.max(parseInt(c.req.query("page") || "1", 10), 1);
     const limit = Math.min(parseInt(c.req.query("limit") || "24", 10), 100);
-    const search = c.req.query("search") || "";
-    const categoriaSlug = (c.req.query("categoria") || "").trim();
+    const search = (c.req.query("search") || "").substring(0, 200);
+    const categoriaSlug = (c.req.query("categoria") || "").trim().substring(0, 200);
 
     if (!categoriaSlug) {
       // No category filter — filter out invisible products
@@ -5939,13 +6149,13 @@ app.get(BASE + "/produtos", async (c) => {
       );
     }
 
-    const page = parseInt(c.req.query("page") || "1", 10);
+    const page = Math.max(parseInt(c.req.query("page") || "1", 10), 1);
     const limit = Math.min(parseInt(c.req.query("limit") || "24", 10), 100);
-    const search = c.req.query("search") || "";
-    const skuExact = c.req.query("sku") || "";
-    const categoriaSlug = (c.req.query("categoria") || "").trim();
-    const publicMode = c.req.query("public") || "";
-    const sortParam = (c.req.query("sort") || "").trim();
+    const search = (c.req.query("search") || "").substring(0, 200);
+    const skuExact = (c.req.query("sku") || "").substring(0, 100);
+    const categoriaSlug = (c.req.query("categoria") || "").trim().substring(0, 200);
+    const publicMode = (c.req.query("public") || "").substring(0, 10);
+    const sortParam = (c.req.query("sort") || "").trim().substring(0, 30);
 
     // Map sort param to Supabase REST order clause
     var orderClause = "titulo.asc";
@@ -6344,7 +6554,8 @@ app.get(BASE + "/produtos", async (c) => {
 // GET /produtos/meta/:sku — product metadata from KV
 app.get(BASE + "/produtos/meta/:sku", async (c) => {
   try {
-    const sku = decodeURIComponent(c.req.param("sku"));
+    const sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ visible: true });
     const meta = await kv.get(`produto_meta:${sku}`);
     return c.json(meta || { visible: true });
   } catch (e) {
@@ -6384,8 +6595,17 @@ app.put(BASE + "/produtos/:sku/titulo", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     const sku = decodeURIComponent(c.req.param("sku"));
-    const { titulo } = await c.req.json();
-    if (!titulo || !titulo.trim()) return c.json({ error: "Título obrigatório." }, 400);
+    if (sku.length > 100) return c.json({ error: "SKU invalido." }, 400);
+    var titBody = await c.req.json();
+    // Input validation
+    var titValid = validate(titBody, {
+      titulo: { required: true, type: "string", minLen: 1, maxLen: 500 },
+    });
+    if (!titValid.ok) {
+      return c.json({ error: titValid.errors[0] || "Título obrigatório." }, 400);
+    }
+    var titulo = titValid.sanitized.titulo || "";
+    if (!titulo.trim()) return c.json({ error: "Título obrigatório." }, 400);
 
     const { error } = await supabaseAdmin
       .from("produtos")
@@ -6410,8 +6630,17 @@ app.put(BASE + "/produtos/:sku/rename", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     const oldSku = decodeURIComponent(c.req.param("sku"));
-    const { newSku } = await c.req.json();
-    if (!newSku || !newSku.trim()) return c.json({ error: "Novo SKU obrigatório." }, 400);
+    if (oldSku.length > 100) return c.json({ error: "SKU invalido." }, 400);
+    var renameBody = await c.req.json();
+    // Input validation
+    var renameValid = validate(renameBody, {
+      newSku: { required: true, type: "string", minLen: 1, maxLen: 100 },
+    });
+    if (!renameValid.ok) {
+      return c.json({ error: renameValid.errors[0] || "Novo SKU obrigatório." }, 400);
+    }
+    var newSku = renameValid.sanitized.newSku || "";
+    if (!newSku.trim()) return c.json({ error: "Novo SKU obrigatório." }, 400);
     const trimmed = newSku.trim();
     if (trimmed === oldSku) return c.json({ error: "SKU igual ao atual." }, 400);
 
@@ -6450,8 +6679,19 @@ app.post(BASE + "/produtos/create", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const { sku, titulo, meta } = await c.req.json();
-    if (!sku?.trim() || !titulo?.trim()) return c.json({ error: "SKU e título obrigatórios." }, 400);
+    var createProdBody = await c.req.json();
+    // Input validation
+    var createProdValid = validate(createProdBody, {
+      sku: { required: true, type: "string", minLen: 1, maxLen: 100 },
+      titulo: { required: true, type: "string", minLen: 1, maxLen: 500 },
+    });
+    if (!createProdValid.ok) {
+      return c.json({ error: createProdValid.errors[0] || "SKU e título obrigatórios." }, 400);
+    }
+    var sku = createProdValid.sanitized.sku || "";
+    var titulo = createProdValid.sanitized.titulo || "";
+    var meta = createProdBody.meta;
+    if (!sku.trim() || !titulo.trim()) return c.json({ error: "SKU e título obrigatórios." }, 400);
 
     const { error } = await supabaseAdmin
       .from("produtos")
@@ -6480,7 +6720,7 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var sku = decodeURIComponent(c.req.param("sku")).trim();
+    var sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ found: false, reason: "SKU vazio" });
 
     console.log("[sige-match] Searching SIGE for SKU: " + sku);
@@ -6673,7 +6913,8 @@ app.delete(BASE + "/produtos/:sku/delete", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const sku = decodeURIComponent(c.req.param("sku"));
+    const sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
 
     const { error: dbErr } = await supabaseAdmin.from("produtos").delete().eq("sku", sku);
     if (dbErr) {
@@ -6708,7 +6949,8 @@ app.post(BASE + "/produtos/imagens/:sku/upload", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const sku = decodeURIComponent(c.req.param("sku"));
+    const sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
     const formData = await c.req.formData();
     const file = formData.get("file") as File | null;
     var rawFilename = (formData.get("filename") as string) || file?.name || (sku + ".1.webp");
@@ -6762,7 +7004,13 @@ app.delete(BASE + "/produtos/imagens/:sku/file", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     const sku = decodeURIComponent(c.req.param("sku"));
-    const { filename } = await c.req.json();
+    if (sku.length > 100) return c.json({ error: "SKU invalido." }, 400);
+    var delImgBody = await c.req.json();
+    var delImgValid = validate(delImgBody, {
+      filename: { required: true, type: "string", maxLen: 500 },
+    });
+    if (!delImgValid.ok) return c.json({ error: "Filename obrigatório." }, 400);
+    var filename = delImgValid.sanitized.filename || "";
     if (!filename) return c.json({ error: "Filename obrigatório." }, 400);
 
     const filePath = `${sku}/${filename}`;
@@ -6783,7 +7031,13 @@ app.delete(BASE + "/produtos/imagens/:sku/file", async (c) => {
 // POST /produtos/meta/bulk — get metadata for multiple SKUs
 app.post(BASE + "/produtos/meta/bulk", async (c) => {
   try {
-    const { skus } = await c.req.json();
+    var metaBulkBody = await c.req.json();
+    // Input validation
+    var metaBulkValid = validate(metaBulkBody, {
+      skus: { required: true, type: "array", maxItems: 200 },
+    });
+    if (!metaBulkValid.ok) return c.json({ error: metaBulkValid.errors[0] || "skus deve ser um array." }, 400);
+    var skus = metaBulkValid.sanitized.skus;
     if (!Array.isArray(skus)) return c.json({ error: "skus deve ser um array." }, 400);
 
     const result: Record<string, any> = {};
@@ -7292,7 +7546,8 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const bannerId = c.req.param("id");
+    const bannerId = (c.req.param("id") || "").substring(0, 100);
+    if (!bannerId) return c.json({ error: "ID invalido." }, 400);
     const existing = await kv.get("banner:" + bannerId);
     if (!existing) return c.json({ error: "Banner não encontrado." }, 404);
 
@@ -7304,11 +7559,11 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
       const formData = await c.req.formData();
       const file = formData.get("file") as File | null;
 
-      if (formData.has("title")) banner.title = String(formData.get("title") || "");
-      if (formData.has("subtitle")) banner.subtitle = String(formData.get("subtitle") || "");
-      if (formData.has("buttonText")) banner.buttonText = String(formData.get("buttonText") || "");
-      if (formData.has("buttonLink")) banner.buttonLink = String(formData.get("buttonLink") || "");
-      if (formData.has("order")) banner.order = parseInt(String(formData.get("order") || "0"), 10);
+      if (formData.has("title")) banner.title = sanitizeInput(String(formData.get("title") || "")).substring(0, 300);
+      if (formData.has("subtitle")) banner.subtitle = sanitizeInput(String(formData.get("subtitle") || "")).substring(0, 500);
+      if (formData.has("buttonText")) banner.buttonText = sanitizeInput(String(formData.get("buttonText") || "")).substring(0, 100);
+      if (formData.has("buttonLink")) banner.buttonLink = sanitizeInput(String(formData.get("buttonLink") || "")).substring(0, 500);
+      if (formData.has("order")) banner.order = Math.min(Math.max(parseInt(String(formData.get("order") || "0"), 10) || 0, 0), 9999);
       if (formData.has("active")) banner.active = String(formData.get("active")) !== "false";
 
       if (file && file.size > 0) {
@@ -7349,10 +7604,21 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
       }
     } else {
       const body = await c.req.json();
-      if (body.title !== undefined) banner.title = body.title;
-      if (body.subtitle !== undefined) banner.subtitle = body.subtitle;
-      if (body.buttonText !== undefined) banner.buttonText = body.buttonText;
-      if (body.buttonLink !== undefined) banner.buttonLink = body.buttonLink;
+      // Input validation for banner JSON update
+      var bannerUpValid = validate(body, {
+        title: { type: "string", maxLen: 300 },
+        subtitle: { type: "string", maxLen: 500 },
+        buttonText: { type: "string", maxLen: 100 },
+        buttonLink: { type: "string", maxLen: 2000 },
+        active: { type: "boolean" },
+      });
+      if (!bannerUpValid.ok) {
+        return c.json({ error: bannerUpValid.errors[0] || "Dados invalidos." }, 400);
+      }
+      if (body.title !== undefined) banner.title = bannerUpValid.sanitized.title;
+      if (body.subtitle !== undefined) banner.subtitle = bannerUpValid.sanitized.subtitle;
+      if (body.buttonText !== undefined) banner.buttonText = bannerUpValid.sanitized.buttonText;
+      if (body.buttonLink !== undefined) banner.buttonLink = bannerUpValid.sanitized.buttonLink;
       if (body.order !== undefined) banner.order = parseInt(String(body.order), 10);
       if (body.active !== undefined) banner.active = !!body.active;
     }
@@ -7375,7 +7641,8 @@ app.delete(BASE + "/admin/banners/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const bannerId = c.req.param("id");
+    const bannerId = (c.req.param("id") || "").substring(0, 100);
+    if (!bannerId) return c.json({ error: "ID invalido." }, 400);
     const existing = await kv.get("banner:" + bannerId);
     if (!existing) return c.json({ error: "Banner não encontrado." }, 404);
 
@@ -7402,7 +7669,13 @@ app.put(BASE + "/admin/banners-reorder", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    const { orderedIds } = await c.req.json();
+    var reorderBody = await c.req.json();
+    // Input validation
+    var reorderValid = validate(reorderBody, {
+      orderedIds: { required: true, type: "array", maxItems: 200 },
+    });
+    if (!reorderValid.ok) return c.json({ error: reorderValid.errors[0] || "Dados invalidos." }, 400);
+    var orderedIds = reorderValid.sanitized.orderedIds;
     if (!Array.isArray(orderedIds)) return c.json({ error: "orderedIds deve ser um array." }, 400);
 
     for (let i = 0; i < orderedIds.length; i++) {
@@ -8129,10 +8402,20 @@ app.post(BASE + "/sige/user/register", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     var regBody = await c.req.json();
-    var name = sanitizeInput(String(regBody.name || "")).substring(0, 150);
-    var email = sanitizeInput(String(regBody.email || "")).substring(0, 254);
-    var password = String(regBody.password || "").substring(0, 128);
-    var bodyBaseUrl = regBody.baseUrl ? String(regBody.baseUrl).substring(0, 500) : undefined;
+    // Input validation for SIGE user register
+    var regValid = validate(regBody, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 150 },
+      email: { required: true, type: "string", maxLen: 254, custom: validators.email },
+      password: { required: true, type: "string", minLen: 1, maxLen: 128, sanitize: false },
+      baseUrl: { type: "string", maxLen: 500 },
+    });
+    if (!regValid.ok) {
+      return c.json({ error: regValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var name = regValid.sanitized.name || "";
+    var email = regValid.sanitized.email || "";
+    var password = regValid.sanitized.password || "";
+    var bodyBaseUrl = regValid.sanitized.baseUrl || undefined;
     if (!name || !email || !password) return c.json({ error: "Nome, email e senha são obrigatórios." }, 400);
 
     // Determine base URL: body param takes priority, then stored config
@@ -8195,9 +8478,18 @@ app.post(BASE + "/sige/user/create", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     var ucBody = await c.req.json();
-    var name = sanitizeInput(String(ucBody.name || "")).substring(0, 150);
-    var email = sanitizeInput(String(ucBody.email || "")).substring(0, 254);
-    var password = String(ucBody.password || "").substring(0, 128);
+    // Input validation for SIGE user create
+    var ucValid = validate(ucBody, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 150 },
+      email: { required: true, type: "string", maxLen: 254, custom: validators.email },
+      password: { required: true, type: "string", minLen: 1, maxLen: 128, sanitize: false },
+    });
+    if (!ucValid.ok) {
+      return c.json({ error: ucValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var name = ucValid.sanitized.name || "";
+    var email = ucValid.sanitized.email || "";
+    var password = ucValid.sanitized.password || "";
     if (!name || !email || !password) return c.json({ error: "Nome, email e senha são obrigatórios." }, 400);
     const result = await sigeAuthFetch("POST", "/user/create", { name, email, password });
     if (!result.ok) return _sigeProxyError(c, result);
@@ -8228,9 +8520,20 @@ app.patch(BASE + "/sige/user/reset/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
-    const { password, newPassword } = await c.req.json();
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
+    var resetBody = await c.req.json();
+    // Input validation for SIGE password reset
+    var resetValid = validate(resetBody, {
+      password: { required: true, type: "string", minLen: 1, maxLen: 128, sanitize: false },
+      newPassword: { required: true, type: "string", minLen: 8, maxLen: 128, sanitize: false },
+    });
+    if (!resetValid.ok) {
+      return c.json({ error: resetValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var password = resetValid.sanitized.password;
+    var newPassword = resetValid.sanitized.newPassword;
     if (!password || !newPassword) return c.json({ error: "Senha atual e nova senha são obrigatórias." }, 400);
-    const result = await sigeAuthFetch("PATCH", `/user/reset/${id}`, { password, newPassword });
+    const result = await sigeAuthFetch("PATCH", "/user/reset/" + id, { password: password, newPassword: newPassword });
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8266,10 +8569,19 @@ app.post(BASE + "/sige/category", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
-    const { codCategoria, nomeCategoria, classe } = body;
-    if (!codCategoria || !nomeCategoria || !classe) return c.json({ error: "codCategoria, nomeCategoria e classe são obrigatórios." }, 400);
-    if (classe !== "S" && classe !== "E") return c.json({ error: "classe deve ser 'S' (Saídas) ou 'E' (Entradas)." }, 400);
-    const result = await sigeAuthFetch("POST", "/category", { codCategoria, nomeCategoria, classe });
+    // Input validation for SIGE category
+    var sigeCatValid = validate(body, {
+      codCategoria: { required: true, type: "string", maxLen: 50 },
+      nomeCategoria: { required: true, type: "string", maxLen: 200 },
+      classe: { required: true, type: "string", maxLen: 2, oneOf: ["S", "E"] },
+    });
+    if (!sigeCatValid.ok) {
+      return c.json({ error: sigeCatValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var codCategoria = sigeCatValid.sanitized.codCategoria;
+    var nomeCategoria = sigeCatValid.sanitized.nomeCategoria;
+    var classe = sigeCatValid.sanitized.classe;
+    const result = await sigeAuthFetch("POST", "/category", { codCategoria: codCategoria, nomeCategoria: nomeCategoria, classe: classe });
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8284,11 +8596,19 @@ app.put(BASE + "/sige/category/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    const { nomeCategoria, classe } = body;
-    if (!nomeCategoria || !classe) return c.json({ error: "nomeCategoria e classe são obrigatórios." }, 400);
-    if (classe !== "S" && classe !== "E") return c.json({ error: "classe deve ser 'S' (Saídas) ou 'E' (Entradas)." }, 400);
-    const result = await sigeAuthFetch("PUT", `/category/${id}`, { nomeCategoria, classe });
+    // Input validation for SIGE category update
+    var sigeCatUpValid = validate(body, {
+      nomeCategoria: { required: true, type: "string", maxLen: 200 },
+      classe: { required: true, type: "string", maxLen: 2, oneOf: ["S", "E"] },
+    });
+    if (!sigeCatUpValid.ok) {
+      return c.json({ error: sigeCatUpValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var nomeCategoria = sigeCatUpValid.sanitized.nomeCategoria;
+    var classe = sigeCatUpValid.sanitized.classe;
+    const result = await sigeAuthFetch("PUT", "/category/" + id, { nomeCategoria: nomeCategoria, classe: classe });
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8303,6 +8623,7 @@ app.delete(BASE + "/sige/category/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const result = await sigeAuthFetch("DELETE", `/category/${id}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
@@ -8339,6 +8660,7 @@ app.get(BASE + "/sige/customer/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE customer proxy: GET /customer/${id}${queryString}`);
@@ -8357,7 +8679,20 @@ app.post(BASE + "/sige/customer", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
-    if (!body.tipoCadastro || !body.nomeCadastro) return c.json({ error: "tipoCadastro e nomeCadastro são obrigatórios." }, 400);
+    // Input validation for SIGE customer create
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var custValid = validate(body, {
+      tipoCadastro: { required: true, type: "string", maxLen: 5, oneOf: ["F", "J"] },
+      nomeCadastro: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      cpfCnpj: { type: "string", maxLen: 20, custom: validators.cpfOrCnpj },
+      email: { type: "string", maxLen: 254 },
+      telefone: { type: "string", maxLen: 30 },
+    });
+    if (!custValid.ok) {
+      return c.json({ error: custValid.errors[0] || "Dados invalidos." }, 400);
+    }
     console.log("SIGE customer proxy: POST /customer");
     const result = await sigeAuthFetch("POST", "/customer", body);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -8374,9 +8709,23 @@ app.put(BASE + "/sige/customer/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE customer proxy: PUT /customer/${id}`);
-    const result = await sigeAuthFetch("PUT", `/customer/${id}`, body);
+    // Input validation for SIGE customer update
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var custUpValid = validate(body, {
+      nomeCadastro: { type: "string", maxLen: 200 },
+      cpfCnpj: { type: "string", maxLen: 20, custom: validators.cpfOrCnpj },
+      email: { type: "string", maxLen: 254 },
+      telefone: { type: "string", maxLen: 30 },
+    });
+    if (!custUpValid.ok) {
+      return c.json({ error: custUpValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    console.log("SIGE customer proxy: PUT /customer/" + id);
+    const result = await sigeAuthFetch("PUT", "/customer/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8395,6 +8744,7 @@ app.get(BASE + "/sige/customer/:id/address", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE customer address proxy: GET /customer/${id}/address${queryString}`);
@@ -8413,10 +8763,13 @@ app.post(BASE + "/sige/customer/:id/address", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.tipoEndereco) return c.json({ error: "tipoEndereco é obrigatório." }, 400);
-    console.log(`SIGE customer address proxy: POST /customer/${id}/address`);
-    const result = await sigeAuthFetch("POST", `/customer/${id}/address`, body);
+    console.log("SIGE customer address proxy: POST /customer/" + id + "/address");
+    const result = await sigeAuthFetch("POST", "/customer/" + id + "/address", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8431,10 +8784,13 @@ app.put(BASE + "/sige/customer/:id/address", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.tipoEndereco) return c.json({ error: "tipoEndereco é obrigatório." }, 400);
-    console.log(`SIGE customer address proxy: PUT /customer/${id}/address`);
-    const result = await sigeAuthFetch("PUT", `/customer/${id}/address`, body);
+    console.log("SIGE customer address proxy: PUT /customer/" + id + "/address");
+    const result = await sigeAuthFetch("PUT", "/customer/" + id + "/address", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8453,6 +8809,7 @@ app.get(BASE + "/sige/customer/:id/complement", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     console.log(`SIGE customer complement proxy: GET /customer/${id}/complement`);
     const result = await sigeAuthFetch("GET", `/customer/${id}/complement`);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -8469,9 +8826,12 @@ app.post(BASE + "/sige/customer/:id/complement", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE customer complement proxy: POST /customer/${id}/complement`);
-    const result = await sigeAuthFetch("POST", `/customer/${id}/complement`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE customer complement proxy: POST /customer/" + id + "/complement");
+    const result = await sigeAuthFetch("POST", "/customer/" + id + "/complement", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8486,9 +8846,12 @@ app.put(BASE + "/sige/customer/:id/complement", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE customer complement proxy: PUT /customer/${id}/complement`);
-    const result = await sigeAuthFetch("PUT", `/customer/${id}/complement`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE customer complement proxy: PUT /customer/" + id + "/complement");
+    const result = await sigeAuthFetch("PUT", "/customer/" + id + "/complement", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8507,6 +8870,7 @@ app.get(BASE + "/sige/customer/:id/contact", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE customer contact proxy: GET /customer/${id}/contact${queryString}`);
@@ -8525,10 +8889,13 @@ app.post(BASE + "/sige/customer/:id/contact", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.nome) return c.json({ error: "nome é obrigatório no body." }, 400);
-    console.log(`SIGE customer contact proxy: POST /customer/${id}/contact`);
-    const result = await sigeAuthFetch("POST", `/customer/${id}/contact`, body);
+    console.log("SIGE customer contact proxy: POST /customer/" + id + "/contact");
+    const result = await sigeAuthFetch("POST", "/customer/" + id + "/contact", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8543,12 +8910,15 @@ app.put(BASE + "/sige/customer/:id/contact", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const nome = url.searchParams.get("nome");
-    if (!nome) return c.json({ error: "Query param 'nome' é obrigatório para identificar o contato a alterar." }, 400);
+    if (!nome || nome.length > 200) return c.json({ error: "Query param 'nome' é obrigatório para identificar o contato a alterar." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE customer contact proxy: PUT /customer/${id}/contact?nome=${nome}`);
-    const result = await sigeAuthFetch("PUT", `/customer/${id}/contact?nome=${encodeURIComponent(nome)}`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE customer contact proxy: PUT /customer/" + id + "/contact?nome=" + nome);
+    const result = await sigeAuthFetch("PUT", "/customer/" + id + "/contact?nome=" + encodeURIComponent(nome), body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8584,6 +8954,13 @@ app.post(BASE + "/sige/product", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
+    // Input validation: body must be a non-empty object
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    if (JSON.stringify(body).length > 50000) {
+      return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    }
     console.log("SIGE product proxy: POST /product");
     const result = await sigeAuthFetch("POST", "/product", body);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -8600,9 +8977,17 @@ app.put(BASE + "/sige/product/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE product proxy: PUT /product/${id}`);
-    const result = await sigeAuthFetch("PUT", `/product/${id}`, body);
+    // Input validation
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    if (JSON.stringify(body).length > 50000) {
+      return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    }
+    console.log("SIGE product proxy: PUT /product/" + id);
+    const result = await sigeAuthFetch("PUT", "/product/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8620,6 +9005,7 @@ app.get(BASE + "/sige/product/:id/balance", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     const debug = url.searchParams.get("debug") === "1";
@@ -8658,6 +9044,7 @@ app.get(BASE + "/sige/product/:id/product-control-plan", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE product PCP proxy: GET /product/${id}/product-control-plan${queryString}`);
@@ -8679,6 +9066,7 @@ app.get(BASE + "/sige/product/:id/promotion", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE product promotion proxy: GET /product/${id}/promotion${queryString}`);
@@ -8700,6 +9088,7 @@ app.get(BASE + "/sige/product/:id/reference", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE product reference proxy: GET /product/${id}/reference${queryString}`);
@@ -8717,9 +9106,12 @@ app.post(BASE + "/sige/product/:id/reference", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE product reference proxy: POST /product/${id}/reference`);
-    const result = await sigeAuthFetch("POST", `/product/${id}/reference`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE product reference proxy: POST /product/" + id + "/reference");
+    const result = await sigeAuthFetch("POST", "/product/" + id + "/reference", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8733,9 +9125,12 @@ app.put(BASE + "/sige/product/:id/reference", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE product reference proxy: PUT /product/${id}/reference`);
-    const result = await sigeAuthFetch("PUT", `/product/${id}/reference`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE product reference proxy: PUT /product/" + id + "/reference");
+    const result = await sigeAuthFetch("PUT", "/product/" + id + "/reference", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8773,6 +9168,12 @@ app.put(BASE + "/sige/api-docs", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
+    // Input validation for api-docs
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    var apiDocValid = validate(body, {
+      content: { required: true, type: "string", maxLen: 5000000, sanitize: false, trim: false },
+    });
+    if (!apiDocValid.ok) return c.json({ error: apiDocValid.errors[0] || "Dados invalidos." }, 400);
     const content = String(body.content || "");
     const sections: string[] = [];
     const lines = content.split("\n");
@@ -8813,7 +9214,12 @@ app.post(BASE + "/sige/api-docs/search", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
-    const query = String(body.query || "").toLowerCase().trim();
+    // Input validation for api-docs search
+    var apiSearchValid = validate(body, {
+      query: { required: true, type: "string", minLen: 1, maxLen: 500 },
+    });
+    if (!apiSearchValid.ok) return c.json({ results: [], message: "Query invalida." });
+    const query = String(apiSearchValid.sanitized.query || "").toLowerCase().trim();
     if (!query) return c.json({ results: [], message: "Query vazia." });
     const doc = await kv.get("sige_api_docs");
     if (!doc) return c.json({ results: [], message: "Nenhuma documentacao salva." });
@@ -8849,7 +9255,8 @@ app.get(BASE + "/sige/debug-ref/:codProduto", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    const codProduto = c.req.param("codProduto");
+    const codProduto = (c.req.param("codProduto") || "").substring(0, 50);
+    if (!codProduto) return c.json({ error: "codProduto invalido." }, 400);
     const debug: any = { codProduto, steps: [] };
 
     // Step 1: Check KV sige_map
@@ -8935,6 +9342,7 @@ app.get(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE technical-sheet proxy: GET /product/${id}/technical-sheet${queryString}`);
@@ -8952,9 +9360,12 @@ app.post(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE technical-sheet proxy: POST /product/${id}/technical-sheet`);
-    const result = await sigeAuthFetch("POST", `/product/${id}/technical-sheet`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE technical-sheet proxy: POST /product/" + id + "/technical-sheet");
+    const result = await sigeAuthFetch("POST", "/product/" + id + "/technical-sheet", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -8968,9 +9379,12 @@ app.put(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE technical-sheet proxy: PUT /product/${id}/technical-sheet`);
-    const result = await sigeAuthFetch("PUT", `/product/${id}/technical-sheet`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE technical-sheet proxy: PUT /product/" + id + "/technical-sheet");
+    const result = await sigeAuthFetch("PUT", "/product/" + id + "/technical-sheet", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9042,6 +9456,7 @@ app.get(BASE + "/sige/order/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     console.log(`SIGE order proxy: GET /order/${id}`);
     const result = await sigeAuthFetch("GET", `/order/${id}`);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -9057,6 +9472,13 @@ app.post(BASE + "/sige/order", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
+    // Input validation: body must be a non-empty object
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    if (JSON.stringify(body).length > 100000) {
+      return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    }
     console.log("SIGE order proxy: POST /order");
     const result = await sigeAuthFetch("POST", "/order", body);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -9076,6 +9498,7 @@ app.get(BASE + "/sige/order/:id/observation", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     console.log(`SIGE order observation proxy: GET /order/${id}/observation`);
     const result = await sigeAuthFetch("GET", `/order/${id}/observation`);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -9091,9 +9514,12 @@ app.post(BASE + "/sige/order/:id/observation", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE order observation proxy: POST /order/${id}/observation`);
-    const result = await sigeAuthFetch("POST", `/order/${id}/observation`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE order observation proxy: POST /order/" + id + "/observation");
+    const result = await sigeAuthFetch("POST", "/order/" + id + "/observation", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9107,9 +9533,12 @@ app.put(BASE + "/sige/order/:id/observation", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE order observation proxy: PUT /order/${id}/observation`);
-    const result = await sigeAuthFetch("PUT", `/order/${id}/observation`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE order observation proxy: PUT /order/" + id + "/observation");
+    const result = await sigeAuthFetch("PUT", "/order/" + id + "/observation", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9127,6 +9556,7 @@ app.get(BASE + "/sige/order/:id/installment", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     console.log(`SIGE order installment proxy: GET /order/${id}/installment`);
     const result = await sigeAuthFetch("GET", `/order/${id}/installment`);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -9146,6 +9576,7 @@ app.get(BASE + "/sige/order-items/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     console.log(`SIGE order-items proxy: GET /order-items/${id}`);
     const result = await sigeAuthFetch("GET", `/order-items/${id}`);
     if (!result.ok) return _sigeProxyError(c, result);
@@ -9161,9 +9592,12 @@ app.post(BASE + "/sige/order-items/:id", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE order-items proxy: POST /order-items/${id}`);
-    const result = await sigeAuthFetch("POST", `/order-items/${id}`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE order-items proxy: POST /order-items/" + id);
+    const result = await sigeAuthFetch("POST", "/order-items/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9181,6 +9615,7 @@ app.get(BASE + "/sige/order-items/:id/text", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
     console.log(`SIGE order-items text proxy: GET /order-items/${id}/text${queryString}`);
@@ -9198,9 +9633,12 @@ app.post(BASE + "/sige/order-items/:id/text", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE order-items text proxy: POST /order-items/${id}/text`);
-    const result = await sigeAuthFetch("POST", `/order-items/${id}/text`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE order-items text proxy: POST /order-items/" + id + "/text");
+    const result = await sigeAuthFetch("POST", "/order-items/" + id + "/text", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9214,9 +9652,12 @@ app.put(BASE + "/sige/order-items/:id/text", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const body = await c.req.json();
-    console.log(`SIGE order-items text proxy: PUT /order-items/${id}/text`);
-    const result = await sigeAuthFetch("PUT", `/order-items/${id}/text`, body);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    console.log("SIGE order-items text proxy: PUT /order-items/" + id + "/text");
+    const result = await sigeAuthFetch("PUT", "/order-items/" + id + "/text", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
@@ -9282,7 +9723,7 @@ app.get(BASE + "/sige/dep/:endpoint{.+}", async (c) => {
 // Strategy: try direct balance call with SKU as codProduto, fall back to search
 app.get(BASE + "/produtos/saldo/:sku", async (c) => {
   try {
-    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatório.", sku: "", found: false, sige: false, quantidade: 0 });
 
     const reqUrl = new URL(c.req.url);
@@ -9603,8 +10044,8 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
     await kv.set(cacheKey, JSON.stringify(notFound));
     return c.json({ ...notFound, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
   } catch (e: any) {
-    console.log("[Saldo] Exception for SKU " + c.req.param("sku") + ":", e);
-    return c.json({ error: "Erro ao consultar saldo.", sku: c.req.param("sku"), found: false, sige: false, quantidade: 0 });
+    console.log("[Saldo] Exception for SKU " + sku + ":", e);
+    return c.json({ error: "Erro ao consultar saldo.", sku: sku, found: false, sige: false, quantidade: 0 });
   }
 });
 
@@ -9632,7 +10073,8 @@ app.delete(BASE + "/produtos/saldo/cache", async (c) => {
 // DELETE /produtos/saldo/cache/:sku — clear cache for a single SKU
 app.delete(BASE + "/produtos/saldo/cache/:sku", async (c) => {
   try {
-    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
     const cacheKey = "sige_balance_" + sku;
     await kv.del(cacheKey);
     console.log("[Saldo] Cache cleared for SKU " + sku);
@@ -10060,7 +10502,14 @@ app.get(BASE + "/produtos/stock-summary", async (c) => {
 // POST /produtos/stock-scan — trigger balance scan for uncached/expired SKUs in batches
 app.post(BASE + "/produtos/stock-scan", async (c) => {
   try {
+    var stockScanUserId = await getAuthUserId(c.req.raw);
+    if (!stockScanUserId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json().catch(() => ({}));
+    // Input validation for stock-scan
+    var sscValid = validate(body, {
+      batchSize: { type: "number", min: 1, max: 50 },
+    });
+    if (!sscValid.ok) return c.json({ error: sscValid.errors[0] || "Dados invalidos." }, 400);
     const batchSize = Math.min(Number(body.batchSize) || 50, 50);
 
     const rawConfig = await kv.get("sige_api_config");
@@ -10275,8 +10724,14 @@ app.put(BASE + "/produtos/sige-map/:sku", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const sku = decodeURIComponent(c.req.param("sku")).trim();
+    if (!sku || sku.length > 100) return c.json({ error: "SKU invalido." }, 400);
     const body = await c.req.json();
-    const sigeId = String(body.sigeId || "").trim();
+    // Input validation for sige-map
+    var smValid = validate(body, {
+      sigeId: { required: true, type: "string", minLen: 1, maxLen: 100 },
+    });
+    if (!smValid.ok) return c.json({ error: smValid.errors[0] || "sigeId obrigatório." }, 400);
+    const sigeId = String(smValid.sanitized.sigeId || "").trim();
     if (!sigeId) return c.json({ error: "sigeId obrigatório." }, 400);
     const mapping = {
       sku,
@@ -10302,7 +10757,8 @@ app.delete(BASE + "/produtos/sige-map/:sku", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
     await kv.del(`sige_map_${sku}`);
     await kv.del(`sige_balance_${sku}`);
     return c.json({ ok: true, sku, message: `Mapeamento para ${sku} removido.` });
@@ -10318,6 +10774,13 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json().catch(() => ({}));
+    // Input validation for sige-sync
+    var sigeSyncValid = validate(body, {
+      fetchBalances: { type: "boolean" },
+      clearExisting: { type: "boolean" },
+      batchSize: { type: "number", min: 1, max: 500 },
+    });
+    if (!sigeSyncValid.ok) return c.json({ error: sigeSyncValid.errors[0] || "Dados invalidos." }, 400);
     const fetchBal = body.fetchBalances !== false;
     const clearExisting = body.clearExisting === true;
     const pgSize = Math.min(Number(body.batchSize) || 500, 500);
@@ -10511,6 +10974,16 @@ app.put(BASE + "/price-config", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
+    // Input validation for price config
+    var pcValid = validate(body, {
+      tier: { type: "string", maxLen: 20 },
+      showPrice: { type: "boolean" },
+      pixDiscountEnabled: { type: "boolean" },
+      pixDiscountPercent: { type: "number", min: 0, max: 100 },
+      installmentsCount: { type: "number", min: 0, max: 48 },
+      installmentsMinValue: { type: "number", min: 0, max: 99999999 },
+    });
+    if (!pcValid.ok) return c.json({ error: pcValid.errors[0] || "Dados invalidos." }, 400);
     const config: any = {
       tier: body.tier || "v2",
       showPrice: body.showPrice !== false,
@@ -10542,8 +11015,14 @@ app.put(BASE + "/produtos/preco/:sku", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const sku = decodeURIComponent(c.req.param("sku")).trim();
+    if (sku.length > 100) return c.json({ error: "SKU invalido." }, 400);
     const body = await c.req.json();
-    const customPrice = Number(body.price);
+    // Input validation for custom price
+    var cpValid = validate(body, {
+      price: { required: true, type: "number", min: 0, max: 99999999 },
+    });
+    if (!cpValid.ok) return c.json({ error: cpValid.errors[0] || "Preço inválido." }, 400);
+    const customPrice = Number(cpValid.sanitized.price);
     if (isNaN(customPrice) || customPrice < 0) return c.json({ error: "Preço inválido." }, 400);
     const entry = { sku, price: customPrice, source: "custom", updatedAt: Date.now(), updatedBy: userId };
     await kv.set("price_custom_" + sku, JSON.stringify(entry));
@@ -10563,7 +11042,8 @@ app.delete(BASE + "/produtos/preco/:sku", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
+    if (!sku) return c.json({ error: "SKU invalido." }, 400);
     await kv.del("price_custom_" + sku);
     await kv.del("product_price_" + sku);
     await kv.del("sige_price_" + sku);
@@ -10612,7 +11092,7 @@ app.delete(BASE + "/produtos/precos-cache", async (c) => {
 // GET /produtos/preco/:sku — public endpoint to get product price
 app.get(BASE + "/produtos/preco/:sku", async (c) => {
   try {
-    const sku = decodeURIComponent(c.req.param("sku")).trim();
+    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatório.", sku: "", found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
 
     // 0. Load global price config (mem-cached)
@@ -10862,8 +11342,8 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
     await kv.set(cacheKey, JSON.stringify(result));
     return c.json({ ...result, cached: false });
   } catch (e: any) {
-    console.log("[Price] Exception for SKU " + c.req.param("sku") + ":", e);
-    return c.json({ error: "Erro ao buscar preco.", sku: c.req.param("sku"), found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
+    console.log("[Price] Exception for SKU " + sku + ":", e);
+    return c.json({ error: "Erro ao buscar preco.", sku: sku, found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
   }
 });
 
@@ -10877,6 +11357,11 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
   try {
     const t0 = Date.now();
     const body = await c.req.json();
+    // Input validation for precos-bulk
+    var pbValid = validate(body, {
+      skus: { required: true, type: "array", maxItems: 200 },
+    });
+    if (!pbValid.ok) return c.json({ error: pbValid.errors[0] || "Array 'skus' obrigatório.", results: [], config: null });
     const skus: string[] = body.skus || [];
     if (!Array.isArray(skus) || skus.length === 0) {
       return c.json({ error: "Array 'skus' obrigatório.", results: [], config: null });
@@ -11422,8 +11907,14 @@ app.put(BASE + "/paghiper/config", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     var phBody = await c.req.json();
-    var apiKey = String(phBody.apiKey || "").trim().substring(0, 500);
-    var token = String(phBody.token || "").trim().substring(0, 500);
+    // Input validation for PagHiper config
+    var phValid = validate(phBody, {
+      apiKey: { required: true, type: "string", minLen: 1, maxLen: 500 },
+      token: { required: true, type: "string", minLen: 1, maxLen: 500 },
+    });
+    if (!phValid.ok) return c.json({ error: phValid.errors[0] || "API Key e Token são obrigatórios." }, 400);
+    var apiKey = (phValid.sanitized.apiKey || "").trim();
+    var token = (phValid.sanitized.token || "").trim();
     if (!apiKey || !token) {
       return c.json({ error: "API Key e Token são obrigatórios." }, 400);
     }
@@ -11468,7 +11959,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
     // Rate limit: 5 PIX charges per minute per IP
     var pixRl = _getRateLimitKey(c, "pix_create");
     var pixRlResult = _checkRateLimit(pixRl, 5);
-    if (!pixRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!pixRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", pixRlResult);
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
@@ -11590,21 +12081,25 @@ app.post(BASE + "/paghiper/pix/status", async (c) => {
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
-    const { transaction_id } = await c.req.json();
-    if (!transaction_id) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var pixStBody = await c.req.json();
+    var pixStValid = validate(pixStBody, {
+      transaction_id: { required: true, type: "string", maxLen: 100 },
+    });
+    if (!pixStValid.ok) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var transaction_id = pixStValid.sanitized.transaction_id;
 
-    const res = await fetch(`${PAGHIPER_PIX_URL}/status/`, {
+    const res = await fetch(PAGHIPER_PIX_URL + "/status/", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         apiKey: creds.apiKey,
         token: creds.token,
-        transaction_id,
+        transaction_id: transaction_id,
       }),
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] PIX status for ${transaction_id}:`, JSON.stringify(data));
+    console.log("[PagHiper] PIX status for " + transaction_id + ":", JSON.stringify(data));
 
     const statusData = data?.status_request;
     const status = statusData?.status || "unknown";
@@ -11643,22 +12138,28 @@ app.post(BASE + "/paghiper/pix/cancel", async (c) => {
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
-    const { transaction_id, status } = await c.req.json();
-    if (!transaction_id) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var pixCancelBody = await c.req.json();
+    var pixCancelValid = validate(pixCancelBody, {
+      transaction_id: { required: true, type: "string", maxLen: 100 },
+      status: { type: "string", maxLen: 30 },
+    });
+    if (!pixCancelValid.ok) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var transaction_id = pixCancelValid.sanitized.transaction_id;
+    var status = pixCancelValid.sanitized.status || "canceled";
 
-    const res = await fetch(`${PAGHIPER_PIX_URL}/cancel/`, {
+    const res = await fetch(PAGHIPER_PIX_URL + "/cancel/", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         apiKey: creds.apiKey,
         token: creds.token,
-        transaction_id,
-        status: status || "canceled",
+        transaction_id: transaction_id,
+        status: status,
       }),
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] PIX cancel for ${transaction_id}:`, JSON.stringify(data));
+    console.log("[PagHiper] PIX cancel for " + transaction_id + ":", JSON.stringify(data));
 
     const existing = await kv.get(`paghiper_tx_${transaction_id}`);
     if (existing) {
@@ -11687,7 +12188,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
     // Rate limit: 5 boleto charges per minute per IP
     var boletoRl = _getRateLimitKey(c, "boleto_create");
     var boletoRlResult = _checkRateLimit(boletoRl, 5);
-    if (!boletoRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!boletoRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", boletoRlResult);
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
@@ -11835,21 +12336,25 @@ app.post(BASE + "/paghiper/boleto/status", async (c) => {
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
-    const { transaction_id } = await c.req.json();
-    if (!transaction_id) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var bolStBody = await c.req.json();
+    var bolStValid = validate(bolStBody, {
+      transaction_id: { required: true, type: "string", maxLen: 100 },
+    });
+    if (!bolStValid.ok) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var transaction_id = bolStValid.sanitized.transaction_id;
 
-    const res = await fetch(`${PAGHIPER_BOLETO_URL}/status/`, {
+    const res = await fetch(PAGHIPER_BOLETO_URL + "/status/", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         apiKey: creds.apiKey,
         token: creds.token,
-        transaction_id,
+        transaction_id: transaction_id,
       }),
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] Boleto status for ${transaction_id}:`, JSON.stringify(data));
+    console.log("[PagHiper] Boleto status for " + transaction_id + ":", JSON.stringify(data));
 
     const statusData = data?.status_request;
     const status = statusData?.status || "unknown";
@@ -11888,16 +12393,20 @@ app.post(BASE + "/paghiper/boleto/cancel", async (c) => {
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
 
-    const { transaction_id } = await c.req.json();
-    if (!transaction_id) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var bolCancelBody = await c.req.json();
+    var bolCancelValid = validate(bolCancelBody, {
+      transaction_id: { required: true, type: "string", maxLen: 100 },
+    });
+    if (!bolCancelValid.ok) return c.json({ error: "transaction_id obrigatório." }, 400);
+    var transaction_id = bolCancelValid.sanitized.transaction_id;
 
-    const res = await fetch(`${PAGHIPER_BOLETO_URL}/cancel/`, {
+    const res = await fetch(PAGHIPER_BOLETO_URL + "/cancel/", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         apiKey: creds.apiKey,
         token: creds.token,
-        transaction_id,
+        transaction_id: transaction_id,
         status: "canceled",
       }),
     });
@@ -11936,6 +12445,9 @@ app.post(BASE + "/paghiper/notification", async (c) => {
       body = Object.fromEntries(params.entries());
     }
 
+    // Input validation for PagHiper webhook payload
+    if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
+    if (JSON.stringify(body).length > 10000) return c.json({ received: true, warning: "payload too large" });
     const { notification_id, idTransacao, transaction_id: txId, apiKey: notifApiKey } = body;
     const transactionId = idTransacao || txId;
     console.log("[PagHiper] Notification received: notification_id=" + notification_id + ", transactionId=" + transactionId);
@@ -12077,7 +12589,8 @@ app.get(BASE + "/paghiper/transactions", async (c) => {
 // GET /paghiper/transaction/:id — get single transaction
 app.get(BASE + "/paghiper/transaction/:id", async (c) => {
   try {
-    const txId = c.req.param("id");
+    const txId = (c.req.param("id") || "").substring(0, 100);
+    if (!txId) return c.json({ error: "ID invalido." }, 400);
     const raw = await kv.get(`paghiper_tx_${txId}`);
     if (!raw) return c.json({ error: "Transação não encontrada." }, 404);
     const tx = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -12352,7 +12865,8 @@ app.delete(BASE + "/sige/sync-customer/:siteUserId", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    const siteUserId = c.req.param("siteUserId");
+    const siteUserId = (c.req.param("siteUserId") || "").substring(0, 200);
+    if (!siteUserId) return c.json({ error: "ID invalido." }, 400);
 
     const existingMap = await kv.get(`sige_customer_map:${siteUserId}`);
     if (existingMap) {
@@ -12436,7 +12950,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
     // Rate limit: 5 SIGE orders per minute per IP
     var csRl = _getRateLimitKey(c, "create_sale");
     var csRlResult = _checkRateLimit(csRl, 5);
-    if (!csRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!csRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", csRlResult);
 
     const body = await c.req.json();
     // Input validation for create-sale
@@ -13187,7 +13701,7 @@ app.post(BASE + "/user/save-order", async (c) => {
     // Rate limit: 5 save-order per minute per IP
     var soRl = _getRateLimitKey(c, "save_order");
     var soRlResult = _checkRateLimit(soRl, 5);
-    if (!soRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!soRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", soRlResult);
 
     const body = await c.req.json();
     // Input validation for save-order
@@ -13543,7 +14057,7 @@ app.get(BASE + "/user/order-tracking/:localOrderId", async function (c) {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var localOrderId = c.req.param("localOrderId");
+    var localOrderId = (c.req.param("localOrderId") || "").substring(0, 200);
     if (!localOrderId) return c.json({ error: "localOrderId obrigatorio." }, 400);
 
     // 1. Read the user's order
@@ -13823,9 +14337,16 @@ app.post(BASE + "/admin/update-order-status", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     var body = await c.req.json();
-    var targetUserId = body.userId;
-    var localOrderId = body.localOrderId;
-    var newStatus = body.status;
+    // Input validation for order status update
+    var osValid = validate(body, {
+      userId: { required: true, type: "string", maxLen: 200 },
+      localOrderId: { required: true, type: "string", maxLen: 200 },
+      status: { required: true, type: "string", maxLen: 50 },
+    });
+    if (!osValid.ok) return c.json({ error: osValid.errors[0] || "userId, localOrderId e status são obrigatórios." }, 400);
+    var targetUserId = osValid.sanitized.userId;
+    var localOrderId = osValid.sanitized.localOrderId;
+    var newStatus = osValid.sanitized.status;
 
     if (!targetUserId || !localOrderId || !newStatus) {
       return c.json({ error: "userId, localOrderId e status são obrigatórios." }, 400);
@@ -13875,8 +14396,14 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
     if (!adminUserId) return c.json({ error: "Nao autorizado." }, 401);
 
     var body = await c.req.json();
-    var targetUserId = body.userId;
-    var localOrderId = body.localOrderId;
+    // Input validation for retry-sige-registration
+    var retryValid = validate(body, {
+      userId: { required: true, type: "string", maxLen: 200 },
+      localOrderId: { required: true, type: "string", maxLen: 200 },
+    });
+    if (!retryValid.ok) return c.json({ error: retryValid.errors[0] || "Dados invalidos." }, 400);
+    var targetUserId = retryValid.sanitized.userId;
+    var localOrderId = retryValid.sanitized.localOrderId;
 
     if (!targetUserId || !localOrderId) {
       return c.json({ error: "userId e localOrderId são obrigatórios." }, 400);
@@ -14103,6 +14630,12 @@ app.post(BASE + "/sige/confirm-order", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     var body = await c.req.json();
+    // Input validation for confirm order
+    var confirmValid = validate(body, {
+      sigeOrderId: { type: "string", maxLen: 100 },
+      orderId: { type: "string", maxLen: 100 },
+    });
+    if (!confirmValid.ok) return c.json({ error: confirmValid.errors[0] || "Dados invalidos." }, 400);
     var sigeOrderId = body.sigeOrderId || body.orderId;
     if (!sigeOrderId) return c.json({ error: "sigeOrderId é obrigatório." }, 400);
 
@@ -14159,6 +14692,14 @@ app.post(BASE + "/sige/debug-create-order", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     const body = await c.req.json();
+    // Input validation for debug-create-order
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 50000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    var dcoValid = validate(body, {
+      codCliFor: { required: true, type: "string", maxLen: 50 },
+      codTipoMv: { type: "string", maxLen: 20 },
+    });
+    if (!dcoValid.ok) return c.json({ error: dcoValid.errors[0] || "Dados invalidos." }, 400);
     const { codCliFor, codTipoMv, items } = body;
     if (!codCliFor) return c.json({ error: "codCliFor obrigatório." }, 400);
 
@@ -14370,6 +14911,13 @@ app.post(BASE + "/sige/test-order-tipomv", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     const body = await c.req.json();
+    // Input validation for test-order-tipomv
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    if (JSON.stringify(body).length > 50000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
+    var totValid = validate(body, {
+      codCliFor: { required: true, type: "string", maxLen: 50 },
+    });
+    if (!totValid.ok) return c.json({ error: totValid.errors[0] || "Dados invalidos." }, 400);
     const { codCliFor, codTipoMv_values, items } = body;
     if (!codCliFor) return c.json({ error: "codCliFor obrigatório." }, 400);
 
@@ -15228,9 +15776,16 @@ app.put(BASE + "/mercadopago/config", async (c) => {
     if (!userId) return c.json({ error: "Não autorizado" }, 401);
 
     var mpBody = await c.req.json();
-    var accessToken = String(mpBody.accessToken || "").trim().substring(0, 500);
-    var publicKey = String(mpBody.publicKey || "").trim().substring(0, 500);
-    var sandbox = !!mpBody.sandbox;
+    // Input validation for MP config
+    var mpCfgValid = validate(mpBody, {
+      accessToken: { required: true, type: "string", minLen: 1, maxLen: 500 },
+      publicKey: { type: "string", maxLen: 500 },
+      sandbox: { type: "boolean" },
+    });
+    if (!mpCfgValid.ok) return c.json({ error: mpCfgValid.errors[0] || "Access Token é obrigatório." }, 400);
+    var accessToken = (mpCfgValid.sanitized.accessToken || "").trim();
+    var publicKey = (mpCfgValid.sanitized.publicKey || "").trim();
+    var sandbox = !!mpCfgValid.sanitized.sandbox;
     if (!accessToken) {
       return c.json({ error: "Access Token é obrigatório." }, 400);
     }
@@ -15308,7 +15863,7 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
     // Rate limit: 5 preferences per minute per IP
     var mpRl = _getRateLimitKey(c, "mp_create");
     var mpRlResult = _checkRateLimit(mpRl, 5);
-    if (!mpRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!mpRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", mpRlResult);
     const creds = await getMPCredentials();
     if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
 
@@ -15451,8 +16006,12 @@ app.post(BASE + "/mercadopago/payment-status", async (c) => {
   try {
     var mpStatusUserId = await getAuthUserId(c.req.raw);
     if (!mpStatusUserId) return c.json({ error: "Autenticacao necessaria." }, 401);
-    const { payment_id } = await c.req.json();
-    if (!payment_id) return c.json({ error: "payment_id é obrigatório." }, 400);
+    var mpStBody = await c.req.json();
+    var mpStValid = validate(mpStBody, {
+      payment_id: { required: true, type: "string", maxLen: 100 },
+    });
+    if (!mpStValid.ok) return c.json({ error: "payment_id é obrigatório." }, 400);
+    var payment_id = mpStValid.sanitized.payment_id;
 
     const creds = await getMPCredentials();
     if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
@@ -15495,6 +16054,14 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
     if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
 
     const body = await c.req.json();
+    // Input validation for search-payments
+    var spValid = validate(body, {
+      status: { type: "string", maxLen: 50 },
+      external_reference: { type: "string", maxLen: 200 },
+      limit: { type: "number", min: 1, max: 100 },
+      offset: { type: "number", min: 0, max: 100000 },
+    });
+    if (!spValid.ok) return c.json({ error: spValid.errors[0] || "Dados invalidos." }, 400);
     var queryParts: string[] = [];
     if (body.status) queryParts.push("status=" + encodeURIComponent(body.status));
     if (body.external_reference) queryParts.push("external_reference=" + encodeURIComponent(body.external_reference));
@@ -15546,6 +16113,9 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
 app.post(BASE + "/mercadopago/webhook", async (c) => {
   try {
     const body = await c.req.json();
+    // Input validation for MP webhook payload
+    if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
+    if (JSON.stringify(body).length > 50000) return c.json({ received: true, warning: "payload too large" });
     console.log("[MercadoPago] Webhook received:", JSON.stringify(body).slice(0, 1000));
 
     // HMAC signature verification — REQUIRED when webhook secret is configured
@@ -15700,15 +16270,24 @@ app.post(BASE + "/admin/audit-log", async (c) => {
       return c.json({ error: "Unauthorized: admin audit-log save" }, 401);
     }
     var body = await c.req.json();
+    // Input validation for audit-log
+    var auditValid = validate(body, {
+      action: { type: "string", maxLen: 200 },
+      email: { type: "string", maxLen: 254 },
+      userName: { type: "string", maxLen: 200 },
+      details: { type: "string", maxLen: 5000 },
+      userAgent: { type: "string", maxLen: 500 },
+    });
+    if (!auditValid.ok) return c.json({ error: auditValid.errors[0] || "Dados invalidos." }, 400);
     var ts = Date.now();
     var logId = "audit_" + ts + "_" + crypto.randomUUID().slice(0, 8);
     var entry = {
       id: logId,
-      action: body.action || "unknown",
-      email: body.email || "",
-      userName: body.userName || "",
-      details: body.details || "",
-      userAgent: body.userAgent || "",
+      action: sanitizeInput(String(body.action || "unknown")).substring(0, 200),
+      email: sanitizeInput(String(body.email || "")).substring(0, 254),
+      userName: sanitizeInput(String(body.userName || "")).substring(0, 200),
+      details: sanitizeInput(String(body.details || "")).substring(0, 5000),
+      userAgent: sanitizeInput(String(body.userAgent || "")).substring(0, 500),
       timestamp: ts,
       createdAt: new Date(ts).toISOString()
     };
@@ -15753,7 +16332,8 @@ app.delete(BASE + "/admin/audit-log/:id", async (c) => {
     if (!userId) {
       return c.json({ error: "Unauthorized: admin audit-log delete" }, 401);
     }
-    var logId = c.req.param("id");
+    var logId = (c.req.param("id") || "").substring(0, 100);
+    if (!logId) return c.json({ error: "ID invalido." }, 400);
     await kv.del("admin_audit:" + logId);
     console.log("[AuditLog] Deleted:", logId);
     return c.json({ deleted: true });
@@ -15832,6 +16412,19 @@ app.post(BASE + "/admin/promo", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const body = await c.req.json();
+    // Input validation for super promo
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    var promoValid = validate(body, {
+      title: { type: "string", maxLen: 200 },
+      subtitle: { type: "string", maxLen: 500 },
+      enabled: { type: "boolean" },
+      startDate: { type: "number" },
+      endDate: { type: "number" },
+      discountType: { type: "string", maxLen: 30, oneOf: ["percentage", "fixed"] },
+      discountValue: { type: "number", min: 0, max: 100 },
+      bgColor: { type: "string", maxLen: 20 },
+    });
+    if (!promoValid.ok) return c.json({ error: promoValid.errors[0] || "Dados invalidos." }, 400);
     var existing: any = null;
     const raw = await kv.get("super_promo");
     if (raw) existing = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -15922,9 +16515,9 @@ app.post(BASE + "/admin/homepage-categories", async (c) => {
 
     var formData = await c.req.formData();
     var file = formData.get("file") as File | null;
-    var name = String(formData.get("name") || "");
-    var categorySlug = String(formData.get("categorySlug") || "");
-    var categoryName = String(formData.get("categoryName") || "");
+    var name = sanitizeInput(String(formData.get("name") || "")).substring(0, 200);
+    var categorySlug = sanitizeInput(String(formData.get("categorySlug") || "")).substring(0, 200);
+    var categoryName = sanitizeInput(String(formData.get("categoryName") || "")).substring(0, 200);
     var orderStr = String(formData.get("order") || "0");
     var activeStr = String(formData.get("active") || "true");
 
@@ -15992,7 +16585,8 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var cardId = c.req.param("id");
+    var cardId = (c.req.param("id") || "").substring(0, 100);
+    if (!cardId) return c.json({ error: "ID invalido." }, 400);
     var existing = await kv.get("hpcat:" + cardId);
     if (!existing) return c.json({ error: "Card não encontrado." }, 404);
 
@@ -16008,10 +16602,10 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
       var orderVal = formData.get("order");
       var activeVal = formData.get("active");
 
-      if (nameVal !== null) card.name = String(nameVal);
-      if (slugVal !== null) card.categorySlug = String(slugVal);
-      if (catNameVal !== null) card.categoryName = String(catNameVal);
-      if (orderVal !== null) card.order = parseInt(String(orderVal), 10) || 0;
+      if (nameVal !== null) card.name = sanitizeInput(String(nameVal)).substring(0, 200);
+      if (slugVal !== null) card.categorySlug = sanitizeInput(String(slugVal)).substring(0, 200);
+      if (catNameVal !== null) card.categoryName = sanitizeInput(String(catNameVal)).substring(0, 200);
+      if (orderVal !== null) card.order = Math.min(Math.max(parseInt(String(orderVal), 10) || 0, 0), 9999);
       if (activeVal !== null) card.active = String(activeVal) !== "false";
 
       if (file) {
@@ -16053,6 +16647,15 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
       }
     } else {
       var body = await c.req.json();
+      // Input validation for homepage category card update
+      var hcValid = validate(body, {
+        name: { type: "string", maxLen: 200 },
+        categorySlug: { type: "string", maxLen: 200 },
+        categoryName: { type: "string", maxLen: 200 },
+        order: { type: "number", min: 0, max: 9999 },
+        active: { type: "boolean" },
+      });
+      if (!hcValid.ok) return c.json({ error: hcValid.errors[0] || "Dados invalidos." }, 400);
       if (body.name !== undefined) card.name = body.name;
       if (body.categorySlug !== undefined) card.categorySlug = body.categorySlug;
       if (body.categoryName !== undefined) card.categoryName = body.categoryName;
@@ -16077,7 +16680,8 @@ app.delete(BASE + "/admin/homepage-categories/:id", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var cardId = c.req.param("id");
+    var cardId = (c.req.param("id") || "").substring(0, 100);
+    if (!cardId) return c.json({ error: "ID invalido." }, 400);
     var existing = await kv.get("hpcat:" + cardId);
     if (!existing) return c.json({ error: "Card não encontrado." }, 404);
 
@@ -16139,7 +16743,7 @@ app.put(BASE + "/admin/mid-banners/:slot", async (c) => {
     if (slot < 1 || slot > 4) return c.json({ error: "Slot inválido (1 a 4)" }, 400);
 
     var formData = await c.req.formData();
-    var link = (formData.get("link") as string) || "";
+    var link = sanitizeInput(String(formData.get("link") || "")).substring(0, 500);
     var active = formData.get("active") !== "false";
     var imageFile = formData.get("image") as File | null;
 
@@ -16254,8 +16858,8 @@ app.put(BASE + "/admin/footer-badges/:key", async (c) => {
     if (validKeys.indexOf(badgeKey) === -1) return c.json({ error: "Chave invalida: " + badgeKey }, 400);
 
     var formData = await c.req.formData();
-    var link = (formData.get("link") as string) || "";
-    var alt = (formData.get("alt") as string) || "";
+    var link = sanitizeInput(String(formData.get("link") || "")).substring(0, 500);
+    var alt = sanitizeInput(String(formData.get("alt") || "")).substring(0, 200);
     var active = formData.get("active") !== "false";
     var imageFile = formData.get("image") as File | null;
 
@@ -16308,7 +16912,8 @@ app.delete(BASE + "/admin/footer-badges/:key", async (c) => {
   try {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
-    var badgeKey = c.req.param("key");
+    var badgeKey = (c.req.param("key") || "").substring(0, 50);
+    if (!badgeKey) return c.json({ error: "Key invalida." }, 400);
     var kvKey = "fbadge:" + badgeKey;
     var existing = await kv.get(kvKey);
     if (existing) {
@@ -16690,7 +17295,7 @@ app.get(BASE + "/homepage-init", async (c) => {
 
 app.get(BASE + "/produto-detail-init/:sku", async (c) => {
   try {
-    var sku = decodeURIComponent(c.req.param("sku")).trim();
+    var sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatório." }, 400);
 
     var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -16839,7 +17444,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
 
 app.get(BASE + "/og/produto/:sku", async (c) => {
   try {
-    var sku = decodeURIComponent(c.req.param("sku")).trim();
+    var sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.text("SKU obrigatório.", 400);
 
     var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -16987,7 +17592,7 @@ app.get(BASE + "/og/produto/:sku", async (c) => {
   } catch (e) {
     console.log("[og/produto] Exception:", e);
     // On error, just redirect to the SPA
-    var fallbackUrl = (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/produto/" + encodeURIComponent(c.req.param("sku") || "");
+    var fallbackUrl = (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/produto/" + encodeURIComponent(sku || "");
     return Response.redirect(fallbackUrl, 302);
   }
 });
@@ -17061,7 +17666,12 @@ app.post(BASE + "/admin/email-marketing/subscribers", async (c) => {
 app.post(BASE + "/admin/email-marketing/subscribers/import", async (c) => {
   try {
     var body = await c.req.json();
-    var list = body.subscribers || [];
+    // Input validation for bulk import
+    var importValid = validate(body, {
+      subscribers: { required: true, type: "array", maxItems: 10000 },
+    });
+    if (!importValid.ok) return c.json({ error: importValid.errors[0] || "Dados invalidos." }, 400);
+    var list = importValid.sanitized.subscribers || [];
     if (!Array.isArray(list) || list.length === 0) return c.json({ error: "Lista vazia" }, 400);
     var imported = 0;
     var skipped = 0;
@@ -17089,12 +17699,20 @@ app.post(BASE + "/admin/email-marketing/subscribers/import", async (c) => {
 // PUT /admin/email-marketing/subscribers/:id — update subscriber
 app.put(BASE + "/admin/email-marketing/subscribers/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get("emkt_sub:" + id);
     if (!raw) return c.json({ error: "Assinante não encontrado" }, 404);
     var existing = typeof raw === "string" ? JSON.parse(raw) : raw;
     var body = await c.req.json();
-    if (body.name !== undefined) existing.name = String(body.name).trim();
+    // Input validation for subscriber update
+    var subUpValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      tags: { type: "array", maxItems: 50 },
+      active: { type: "boolean" },
+    });
+    if (!subUpValid.ok) return c.json({ error: subUpValid.errors[0] || "Dados invalidos." }, 400);
+    if (body.name !== undefined) existing.name = sanitizeInput(String(body.name).trim()).substring(0, 200);
     if (body.tags !== undefined) existing.tags = body.tags;
     if (body.active !== undefined) existing.active = Boolean(body.active);
     existing.updatedAt = Date.now();
@@ -17109,7 +17727,8 @@ app.put(BASE + "/admin/email-marketing/subscribers/:id", async (c) => {
 // DELETE /admin/email-marketing/subscribers/:id — remove subscriber
 app.delete(BASE + "/admin/email-marketing/subscribers/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_sub:" + id);
     console.log("[EmailMarketing] Subscriber deleted: " + id);
     return c.json({ ok: true, deleted: id });
@@ -17144,7 +17763,14 @@ app.get(BASE + "/admin/email-marketing/templates", async (c) => {
 app.post(BASE + "/admin/email-marketing/templates", async (c) => {
   try {
     var body = await c.req.json();
-    var name = String(body.name || "").trim();
+    // Input validation for email template
+    var tplValid = validate(body, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      subject: { type: "string", maxLen: 500 },
+      htmlBody: { type: "string", maxLen: 500000, sanitize: false, trim: false },
+    });
+    if (!tplValid.ok) return c.json({ error: tplValid.errors[0] || "Dados invalidos." }, 400);
+    var name = (tplValid.sanitized.name || "").trim();
     if (!name) return c.json({ error: "Nome obrigatório" }, 400);
     var now = Date.now();
     var id = "tpl_" + now + "_" + Math.random().toString(36).substring(2, 8);
@@ -17168,11 +17794,19 @@ app.post(BASE + "/admin/email-marketing/templates", async (c) => {
 // PUT /admin/email-marketing/templates/:id — update template
 app.put(BASE + "/admin/email-marketing/templates/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get("emkt_tpl:" + id);
     if (!raw) return c.json({ error: "Template não encontrado" }, 404);
     var existing = typeof raw === "string" ? JSON.parse(raw) : raw;
     var body = await c.req.json();
+    // Input validation for email template update
+    var tplUpValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      subject: { type: "string", maxLen: 500 },
+      htmlBody: { type: "string", maxLen: 500000, sanitize: false, trim: false },
+    });
+    if (!tplUpValid.ok) return c.json({ error: tplUpValid.errors[0] || "Dados invalidos." }, 400);
     if (body.name !== undefined) existing.name = String(body.name).trim();
     if (body.subject !== undefined) existing.subject = String(body.subject).trim();
     if (body.htmlBody !== undefined) existing.htmlBody = String(body.htmlBody);
@@ -17188,7 +17822,8 @@ app.put(BASE + "/admin/email-marketing/templates/:id", async (c) => {
 // DELETE /admin/email-marketing/templates/:id — delete template
 app.delete(BASE + "/admin/email-marketing/templates/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_tpl:" + id);
     console.log("[EmailMarketing] Template deleted: " + id);
     return c.json({ ok: true, deleted: id });
@@ -17223,7 +17858,19 @@ app.get(BASE + "/admin/email-marketing/campaigns", async (c) => {
 app.post(BASE + "/admin/email-marketing/campaigns", async (c) => {
   try {
     var body = await c.req.json();
-    var name = String(body.name || "").trim();
+    // Input validation for campaign create
+    var cmpValid = validate(body, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      subject: { type: "string", maxLen: 500 },
+      htmlBody: { type: "string", maxLen: 500000, sanitize: false, trim: false },
+      senderName: { type: "string", maxLen: 200 },
+      senderEmail: { type: "string", maxLen: 254 },
+      replyTo: { type: "string", maxLen: 254 },
+      templateId: { type: "string", maxLen: 200 },
+      targetTags: { type: "array", maxItems: 50 },
+    });
+    if (!cmpValid.ok) return c.json({ error: cmpValid.errors[0] || "Dados invalidos." }, 400);
+    var name = (cmpValid.sanitized.name || "").trim();
     if (!name) return c.json({ error: "Nome obrigatório" }, 400);
     var now = Date.now();
     var id = "cmp_" + now + "_" + Math.random().toString(36).substring(2, 8);
@@ -17256,12 +17903,25 @@ app.post(BASE + "/admin/email-marketing/campaigns", async (c) => {
 // PUT /admin/email-marketing/campaigns/:id — update campaign
 app.put(BASE + "/admin/email-marketing/campaigns/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get("emkt_cmp:" + id);
     if (!raw) return c.json({ error: "Campanha não encontrada" }, 404);
     var existing = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (existing.status === "sent") return c.json({ error: "Campanha já enviada não pode ser editada" }, 400);
     var body = await c.req.json();
+    // Input validation for campaign update
+    var cmpUpValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      subject: { type: "string", maxLen: 500 },
+      htmlBody: { type: "string", maxLen: 500000, sanitize: false, trim: false },
+      senderName: { type: "string", maxLen: 200 },
+      senderEmail: { type: "string", maxLen: 254 },
+      replyTo: { type: "string", maxLen: 254 },
+      templateId: { type: "string", maxLen: 200 },
+      targetTags: { type: "array", maxItems: 50 },
+    });
+    if (!cmpUpValid.ok) return c.json({ error: cmpUpValid.errors[0] || "Dados invalidos." }, 400);
     if (body.name !== undefined) existing.name = String(body.name).trim();
     if (body.subject !== undefined) existing.subject = String(body.subject).trim();
     if (body.templateId !== undefined) existing.templateId = body.templateId;
@@ -17282,7 +17942,8 @@ app.put(BASE + "/admin/email-marketing/campaigns/:id", async (c) => {
 // DELETE /admin/email-marketing/campaigns/:id — delete campaign
 app.delete(BASE + "/admin/email-marketing/campaigns/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_cmp:" + id);
     console.log("[EmailMarketing] Campaign deleted: " + id);
     return c.json({ ok: true, deleted: id });
@@ -17620,6 +18281,15 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
 app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
   try {
     var body = await c.req.json();
+    // Input validation for SMTP test
+    var smtpTestValid = validate(body, {
+      smtpHost: { required: true, type: "string", minLen: 1, maxLen: 300 },
+      smtpPort: { type: "number", min: 1, max: 65535 },
+      smtpUser: { required: true, type: "string", maxLen: 254 },
+      smtpPass: { required: true, type: "string", maxLen: 500, sanitize: false },
+      smtpSecure: { type: "boolean" },
+    });
+    if (!smtpTestValid.ok) return c.json({ error: smtpTestValid.errors[0] || "Dados invalidos." }, 400);
     var host = String(body.smtpHost || "").trim();
     var port = Number(body.smtpPort) || 587;
     var user = String(body.smtpUser || "").trim();
@@ -17650,8 +18320,14 @@ app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
 app.post(BASE + "/admin/email-marketing/campaigns/:id/test", async (c) => {
   try {
     var id = c.req.param("id");
+    if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     var body = await c.req.json();
-    var testEmail = String(body.testEmail || "").toLowerCase().trim();
+    // Input validation for campaign test
+    var ctValid = validate(body, {
+      testEmail: { required: true, type: "string", maxLen: 254, custom: validators.email },
+    });
+    if (!ctValid.ok) return c.json({ error: ctValid.errors[0] || "Email invalido." }, 400);
+    var testEmail = String(ctValid.sanitized.testEmail || "").toLowerCase().trim();
     if (!testEmail) return c.json({ error: "Email de teste obrigatório" }, 400);
 
     var raw = await kv.get("emkt_cmp:" + id);
@@ -17696,7 +18372,8 @@ app.post(BASE + "/admin/email-marketing/campaigns/:id/test", async (c) => {
 // POST /admin/email-marketing/campaigns/:id/send — send campaign to all subscribers via SMTP
 app.post(BASE + "/admin/email-marketing/campaigns/:id/send", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get("emkt_cmp:" + id);
     if (!raw) return c.json({ error: "Campanha não encontrada" }, 404);
     var cmp = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -17838,7 +18515,8 @@ app.post(BASE + "/admin/email-marketing/campaigns/:id/send", async (c) => {
 // POST /admin/email-marketing/campaigns/:id/duplicate — duplicate a campaign
 app.post(BASE + "/admin/email-marketing/campaigns/:id/duplicate", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get("emkt_cmp:" + id);
     if (!raw) return c.json({ error: "Campanha não encontrada" }, 404);
     var orig = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -17894,7 +18572,8 @@ app.get(BASE + "/admin/email-marketing/send-logs", async (c) => {
 // DELETE /admin/email-marketing/send-logs/:id — delete a send log
 app.delete(BASE + "/admin/email-marketing/send-logs/:id", async (c) => {
   try {
-    var id = c.req.param("id");
+    var id = (c.req.param("id") || "").substring(0, 100);
+    if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_log:" + id);
     return c.json({ ok: true, deleted: id });
   } catch (e: any) {
@@ -17932,6 +18611,20 @@ app.get(BASE + "/admin/email-marketing/config", async (c) => {
 app.put(BASE + "/admin/email-marketing/config", async (c) => {
   try {
     var body = await c.req.json();
+    // Input validation for SMTP config
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var smtpValid = validate(body, {
+      smtpHost: { type: "string", maxLen: 253 },
+      smtpUser: { type: "string", maxLen: 254 },
+      smtpPass: { type: "string", maxLen: 500, sanitize: false },
+      smtpSecure: { type: "boolean" },
+      defaultSenderName: { type: "string", maxLen: 200 },
+      defaultSenderEmail: { type: "string", maxLen: 254 },
+      defaultReplyTo: { type: "string", maxLen: 254 },
+    });
+    if (!smtpValid.ok) return c.json({ error: smtpValid.errors[0] || "Dados invalidos." }, 400);
 
     // Load existing config so partial updates don't lose fields
     var rawExisting = await kv.get("emkt_config");
@@ -18398,6 +19091,18 @@ app.get(BASE + "/admin/coupons", async (c: any) => {
 app.post(BASE + "/admin/coupons", async (c: any) => {
   try {
     var body = await c.req.json();
+    // Input validation for coupon create
+    var couponValid = validate(body, {
+      code: { required: true, type: "string", minLen: 3, maxLen: 50 },
+      description: { type: "string", maxLen: 500 },
+      discountType: { type: "string", maxLen: 20, oneOf: ["percentage", "fixed"] },
+      discountValue: { type: "number", min: 0, max: 99999999 },
+      minOrderValue: { type: "number", min: 0, max: 99999999 },
+      maxUses: { type: "number", min: 0, max: 99999999 },
+      active: { type: "boolean" },
+      expiresAt: { type: "string", maxLen: 30 },
+    });
+    if (!couponValid.ok) return c.json({ error: couponValid.errors[0] || "Dados invalidos." }, 400);
     var code = String(body.code || "").toUpperCase().trim().replace(/[^A-Z0-9_-]/g, "");
     if (!code || code.length < 3) {
       return c.json({ error: "Código do cupom deve ter no mínimo 3 caracteres (letras, números, - e _)" }, 400);
@@ -18432,7 +19137,8 @@ app.post(BASE + "/admin/coupons", async (c: any) => {
 // Update coupon
 app.put(BASE + "/admin/coupons/:code", async (c: any) => {
   try {
-    var code = String(c.req.param("code")).toUpperCase().trim();
+    var code = String(c.req.param("code") || "").toUpperCase().trim().substring(0, 50);
+    if (!code) return c.json({ error: "Codigo invalido." }, 400);
     var existing = await kv.get("coupon:" + code);
     if (!existing) {
       console.log("[coupons] Coupon not found: " + code);
@@ -18440,6 +19146,17 @@ app.put(BASE + "/admin/coupons/:code", async (c: any) => {
     }
     var current = typeof existing === "string" ? JSON.parse(existing) : existing;
     var body = await c.req.json();
+    // Input validation for coupon update
+    var couponUpValid = validate(body, {
+      description: { type: "string", maxLen: 500 },
+      discountType: { type: "string", maxLen: 20, oneOf: ["percentage", "fixed"] },
+      discountValue: { type: "number", min: 0, max: 99999999 },
+      minOrderValue: { type: "number", min: 0, max: 99999999 },
+      maxUses: { type: "number", min: 0, max: 99999999 },
+      active: { type: "boolean" },
+      expiresAt: { type: "string", maxLen: 30 },
+    });
+    if (!couponUpValid.ok) return c.json({ error: couponUpValid.errors[0] || "Dados invalidos." }, 400);
     if (body.description !== undefined) current.description = sanitizeInput(String(body.description));
     if (body.discountType !== undefined) current.discountType = body.discountType === "fixed" ? "fixed" : "percentage";
     if (body.discountValue !== undefined) current.discountValue = Math.max(0, Number(body.discountValue) || 0);
@@ -18460,7 +19177,8 @@ app.put(BASE + "/admin/coupons/:code", async (c: any) => {
 // Delete coupon
 app.delete(BASE + "/admin/coupons/:code", async (c: any) => {
   try {
-    var code = String(c.req.param("code")).toUpperCase().trim();
+    var code = String(c.req.param("code") || "").toUpperCase().trim().substring(0, 50);
+    if (!code) return c.json({ error: "Codigo invalido." }, 400);
     await kv.del("coupon:" + code);
     console.log("[admin/coupons] Deleted coupon: " + code);
     return c.json({ ok: true, deleted: code });
@@ -18477,7 +19195,7 @@ app.post(BASE + "/coupons/validate", async (c: any) => {
     var rlKey = _getRateLimitKey(c, "coupon_validate");
     var rlResult = _checkRateLimit(rlKey, 30);
     if (!rlResult.allowed) {
-      return c.json({ error: "Too many attempts. Try again shortly." }, 429);
+      return _rl429(c, "Too many attempts. Try again shortly.", rlResult);
     }
 
     var body = await c.req.json();
@@ -18544,7 +19262,7 @@ app.post(BASE + "/coupons/use", async (c: any) => {
     // Rate limit: 10/min per IP to prevent abuse
     var couponUseRl = _getRateLimitKey(c, "coupon_use");
     var couponUseRlResult = _checkRateLimit(couponUseRl, 10);
-    if (!couponUseRlResult.allowed) return c.json({ ok: false, error: "Too many requests" }, 429);
+    if (!couponUseRlResult.allowed) return _rl429(c, "Too many requests", couponUseRlResult);
     var body = await c.req.json();
     // Input validation
     var cuValid = validateOrError(body, schemas.couponUse);
@@ -18730,7 +19448,7 @@ app.use(BASE + "/lgpd/request", async (c: any, next: any) => {
   var rlResult = _checkRateLimit(rlKey, 5);
   if (!rlResult.allowed) {
     console.log("[RateLimit] BLOCKED lgpd request from " + rlKey);
-    return c.json({ error: "Muitas solicitações. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos." }, 429);
+    return _rl429(c, "Muitas solicitações. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
 });
@@ -18741,7 +19459,7 @@ app.post(BASE + "/lgpd/request", async (c) => {
     // Rate limit: 5 LGPD requests per minute per IP
     var lgpdRl = _getRateLimitKey(c, "lgpd_request");
     var lgpdRlResult = _checkRateLimit(lgpdRl, 5);
-    if (!lgpdRlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+    if (!lgpdRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", lgpdRlResult);
     var body = await c.req.json();
     // Input validation
     var lgpdValid = validate(body, {
@@ -18826,8 +19544,8 @@ app.post(BASE + "/lgpd/request", async (c) => {
 // GET /lgpd/request/status — public: check request status by ID + email
 app.get(BASE + "/lgpd/request/status", async (c) => {
   try {
-    var requestId = String(c.req.query("id") || "").trim();
-    var email = String(c.req.query("email") || "").trim().toLowerCase();
+    var requestId = String(c.req.query("id") || "").trim().substring(0, 100);
+    var email = String(c.req.query("email") || "").trim().toLowerCase().substring(0, 254);
 
     if (!requestId || !email) {
       return c.json({ error: "Informe o ID da solicitação e o email." }, 400);
@@ -18904,12 +19622,19 @@ app.put(BASE + "/admin/lgpd-requests/:id", async (c) => {
     if (!adminCheck.userId) return c.json({ error: "Unauthorized" }, 401);
     if (!adminCheck.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
-    var reqId = c.req.param("id");
+    var reqId = (c.req.param("id") || "").substring(0, 200);
+    if (!reqId) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get(LGPD_REQ_PREFIX + reqId);
     if (!raw) return c.json({ error: "Solicitação não encontrada." }, 404);
 
     var record = typeof raw === "string" ? JSON.parse(raw) : raw;
     var body = await c.req.json();
+    // Input validation for LGPD request update
+    var lgpdUpValid = validate(body, {
+      status: { type: "string", maxLen: 20, oneOf: ["pending", "in_progress", "completed", "rejected"] },
+      adminNotes: { type: "string", maxLen: 5000 },
+    });
+    if (!lgpdUpValid.ok) return c.json({ error: lgpdUpValid.errors[0] || "Dados invalidos." }, 400);
 
     if (body.status) {
       var validStatuses = ["pending", "in_progress", "completed", "rejected"];
@@ -18942,7 +19667,8 @@ app.delete(BASE + "/admin/lgpd-requests/:id", async (c) => {
     if (!adminCheck.userId) return c.json({ error: "Unauthorized" }, 401);
     if (!adminCheck.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
-    var reqId = c.req.param("id");
+    var reqId = (c.req.param("id") || "").substring(0, 200);
+    if (!reqId) return c.json({ error: "ID invalido." }, 400);
     await kv.del(LGPD_REQ_PREFIX + reqId);
 
     var rawIdx = await kv.get(LGPD_REQ_INDEX);
@@ -19003,7 +19729,7 @@ app.get(BASE + "/brands", async (c) => {
 // GET /brands/:slug — public, returns brand info + product SKUs
 app.get(BASE + "/brands/:slug", async (c) => {
   try {
-    var slug = decodeURIComponent(c.req.param("slug")).trim();
+    var slug = decodeURIComponent(c.req.param("slug") || "").trim().substring(0, 200);
     if (!slug) return c.json({ error: "Slug obrigatório." }, 400);
 
     var allRaw = await kv.getByPrefix("brand:");
@@ -19046,12 +19772,12 @@ app.post(BASE + "/admin/brands", async (c) => {
 
     var formData = await c.req.formData();
     var file = formData.get("file") as File | null;
-    var name = String(formData.get("name") || "");
-    var slug = String(formData.get("slug") || "");
-    var bgColor = String(formData.get("bgColor") || "#ffffff");
+    var name = sanitizeInput(String(formData.get("name") || "")).substring(0, 200);
+    var slug = sanitizeInput(String(formData.get("slug") || "")).substring(0, 200);
+    var bgColor = sanitizeInput(String(formData.get("bgColor") || "#ffffff")).substring(0, 20);
     var orderStr = String(formData.get("order") || "0");
     var activeStr = String(formData.get("active") || "true");
-    var productsJson = String(formData.get("products") || "[]");
+    var productsJson = String(formData.get("products") || "[]").substring(0, 50000);
     var logoZoomStr = String(formData.get("logoZoom") || "1");
 
     if (!file) return c.json({ error: "Nenhum arquivo de logo enviado." }, 400);
@@ -19129,7 +19855,8 @@ app.put(BASE + "/admin/brands/:id", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var brandId = c.req.param("id");
+    var brandId = (c.req.param("id") || "").substring(0, 100);
+    if (!brandId) return c.json({ error: "ID invalido." }, 400);
     var existing = await kv.get("brand:" + brandId);
     if (!existing) return c.json({ error: "Marca não encontrada." }, 404);
 
@@ -19147,12 +19874,12 @@ app.put(BASE + "/admin/brands/:id", async (c) => {
       var productsVal = formData.get("products");
       var logoZoomVal = formData.get("logoZoom");
 
-      if (nameVal !== null) brand.name = String(nameVal);
-      if (slugVal !== null) brand.slug = String(slugVal);
-      if (bgColorVal !== null) brand.bgColor = String(bgColorVal);
-      if (orderVal !== null) brand.order = parseInt(String(orderVal), 10) || 0;
+      if (nameVal !== null) brand.name = sanitizeInput(String(nameVal)).substring(0, 200);
+      if (slugVal !== null) brand.slug = sanitizeInput(String(slugVal)).substring(0, 200);
+      if (bgColorVal !== null) brand.bgColor = sanitizeInput(String(bgColorVal)).substring(0, 20);
+      if (orderVal !== null) brand.order = Math.min(Math.max(parseInt(String(orderVal), 10) || 0, 0), 9999);
       if (activeVal !== null) brand.active = String(activeVal) !== "false";
-      if (logoZoomVal !== null) brand.logoZoom = parseFloat(String(logoZoomVal)) || 1;
+      if (logoZoomVal !== null) brand.logoZoom = Math.min(Math.max(parseFloat(String(logoZoomVal)) || 1, 0.1), 5);
       if (productsVal !== null) {
         try { brand.products = JSON.parse(String(productsVal)); } catch { /* keep existing */ }
       }
@@ -19195,9 +19922,17 @@ app.put(BASE + "/admin/brands/:id", async (c) => {
       }
     } else {
       var body = await c.req.json();
-      if (body.name !== undefined) brand.name = body.name;
-      if (body.slug !== undefined) brand.slug = body.slug;
-      if (body.bgColor !== undefined) brand.bgColor = body.bgColor;
+      // Input validation for brand JSON update
+      var brandUpValid = validate(body, {
+        name: { type: "string", maxLen: 200 },
+        slug: { type: "string", maxLen: 200 },
+        bgColor: { type: "string", maxLen: 30 },
+        active: { type: "boolean" },
+      });
+      if (!brandUpValid.ok) return c.json({ error: brandUpValid.errors[0] || "Dados invalidos." }, 400);
+      if (body.name !== undefined) brand.name = brandUpValid.sanitized.name;
+      if (body.slug !== undefined) brand.slug = brandUpValid.sanitized.slug;
+      if (body.bgColor !== undefined) brand.bgColor = brandUpValid.sanitized.bgColor;
       if (body.order !== undefined) brand.order = parseInt(String(body.order), 10) || 0;
       if (body.active !== undefined) brand.active = body.active !== false;
       if (body.logoZoom !== undefined) brand.logoZoom = parseFloat(String(body.logoZoom)) || 1;
@@ -19221,7 +19956,8 @@ app.delete(BASE + "/admin/brands/:id", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var brandId = c.req.param("id");
+    var brandId = (c.req.param("id") || "").substring(0, 100);
+    if (!brandId) return c.json({ error: "ID invalido." }, 400);
     var existing = await kv.get("brand:" + brandId);
     if (!existing) return c.json({ error: "Marca não encontrada." }, 404);
 
@@ -19335,7 +20071,12 @@ app.post(BASE + "/admin/auto-categorize-apply", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     var body = await c.req.json();
-    var assignments = body.assignments;
+    // Input validation for auto-categorize-apply
+    var acValid = validate(body, {
+      assignments: { required: true, type: "array", maxItems: 5000 },
+    });
+    if (!acValid.ok) return c.json({ error: acValid.errors[0] || "Dados invalidos." }, 400);
+    var assignments = acValid.sanitized.assignments;
     if (!Array.isArray(assignments) || assignments.length === 0) {
       return c.json({ error: "assignments deve ser um array nao vazio." }, 400);
     }
@@ -19523,7 +20264,7 @@ async function _signReviewImages(images: any[]): Promise<any[]> {
 
 app.get(BASE + "/reviews/:sku", async function (c) {
   try {
-    var sku = c.req.param("sku");
+    var sku = (c.req.param("sku") || "").substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatorio." }, 400);
     var ids = await _getReviewIdsBySku(sku);
     if (ids.length === 0) return c.json({ reviews: [], total: 0, sku: sku });
@@ -19555,7 +20296,7 @@ app.get(BASE + "/reviews/:sku", async function (c) {
 
 app.get(BASE + "/reviews/:sku/summary", async function (c) {
   try {
-    var sku = c.req.param("sku");
+    var sku = (c.req.param("sku") || "").substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatorio." }, 400);
     var ids = await _getReviewIdsBySku(sku);
     if (ids.length === 0) return c.json({ sku: sku, averageRating: 0, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
@@ -19607,6 +20348,11 @@ async function _computeReviewSummaryForSku(sku: string): Promise<{ averageRating
 app.post(BASE + "/reviews/summaries-batch", async function (c) {
   try {
     var body = await c.req.json();
+    // Input validation for summaries-batch
+    var sbValid = validate(body, {
+      skus: { required: true, type: "array", maxItems: 60 },
+    });
+    if (!sbValid.ok) return c.json({ summaries: {} });
     var skus: string[] = body.skus || [];
     if (!Array.isArray(skus) || skus.length === 0) {
       return c.json({ summaries: {} });
@@ -19660,7 +20406,7 @@ app.get(BASE + "/reviews/:sku/mine", async function (c) {
   try {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ hasReview: false, review: null, hasPurchased: false });
-    var sku = c.req.param("sku");
+    var sku = (c.req.param("sku") || "").substring(0, 100);
     if (!sku) return c.json({ hasReview: false, review: null, hasPurchased: false });
 
     // Check purchase + existing review in parallel
@@ -19803,7 +20549,7 @@ app.post(BASE + "/reviews/:id/helpful", async function (c) {
     // Rate limit: 20/min per IP to prevent helpful count inflation
     var helpfulRl = _getRateLimitKey(c, "review_helpful");
     var helpfulRlResult = _checkRateLimit(helpfulRl, 20);
-    if (!helpfulRlResult.allowed) return c.json({ ok: false, error: "Rate limit" }, 429);
+    if (!helpfulRlResult.allowed) return _rl429(c, "Rate limit", helpfulRlResult);
     var reviewId = c.req.param("id");
     if (!reviewId || !/^[a-zA-Z0-9_-]{1,100}$/.test(reviewId)) return c.json({ error: "ID invalido." }, 400);
     var rawReview = await kv.get("review:" + reviewId);
@@ -19856,7 +20602,7 @@ app.get(BASE + "/admin/reviews", async function (c) {
     await _ensureReviewIndexes();
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Nao autorizado." }, 401);
-    var statusFilter = c.req.query("status") || "all";
+    var statusFilter = (c.req.query("status") || "all").substring(0, 20);
     var allIds = await _getAllReviewIds();
     if (allIds.length === 0) return c.json({ reviews: [], total: 0 });
     var keys: string[] = [];
@@ -19927,9 +20673,16 @@ app.put(BASE + "/admin/reviews/:id/moderate", async function (c) {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Nao autorizado." }, 401);
     var reviewId = c.req.param("id");
+    if (!reviewId || reviewId.length > 200) return c.json({ error: "ID invalido." }, 400);
     var body = await c.req.json();
-    var action = body.action;
-    var note = body.note || "";
+    // Input validation for review moderation
+    var modValid = validate(body, {
+      action: { required: true, type: "string", maxLen: 20, oneOf: ["approve", "reject"] },
+      note: { type: "string", maxLen: 2000 },
+    });
+    if (!modValid.ok) return c.json({ error: modValid.errors[0] || "Acao invalida." }, 400);
+    var action = modValid.sanitized.action;
+    var note = modValid.sanitized.note || "";
     var imageActions = body.imageActions || null;
     if (action !== "approve" && action !== "reject") return c.json({ error: "Acao invalida." }, 400);
     var rawReview = await kv.get("review:" + reviewId);
@@ -19983,7 +20736,8 @@ app.delete(BASE + "/admin/reviews/:id", async function (c) {
   try {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Nao autorizado." }, 401);
-    var reviewId = c.req.param("id");
+    var reviewId = (c.req.param("id") || "").substring(0, 200);
+    if (!reviewId) return c.json({ error: "ID invalido." }, 400);
     var rawReview = await kv.get("review:" + reviewId);
     if (!rawReview) return c.json({ error: "Avaliacao nao encontrada." }, 404);
     var review = typeof rawReview === "string" ? JSON.parse(rawReview) : rawReview;
@@ -20196,6 +20950,16 @@ app.post(BASE + "/admin/warranty/plans", async (c: any) => {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Não autorizado" }, 401);
     var body = await c.req.json();
+    // Input validation for warranty plan create
+    var wpValid = validate(body, {
+      name: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      description: { type: "string", maxLen: 1000 },
+      durationMonths: { type: "number", min: 1, max: 120 },
+      priceType: { type: "string", maxLen: 20, oneOf: ["fixed", "percentage"] },
+      priceValue: { required: true, type: "number", min: 0.01, max: 999999 },
+      active: { type: "boolean" },
+    });
+    if (!wpValid.ok) return c.json({ error: wpValid.errors[0] || "Dados invalidos." }, 400);
     var name = sanitizeInput(String(body.name || "").trim()).substring(0, 200);
     if (!name) return c.json({ error: "Nome do plano é obrigatório" }, 400);
     var durationMonths = Math.max(1, Math.min(120, parseInt(String(body.durationMonths)) || 12));
@@ -20232,11 +20996,22 @@ app.put(BASE + "/admin/warranty/plans/:id", async (c: any) => {
   try {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Não autorizado" }, 401);
-    var planId = c.req.param("id");
+    var planId = (c.req.param("id") || "").substring(0, 100);
+    if (!planId) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get(_warrantyPlanKey(planId));
     if (!raw) return c.json({ error: "Plano não encontrado" }, 404);
     var plan = typeof raw === "string" ? JSON.parse(raw) : raw;
     var body = await c.req.json();
+    // Input validation for warranty plan update
+    var wpUpValid = validate(body, {
+      name: { type: "string", maxLen: 200 },
+      description: { type: "string", maxLen: 1000 },
+      durationMonths: { type: "number", min: 1, max: 120 },
+      priceType: { type: "string", maxLen: 20, oneOf: ["fixed", "percentage"] },
+      priceValue: { type: "number", min: 0, max: 999999 },
+      active: { type: "boolean" },
+    });
+    if (!wpUpValid.ok) return c.json({ error: wpUpValid.errors[0] || "Dados invalidos." }, 400);
     if (body.name !== undefined) plan.name = sanitizeInput(String(body.name).trim()).substring(0, 200);
     if (body.description !== undefined) plan.description = sanitizeInput(String(body.description)).substring(0, 1000);
     if (body.durationMonths !== undefined) plan.durationMonths = Math.max(1, Math.min(120, parseInt(String(body.durationMonths)) || 12));
@@ -20258,7 +21033,8 @@ app.delete(BASE + "/admin/warranty/plans/:id", async (c: any) => {
   try {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Não autorizado" }, 401);
-    var planId = c.req.param("id");
+    var planId = (c.req.param("id") || "").substring(0, 100);
+    if (!planId) return c.json({ error: "ID invalido." }, 400);
     // Remove plan from index
     var ids = await _getWarrantyPlanIds();
     var newIds: string[] = [];
@@ -20290,16 +21066,22 @@ app.put(BASE + "/admin/warranty/plans/:id/skus", async (c: any) => {
   try {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Não autorizado" }, 401);
-    var planId = c.req.param("id");
+    var planId = (c.req.param("id") || "").substring(0, 100);
+    if (!planId) return c.json({ error: "ID invalido." }, 400);
     var raw = await kv.get(_warrantyPlanKey(planId));
     if (!raw) return c.json({ error: "Plano não encontrado" }, 404);
     var plan = typeof raw === "string" ? JSON.parse(raw) : raw;
     var body = await c.req.json();
+    // Input validation for warranty SKU assignment
+    var wskuValid = validate(body, {
+      skus: { required: true, type: "array", maxItems: 5000 },
+    });
+    if (!wskuValid.ok) return c.json({ error: wskuValid.errors[0] || "Dados invalidos." }, 400);
     var newSkus: string[] = [];
     if (Array.isArray(body.skus)) {
       for (var i = 0; i < body.skus.length; i++) {
         var s = String(body.skus[i]).trim();
-        if (s) newSkus.push(s);
+        if (s && s.length <= 100) newSkus.push(s);
       }
     }
     var oldSkus: string[] = plan.skus || [];
@@ -20342,7 +21124,8 @@ app.put(BASE + "/admin/warranty/plans/:id/skus", async (c: any) => {
 // ── Public: Get warranty plans for a product SKU ──
 app.get(BASE + "/warranty/product/:sku", async (c: any) => {
   try {
-    var sku = c.req.param("sku");
+    var sku = (c.req.param("sku") || "").substring(0, 100);
+    if (!sku) return c.json({ plans: [] });
     var planIds = await _getWarrantySkuPlans(sku);
     if (planIds.length === 0) return c.json({ plans: [] });
     var plans: any[] = [];
@@ -20528,6 +21311,13 @@ app.put(BASE + "/affiliate/profile", async function (c) {
     if (!aff) return c.json({ error: "Afiliado nao encontrado." }, 404);
 
     var body = await c.req.json();
+    // Input validation for affiliate profile update
+    var affProfValid = validate(body, {
+      phone: { type: "string", maxLen: 30 },
+      socialMedia: { type: "string", maxLen: 300 },
+      pixKey: { type: "string", maxLen: 100 },
+    });
+    if (!affProfValid.ok) return c.json({ error: affProfValid.errors[0] || "Dados invalidos." }, 400);
     if (body.phone !== undefined) aff.phone = sanitizeInput(String(body.phone)).substring(0, 30);
     if (body.socialMedia !== undefined) aff.socialMedia = sanitizeInput(String(body.socialMedia)).substring(0, 300);
     if (body.pixKey !== undefined) aff.pixKey = sanitizeInput(String(body.pixKey)).substring(0, 100);
@@ -20606,9 +21396,13 @@ app.post(BASE + "/affiliate/track-click", async function (c) {
     // Rate limit: 30 clicks per minute per IP to prevent inflation attacks
     var clickRlKey = _getRateLimitKey(c, "aff_click");
     var clickRlResult = _checkRateLimit(clickRlKey, 30);
-    if (!clickRlResult.allowed) return c.json({ ok: false, error: "Rate limit" }, 429);
+    if (!clickRlResult.allowed) return _rl429(c, "Rate limit", clickRlResult);
     var body = await c.req.json();
-    // Input validation
+    // Input validation for track-click
+    var tcValid = validate(body, {
+      code: { required: true, type: "string", maxLen: 50 },
+    });
+    if (!tcValid.ok) return c.json({ ok: false });
     var code = sanitizeInput(String(body.code || "")).substring(0, 50);
     if (!code) return c.json({ ok: false });
 
@@ -20641,7 +21435,7 @@ app.post(BASE + "/affiliate/track-sale", async function (c) {
     // Rate limit: 10 commission tracks per minute per IP
     var affSaleRl = _getRateLimitKey(c, "aff_sale");
     var affSaleRlResult = _checkRateLimit(affSaleRl, 10);
-    if (!affSaleRlResult.allowed) return c.json({ ok: false, error: "Rate limit" }, 429);
+    if (!affSaleRlResult.allowed) return _rl429(c, "Rate limit", affSaleRlResult);
 
     var body = await c.req.json();
     // Input validation
@@ -20761,12 +21555,19 @@ app.put(BASE + "/admin/affiliate/:id/status", async function (c) {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var affId = c.req.param("id");
+    var affId = (c.req.param("id") || "").substring(0, 200);
+    if (!affId) return c.json({ error: "ID invalido." }, 400);
     var aff = await _getAffiliateById(affId);
     if (!aff) return c.json({ error: "Afiliado nao encontrado." }, 404);
 
     var body = await c.req.json();
-    var newStatus = body.status;
+    // Input validation for affiliate status update
+    var affStValid = validate(body, {
+      status: { required: true, type: "string", maxLen: 20, oneOf: ["approved", "rejected", "suspended", "pending"] },
+      rejectionReason: { type: "string", maxLen: 1000 },
+    });
+    if (!affStValid.ok) return c.json({ error: affStValid.errors[0] || "Status invalido." }, 400);
+    var newStatus = affStValid.sanitized.status;
     if (["approved", "rejected", "suspended", "pending"].indexOf(newStatus) < 0) {
       return c.json({ error: "Status invalido. Use: approved, rejected, suspended, pending" }, 400);
     }
@@ -20774,7 +21575,7 @@ app.put(BASE + "/admin/affiliate/:id/status", async function (c) {
     var oldStatus = aff.status;
     aff.status = newStatus;
     aff.updatedAt = Date.now();
-    if (body.rejectionReason) aff.rejectionReason = body.rejectionReason;
+    if (body.rejectionReason) aff.rejectionReason = sanitizeInput(String(body.rejectionReason).substring(0, 1000));
     await _saveAffiliate(aff);
 
     console.log("[Admin Affiliate] Status change: " + affId + " " + oldStatus + " -> " + newStatus);
@@ -20806,6 +21607,14 @@ app.put(BASE + "/admin/affiliate-config", async function (c) {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     var body = await c.req.json();
+    // Input validation for affiliate config
+    var affCfgValid = validate(body, {
+      commissionPercent: { type: "number", min: 0, max: 100 },
+      minPayout: { type: "number", min: 0, max: 99999999 },
+      cookieDays: { type: "number", min: 1, max: 365 },
+      enabled: { type: "boolean" },
+    });
+    if (!affCfgValid.ok) return c.json({ error: affCfgValid.errors[0] || "Dados invalidos." }, 400);
     var config = await _getAffiliateConfig();
     if (body.commissionPercent !== undefined) config.commissionPercent = Number(body.commissionPercent) || 5;
     if (body.minPayout !== undefined) config.minPayout = Number(body.minPayout) || 50;
@@ -20829,8 +21638,14 @@ app.put(BASE + "/admin/affiliate-commission/:affId/:orderId", async function (c)
 
     var affId = c.req.param("affId");
     var orderId = c.req.param("orderId");
+    if (!affId || affId.length > 200 || !orderId || orderId.length > 200) return c.json({ error: "Parametros invalidos." }, 400);
     var body = await c.req.json();
-    var newStatus = body.status;
+    // Input validation for commission status update
+    var commValid = validate(body, {
+      status: { required: true, type: "string", maxLen: 20, oneOf: ["pending", "approved", "paid", "rejected"] },
+    });
+    if (!commValid.ok) return c.json({ error: commValid.errors[0] || "Status invalido." }, 400);
+    var newStatus = commValid.sanitized.status;
 
     if (["pending", "approved", "paid", "rejected"].indexOf(newStatus) < 0) {
       return c.json({ error: "Status invalido." }, 400);
@@ -20871,7 +21686,8 @@ app.get(BASE + "/admin/affiliate/:id/commissions", async function (c) {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    var affId = c.req.param("id");
+    var affId = (c.req.param("id") || "").substring(0, 200);
+    if (!affId) return c.json({ error: "ID invalido." }, 400);
     var commRaw = await kv.getByPrefix("affiliate_commission:" + affId + ":");
     var commissions: any[] = [];
     if (Array.isArray(commRaw)) {
@@ -20919,6 +21735,15 @@ app.put(BASE + "/admin/sisfrete-wt/config", async function (c) {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     var body = await c.req.json();
+    // Input validation for SisFrete WT config
+    var wtValid = validate(body, {
+      apiToken: { type: "string", maxLen: 500 },
+      canalVenda: { type: "string", maxLen: 200 },
+      subCanal: { type: "string", maxLen: 200 },
+      cnpjCd: { type: "string", maxLen: 20 },
+      enabled: { type: "boolean" },
+    });
+    if (!wtValid.ok) return c.json({ error: wtValid.errors[0] || "Dados invalidos." }, 400);
     var wtCfg: Record<string, any> = {
       apiToken: String(body.apiToken || "").trim().substring(0, 500),
       canalVenda: String(body.canalVenda || "").trim().substring(0, 200),
@@ -20943,6 +21768,12 @@ app.post(BASE + "/admin/sisfrete-wt/send-order", async function (c) {
     var cfg = await getSisfreteWTConfig();
     if (!cfg || !cfg.apiToken) return c.json({ error: "Token SisFrete Webtracking nao configurado." }, 400);
     var body = await c.req.json();
+    // Input validation for send-order
+    var soValid = validate(body, {
+      pedidos: { required: true, type: "array", maxItems: 100 },
+    });
+    if (!soValid.ok) return c.json({ error: soValid.errors[0] || "Dados invalidos." }, 400);
+    if (JSON.stringify(body).length > 500000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     var pedidos = body.pedidos;
     if (!Array.isArray(pedidos) || pedidos.length === 0) return c.json({ error: "Nenhum pedido informado." }, 400);
     console.log("[SisFrete-WT] Sending " + pedidos.length + " pedido(s)");
@@ -20979,6 +21810,15 @@ app.post(BASE + "/admin/sisfrete-wt/cancel-order", async function (c) {
     var cfg = await getSisfreteWTConfig();
     if (!cfg || !cfg.apiToken) return c.json({ error: "Token SisFrete Webtracking nao configurado." }, 400);
     var body = await c.req.json();
+    // Input validation for cancel-order
+    var coValid = validate(body, {
+      chaveNfe: { required: true, type: "string", maxLen: 100 },
+      numeroDoPedido: { required: true, type: "string", maxLen: 100 },
+      pedidoCanalVenda: { required: true, type: "string", maxLen: 100 },
+      cnpjCd: { type: "string", maxLen: 20 },
+      notificarCanal: { type: "string", maxLen: 5 },
+    });
+    if (!coValid.ok) return c.json({ error: coValid.errors[0] || "Dados invalidos." }, 400);
     if (!body.chaveNfe || !body.numeroDoPedido || !body.pedidoCanalVenda) return c.json({ error: "chaveNfe, numeroDoPedido e pedidoCanalVenda sao obrigatorios." }, 400);
     var cancelPayload = { chaveNfe: body.chaveNfe, numeroDoPedido: body.numeroDoPedido, pedidoCanalVenda: body.pedidoCanalVenda, cnpjCd: body.cnpjCd || cfg.cnpjCd || "", notificarCanal: body.notificarCanal || "N" };
     console.log("[SisFrete-WT] Cancelling order " + body.numeroDoPedido);
@@ -21066,7 +21906,12 @@ app.post(BASE + "/admin/sisfrete-wt/send-products", async function (c) {
     var cfg = await getSisfreteWTConfig();
     if (!cfg || !cfg.apiToken) return c.json({ error: "Token SisFrete Webtracking nao configurado." }, 400);
     var body = await c.req.json();
-    var produtos = body.produtos;
+    // Input validation for send-products
+    var sprdValid = validate(body, {
+      produtos: { required: true, type: "array", maxItems: 1000 },
+    });
+    if (!sprdValid.ok) return c.json({ error: sprdValid.errors[0] || "Dados invalidos." }, 400);
+    var produtos = sprdValid.sanitized.produtos;
     if (!Array.isArray(produtos) || produtos.length === 0) return c.json({ error: "Nenhum produto informado." }, 400);
     console.log("[SisFrete-WT] Sending " + produtos.length + " produto(s)");
     var prodRes = await fetch(SISFRETE_WT_BASE + "/produtos", {
@@ -21093,7 +21938,12 @@ app.post(BASE + "/admin/sisfrete-wt/send-embalamento", async function (c) {
     var cfg = await getSisfreteWTConfig();
     if (!cfg || !cfg.apiToken) return c.json({ error: "Token SisFrete Webtracking nao configurado." }, 400);
     var body = await c.req.json();
-    var caixas = body.caixas;
+    // Input validation for send-embalamento
+    var embValid = validate(body, {
+      caixas: { required: true, type: "array", maxItems: 500 },
+    });
+    if (!embValid.ok) return c.json({ error: embValid.errors[0] || "Dados invalidos." }, 400);
+    var caixas = embValid.sanitized.caixas;
     if (!Array.isArray(caixas) || caixas.length === 0) return c.json({ error: "Nenhuma caixa informada." }, 400);
     console.log("[SisFrete-WT] Sending " + caixas.length + " caixa(s)");
     var embRes = await fetch(SISFRETE_WT_BASE + "/embalamento", {
@@ -21141,6 +21991,12 @@ app.put(BASE + "/admin/sisfrete-delivery/config", async function (c) {
     var isAdmin = await checkAdmin(userId);
     if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
     var body = await c.req.json();
+    // Input validation for SisFrete Delivery config
+    var dlvValid = validate(body, {
+      apiToken: { type: "string", maxLen: 500 },
+      enabled: { type: "boolean" },
+    });
+    if (!dlvValid.ok) return c.json({ error: dlvValid.errors[0] || "Dados invalidos." }, 400);
     var cfg = { apiToken: body.apiToken || "", enabled: !!body.enabled, updatedAt: new Date().toISOString() };
     await kv.set("sisfrete_delivery_config", JSON.stringify(cfg));
     return c.json(cfg);
@@ -21162,6 +22018,15 @@ app.post(BASE + "/admin/sisfrete-delivery/create-deliveryman", async function (c
     var cfg = JSON.parse(raw);
     if (!cfg.apiToken) return c.json({ error: "Token SisFrete Delivery nao configurado." }, 400);
     var body = await c.req.json();
+    // Input validation for create deliveryman
+    var dlvmValid = validate(body, {
+      document: { required: true, type: "string", maxLen: 20 },
+      erpCodeDeliveryman: { type: "string", maxLen: 100 },
+      name: { required: true, type: "string", minLen: 2, maxLen: 200 },
+      phone: { type: "string", maxLen: 30 },
+      email: { type: "string", maxLen: 254 },
+    });
+    if (!dlvmValid.ok) return c.json({ error: dlvmValid.errors[0] || "Dados invalidos." }, 400);
     var payload = {
       document: String(body.document || "").replace(/\D/g, ""),
       erpCodeDeliveryman: String(body.erpCodeDeliveryman || ""),
@@ -21252,6 +22117,12 @@ app.put(BASE + "/admin/sisfrete-delivery/change-password", async function (c) {
     var cfg = JSON.parse(raw);
     if (!cfg.apiToken) return c.json({ error: "Token SisFrete Delivery nao configurado." }, 400);
     var body = await c.req.json();
+    // Input validation for change password
+    var chPwdValid = validate(body, {
+      password: { required: true, type: "string", maxLen: 200, sanitize: false },
+      passwordNew: { required: true, type: "string", minLen: 4, maxLen: 200, sanitize: false },
+    });
+    if (!chPwdValid.ok) return c.json({ error: chPwdValid.errors[0] || "Dados invalidos." }, 400);
     var payload = { password: String(body.password || ""), passwordNew: String(body.passwordNew || "") };
     console.log("[SisFrete Delivery] Changing password");
     var res = await fetch("https://sisfrete-delivery.persys.eti.br/api/deliveryman/change_password", {
@@ -21280,6 +22151,11 @@ app.delete(BASE + "/admin/sisfrete-delivery/deliveryman", async function (c) {
     var isAdmin = await checkAdmin(userId);
     if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
     var body = await c.req.json();
+    // Input validation for deliveryman delete
+    var dlvDelValid = validate(body, {
+      document: { required: true, type: "string", maxLen: 20 },
+    });
+    if (!dlvDelValid.ok) return c.json({ error: dlvDelValid.errors[0] || "Document obrigatorio." }, 400);
     var docToRemove = String(body.document || "").replace(/\D/g, "");
     if (!docToRemove) return c.json({ error: "Document obrigatorio." }, 400);
     var listRaw = await kv.get("sisfrete_delivery_deliverymen");
@@ -21376,6 +22252,23 @@ app.post(BASE + "/safrapay/charge", async function (c) {
     var cfg = await _getSafrapayConfig();
     if (!cfg || !cfg.enabled) return c.json({ error: "Pagamento com cartao nao disponivel." }, 400);
     var body = await c.req.json();
+    // Input validation for SafraPay charge
+    var chgValid = validate(body, {
+      cardNumber: { required: true, type: "string", minLen: 13, maxLen: 25 },
+      cvv: { required: true, type: "string", minLen: 3, maxLen: 4 },
+      cardholderName: { required: true, type: "string", minLen: 2, maxLen: 200 },
+      cardholderDocument: { required: true, type: "string", maxLen: 20 },
+      expirationMonth: { required: true, type: "number", min: 1, max: 12 },
+      expirationYear: { required: true, type: "number", min: 2024, max: 2050 },
+      amount: { required: true, type: "number", min: 100, max: 99999999 },
+      installmentNumber: { type: "number", min: 1, max: 24 },
+      installmentType: { type: "number", min: 0, max: 10 },
+      customerName: { type: "string", maxLen: 200 },
+      customerEmail: { type: "string", maxLen: 254 },
+      customerPhone: { type: "string", maxLen: 30 },
+      merchantChargeId: { type: "string", maxLen: 100 },
+    });
+    if (!chgValid.ok) return c.json({ error: chgValid.errors[0] || "Dados do cartao invalidos." }, 400);
     var cardNum = String(body.cardNumber || "").replace(/\D/g, "");
     var cvv = String(body.cvv || "");
     var holderName = String(body.cardholderName || "");
@@ -21506,6 +22399,20 @@ app.post(BASE + "/safrapay/config", async function (c) {
     var isAdmin = await checkAdmin(userId);
     if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
     var body = await c.req.json();
+    // Input validation for SafraPay config
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var spCfgValid = validate(body, {
+      merchantToken: { type: "string", maxLen: 500 },
+      merchantId: { type: "string", maxLen: 200 },
+      sandbox: { type: "boolean" },
+      maxInstallments: { type: "number", min: 1, max: 24 },
+      minInstallmentValue: { type: "number", min: 0, max: 99999999 },
+      softDescriptor: { type: "string", maxLen: 50 },
+      enabled: { type: "boolean" },
+    });
+    if (!spCfgValid.ok) return c.json({ error: spCfgValid.errors[0] || "Dados invalidos." }, 400);
     await kv.set("safrapay_config", JSON.stringify({
       merchantToken: String(body.merchantToken || ""),
       merchantId: String(body.merchantId || ""),
@@ -21529,8 +22436,15 @@ app.post(BASE + "/safrapay/activate", async function (c) {
     var isAdmin = await checkAdmin(userId);
     if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
     var body = await c.req.json();
-    var merchantId = String(body.merchantId || "").trim();
-    var activationCode = String(body.activationCode || "").trim();
+    // Input validation for SafraPay activate
+    var spActValid = validate(body, {
+      merchantId: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      activationCode: { required: true, type: "string", minLen: 1, maxLen: 200 },
+      sandbox: { type: "boolean" },
+    });
+    if (!spActValid.ok) return c.json({ error: spActValid.errors[0] || "merchantId e activationCode sao obrigatorios." }, 400);
+    var merchantId = (spActValid.sanitized.merchantId || "").trim();
+    var activationCode = (spActValid.sanitized.activationCode || "").trim();
     var sandbox = body.sandbox !== false;
     if (!merchantId || !activationCode) return c.json({ error: "merchantId e activationCode sao obrigatorios." }, 400);
     var sfDomain = "safrapay.com.br";
@@ -21638,6 +22552,9 @@ app.get(BASE + "/safrapay/public-config", async function (c) {
 app.post(BASE + "/safrapay/webhook", async function (c) {
   try {
     var body = await c.req.json();
+    // Input validation for SafraPay webhook payload
+    if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
+    if (JSON.stringify(body).length > 50000) return c.json({ received: true, warning: "payload too large" });
     console.log("[SafraPay WH] " + JSON.stringify(body).substring(0, 2000));
     var authH = c.req.header("Authorization") || "";
     var cfg = await _getSafrapayConfig();
@@ -21738,18 +22655,19 @@ app.put(BASE + "/admin/branches/:id", async (c) => {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
     var branchId = c.req.param("id");
+    if (!branchId || branchId.length > 100) return c.json({ error: "ID invalido." }, 400);
     var formData = await c.req.formData();
 
-    var nome = (formData.get("nome") as string) || "";
-    var estado = (formData.get("estado") as string) || "";
-    var endereco = (formData.get("endereco") as string) || "";
-    var telefone = (formData.get("telefone") as string) || "";
-    var whatsapp = (formData.get("whatsapp") as string) || "";
-    var horario = (formData.get("horario") as string) || "";
+    var nome = sanitizeInput(String(formData.get("nome") || "")).substring(0, 200);
+    var estado = sanitizeInput(String(formData.get("estado") || "")).substring(0, 50);
+    var endereco = sanitizeInput(String(formData.get("endereco") || "")).substring(0, 500);
+    var telefone = sanitizeInput(String(formData.get("telefone") || "")).substring(0, 30);
+    var whatsapp = sanitizeInput(String(formData.get("whatsapp") || "")).substring(0, 30);
+    var horario = sanitizeInput(String(formData.get("horario") || "")).substring(0, 300);
     var isMatriz = formData.get("isMatriz") === "true";
     var active = formData.get("active") !== "false";
-    var order = parseInt((formData.get("order") as string) || "0", 10) || 0;
-    var mapQuery = (formData.get("mapQuery") as string) || "";
+    var order = Math.min(Math.max(parseInt((formData.get("order") as string) || "0", 10) || 0, 0), 9999);
+    var mapQuery = sanitizeInput(String(formData.get("mapQuery") || "")).substring(0, 500);
     var imageFile = formData.get("image") as File | null;
 
     var kvKey = "branch:" + branchId;
@@ -21806,7 +22724,8 @@ app.delete(BASE + "/admin/branches/:id", async (c) => {
   try {
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
-    var branchId = c.req.param("id");
+    var branchId = (c.req.param("id") || "").substring(0, 100);
+    if (!branchId) return c.json({ error: "ID invalido." }, 400);
     var kvKey = "branch:" + branchId;
     var existingRaw = await kv.get(kvKey);
     if (existingRaw) {
