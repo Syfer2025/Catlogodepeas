@@ -31,7 +31,6 @@ import {
   ShoppingCart,
   Layers,
 } from "lucide-react";
-import * as XLSX from "xlsx";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
@@ -519,32 +518,99 @@ export function AdminAttributes() {
     setUploadResult(null);
 
     try {
-      // Use SheetJS for ALL formats (CSV included) — its parser handles
-      // multi-line quoted fields, loose HTML quotes, BOM, encoding, etc.
-      const buffer = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array", raw: false, codepage: 65001 });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
+      const isExcel = /\.(xlsx?|xls)$/i.test(selectedFile.name);
 
-      if (!sheet) {
-        setUploadError("O arquivo está vazio ou não foi possível ler.");
-        return;
+      let csv = "";
+      let detectedSheet = "Sheet1";
+
+      if (isExcel) {
+        // ── Parse XLSX/XLS using built-in server-side conversion ──
+        // We send the file to the backend which uses Deno-safe parsing
+        // to avoid the vulnerable SheetJS client-side library.
+        const text = await selectedFile.text();
+        // For XLSX files, read as base64
+        const buf = await selectedFile.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
+
+        const parseResult = await api.parseExcelFile(b64, selectedFile.name);
+        if (parseResult.error) {
+          setUploadError("Erro ao processar planilha Excel: " + parseResult.error);
+          return;
+        }
+        csv = parseResult.csv || "";
+        detectedSheet = parseResult.sheetName || "Sheet1";
+      } else {
+        // ── CSV/TXT — parse directly in the browser ──
+        const rawText = await selectedFile.text();
+        // Strip BOM if present
+        const cleanText = rawText.replace(/^\uFEFF/, "");
+
+        if (!cleanText.trim()) {
+          setUploadError("O arquivo está vazio.");
+          return;
+        }
+
+        // Auto-detect delimiter: try semicolon, comma, tab
+        const firstLine = cleanText.split(/\r?\n/)[0] || "";
+        const semiCount = (firstLine.match(/;/g) || []).length;
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const tabCount = (firstLine.match(/\t/g) || []).length;
+
+        let delimiter = ";";
+        if (tabCount > semiCount && tabCount > commaCount) delimiter = "\t";
+        else if (commaCount > semiCount) delimiter = ",";
+
+        // If delimiter is not semicolon, convert to semicolon-delimited
+        if (delimiter !== ";") {
+          const lines = cleanText.split(/\r?\n/);
+          csv = lines.map(function (line) {
+            // Simple CSV field split respecting quotes
+            const fields: string[] = [];
+            let current = "";
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                  current += '"';
+                  i++;
+                } else {
+                  inQuotes = !inQuotes;
+                }
+              } else if (ch === delimiter && !inQuotes) {
+                fields.push(current);
+                current = "";
+              } else {
+                current += ch;
+              }
+            }
+            fields.push(current);
+            // Re-join with semicolon, quoting fields that contain semicolons
+            return fields.map(function (f) {
+              return f.indexOf(";") >= 0 ? '"' + f.replace(/"/g, '""') + '"' : f;
+            }).join(";");
+          }).join("\n");
+        } else {
+          csv = cleanText;
+        }
       }
 
-      // Convert to clean semicolon-delimited CSV via SheetJS
-      const csv = XLSX.utils.sheet_to_csv(sheet, { FS: ";" });
       if (!csv.trim()) {
         setUploadError("O arquivo está vazio.");
         return;
       }
 
-      const isExcel = /\.(xlsx?|xls)$/i.test(selectedFile.name);
       const originalFormat = isExcel
         ? (selectedFile.name.match(/\.xlsx$/i) ? "XLSX" : "XLS")
         : "CSV";
 
       setCsvText(csv);
-      const result = analyzeFile(csv, selectedFile.name, originalFormat, selectedFile.size, sheetName);
+      const result = analyzeFile(csv, selectedFile.name, originalFormat, selectedFile.size, detectedSheet);
       setAnalysis(result);
       setSkuColIdx(result.skuColumnIndex);
       setEnabledCols(result.genericColumns.map((c) => c.enabled));
@@ -561,7 +627,7 @@ export function AdminAttributes() {
       matchAgainstDb(result.allSkus);
     } catch (e: any) {
       console.error("Erro ao processar arquivo:", e);
-      setUploadError(`Erro ao ler o arquivo: ${e.message || e}`);
+      setUploadError("Erro ao ler o arquivo. Verifique se o formato está correto.");
     }
   };
 

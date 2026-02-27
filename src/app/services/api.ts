@@ -2024,6 +2024,19 @@ export interface UploadAttributesResult {
   error?: string;
 }
 
+/** Parse an Excel file (XLSX/XLS) server-side and return CSV (avoids vulnerable client-side SheetJS) */
+export async function parseExcelFile(base64Data: string, filename: string): Promise<{ csv: string; sheetName: string; error?: string }> {
+  try {
+    var res = await request<{ csv: string; sheetName: string }>("/parse-excel", {
+      method: "POST",
+      body: JSON.stringify({ data: base64Data, filename: filename }),
+    });
+    return res;
+  } catch (e: any) {
+    return { csv: "", sheetName: "Sheet1", error: e.message || "Erro ao processar planilha." };
+  }
+}
+
 /** Upload a CSV file with product attributes (requires auth) */
 export const uploadAttributesCsv = async (
   file: File,

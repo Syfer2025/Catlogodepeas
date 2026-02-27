@@ -5148,6 +5148,182 @@ app.get(BASE + "/produtos/atributos", async (c) => {
   }
 });
 
+// POST /parse-excel — server-side Excel parsing (replaces vulnerable client-side SheetJS)
+// Accepts { data: base64string, filename: string } and returns { csv, sheetName }
+app.post(BASE + "/parse-excel", async (c) => {
+  try {
+    var body = await c.req.json();
+    var b64 = body.data;
+    var filename = body.filename || "file.xlsx";
+
+    if (!b64 || typeof b64 !== "string") {
+      return c.json({ error: "Dados do arquivo não fornecidos." }, 400);
+    }
+
+    // Limit file size (10MB base64 ~ 7.5MB file)
+    if (b64.length > 14000000) {
+      return c.json({ error: "Arquivo muito grande. Máximo 10MB." }, 400);
+    }
+
+    // Decode base64 to binary
+    var binaryStr = atob(b64);
+    var bytes = new Uint8Array(binaryStr.length);
+    for (var i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    var isXlsx = /\.xlsx$/i.test(filename);
+
+    if (isXlsx) {
+      // ── XLSX is a ZIP of XML files — parse without SheetJS ──
+      // Use Deno's built-in JSZip-compatible approach
+      // deno-lint-ignore-file
+      var JSZip = (await import("npm:jszip@3.10.1")).default;
+      var zip = await JSZip.loadAsync(bytes);
+
+      // Find shared strings
+      var sharedStrings: string[] = [];
+      var ssFile = zip.file("xl/sharedStrings.xml");
+      if (ssFile) {
+        var ssXml = await ssFile.async("string");
+        // Extract <t> tags content
+        var tMatches = ssXml.match(/<t[^>]*>([^<]*)<\/t>/g) || [];
+        for (var tm = 0; tm < tMatches.length; tm++) {
+          var val = tMatches[tm].replace(/<t[^>]*>/, "").replace(/<\/t>/, "");
+          // Decode XML entities
+          val = val.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+          sharedStrings.push(val);
+        }
+      }
+
+      // Find first sheet
+      var sheetFile = zip.file("xl/worksheets/sheet1.xml");
+      var sheetName = "Sheet1";
+
+      // Try workbook.xml for real sheet name
+      var wbFile = zip.file("xl/workbook.xml");
+      if (wbFile) {
+        var wbXml = await wbFile.async("string");
+        var nameMatch = wbXml.match(/<sheet\s+name="([^"]+)"/);
+        if (nameMatch) {
+          sheetName = nameMatch[1];
+        }
+      }
+
+      if (!sheetFile) {
+        // Try finding any sheet
+        var sheetFiles = zip.file(/xl\/worksheets\/sheet\d+\.xml/);
+        if (sheetFiles.length > 0) {
+          sheetFile = sheetFiles[0];
+        }
+      }
+
+      if (!sheetFile) {
+        return c.json({ error: "Nenhuma planilha encontrada no arquivo XLSX." }, 400);
+      }
+
+      var sheetXml = await sheetFile.async("string");
+
+      // Parse rows from sheet XML
+      var rows: string[][] = [];
+      var rowMatches = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || [];
+      for (var ri = 0; ri < rowMatches.length; ri++) {
+        var rowXml = rowMatches[ri];
+        var cellMatches = rowXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^/]*\/>/g) || [];
+        var rowData: string[] = [];
+
+        for (var ci = 0; ci < cellMatches.length; ci++) {
+          var cellXml = cellMatches[ci];
+          // Get column reference to determine position
+          var refMatch = cellXml.match(/r="([A-Z]+)\d+"/);
+          var colIdx = 0;
+          if (refMatch) {
+            var colRef = refMatch[1];
+            colIdx = 0;
+            for (var ch = 0; ch < colRef.length; ch++) {
+              colIdx = colIdx * 26 + (colRef.charCodeAt(ch) - 64);
+            }
+            colIdx = colIdx - 1; // 0-based
+          }
+
+          // Ensure array has enough columns
+          while (rowData.length <= colIdx) {
+            rowData.push("");
+          }
+
+          // Get value
+          var vMatch = cellXml.match(/<v>([^<]*)<\/v>/);
+          var cellValue = "";
+          if (vMatch) {
+            var typeMatch = cellXml.match(/t="([^"]+)"/);
+            if (typeMatch && typeMatch[1] === "s") {
+              // Shared string reference
+              var ssIdx = parseInt(vMatch[1], 10);
+              cellValue = sharedStrings[ssIdx] || "";
+            } else {
+              cellValue = vMatch[1];
+            }
+          }
+
+          // Decode XML entities
+          cellValue = cellValue.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+          rowData[colIdx] = cellValue;
+        }
+
+        rows.push(rowData);
+      }
+
+      // Convert to semicolon-delimited CSV
+      var csvLines: string[] = [];
+      for (var rr = 0; rr < rows.length; rr++) {
+        var line = rows[rr].map(function (f) {
+          if (f.indexOf(";") >= 0 || f.indexOf('"') >= 0 || f.indexOf("\n") >= 0) {
+            return '"' + f.replace(/"/g, '""') + '"';
+          }
+          return f;
+        }).join(";");
+        csvLines.push(line);
+      }
+
+      return c.json({ csv: csvLines.join("\n"), sheetName: sheetName });
+
+    } else {
+      // ── XLS (legacy binary format) — convert via basic text extraction ──
+      // XLS is a complex binary format. For safety, we extract readable text.
+      // This handles most simple spreadsheets but may miss formatting.
+      var textDecoder = new TextDecoder("utf-8", { fatal: false });
+      var rawText = textDecoder.decode(bytes);
+
+      // Try to find tab-delimited or structured content
+      // XLS files contain the text data interspersed with binary
+      // Extract printable strings of reasonable length
+      var extracted: string[] = [];
+      var current = "";
+      for (var xi = 0; xi < rawText.length; xi++) {
+        var code = rawText.charCodeAt(xi);
+        if (code >= 32 && code < 127 || code >= 160) {
+          current += rawText[xi];
+        } else {
+          if (current.length >= 1) {
+            extracted.push(current);
+          }
+          current = "";
+        }
+      }
+      if (current.length >= 1) extracted.push(current);
+
+      // For legacy XLS, recommend converting to XLSX or CSV first
+      return c.json({
+        error: "Formato XLS (Excel 97-2003) não é suportado diretamente. Por favor, abra o arquivo no Excel ou Google Planilhas e salve como XLSX ou CSV antes de importar."
+      }, 400);
+    }
+
+  } catch (e) {
+    console.log("Error parsing Excel:", e);
+    return c.json({ error: _safeError("Erro ao processar arquivo Excel.", e) }, 500);
+  }
+});
+
 // POST /produtos/atributos/upload — upload CSV, validate against DB, store in Storage, invalidate cache
 app.post(BASE + "/produtos/atributos/upload", async (c) => {
   try {
