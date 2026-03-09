@@ -110,7 +110,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems([]);
   }, []);
 
-  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
+  const openDrawer = useCallback(() => {
+    setIsDrawerOpen(true);
+    // Prefetch checkout chunk when user opens cart — high intent signal
+    import("../utils/prefetch").then(function (m) { m.prefetchCheckout(); }).catch(function () {});
+  }, []);
   const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
 
   const totalItems = items.reduce((sum, i) => sum + i.quantidade, 0);

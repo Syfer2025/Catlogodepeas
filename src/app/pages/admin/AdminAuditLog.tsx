@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as api from "../../services/api";
 import type { AuditLogEntry } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -135,9 +135,9 @@ export function AdminAuditLog() {
   };
 
   // Unique actions for filter
-  const uniqueActions = Array.from(new Set(logs.map((l) => l.action)));
+  const uniqueActions = useMemo(() => Array.from(new Set(logs.map((l) => l.action))), [logs]);
 
-  const filteredLogs = logs.filter((l) => {
+  const filteredLogs = useMemo(() => logs.filter((l) => {
     const matchSearch =
       !searchQuery ||
       l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -146,13 +146,18 @@ export function AdminAuditLog() {
       (l.details || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchAction = filterAction === "all" || l.action === filterAction;
     return matchSearch && matchAction;
-  });
+  }), [logs, searchQuery, filterAction]);
 
-  // Stats
-  const totalLogins = logs.filter((l) => l.action === "login").length;
-  const totalLogouts = logs.filter((l) => l.action === "logout").length;
-  const totalFailed = logs.filter((l) => l.action === "login_failed").length;
-  const totalOther = logs.length - totalLogins - totalLogouts - totalFailed;
+  // Stats (memoized — single pass)
+  const { totalLogins, totalLogouts, totalFailed, totalOther } = useMemo(() => {
+    var logins = 0, logouts = 0, failed = 0;
+    for (var i = 0; i < logs.length; i++) {
+      if (logs[i].action === "login") logins++;
+      else if (logs[i].action === "logout") logouts++;
+      else if (logs[i].action === "login_failed") failed++;
+    }
+    return { totalLogins: logins, totalLogouts: logouts, totalFailed: failed, totalOther: logs.length - logins - logouts - failed };
+  }, [logs]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Star } from "lucide-react";
 import * as api from "../services/api";
 
@@ -81,7 +81,7 @@ interface ReviewStarsProps {
   preloaded?: { averageRating: number; totalReviews: number } | null;
 }
 
-export function ReviewStars({ sku, preloaded }: ReviewStarsProps) {
+function ReviewStarsInner({ sku, preloaded }: ReviewStarsProps) {
   var [avg, setAvg] = useState<number>(preloaded ? preloaded.averageRating : 0);
   var [total, setTotal] = useState<number>(preloaded ? preloaded.totalReviews : 0);
   var [loaded, setLoaded] = useState(!!preloaded);
@@ -175,3 +175,5 @@ export function ReviewStars({ sku, preloaded }: ReviewStarsProps) {
     </div>
   );
 }
+
+export const ReviewStars = React.memo(ReviewStarsInner);

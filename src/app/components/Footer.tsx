@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import {
   Phone,
@@ -57,9 +57,9 @@ export function Footer() {
   }, [initData, initLoading]);
 
   var badges: FooterBadge[] = (initData && initData.footerBadges) ? initData.footerBadges : [];
-  var payBadges = badges.filter(function (b) { return b.category === "payment" && b.active && b.imageUrl; });
-  var shipBadges = badges.filter(function (b) { return b.category === "shipping" && b.active && b.imageUrl; });
-  var raBadge = badges.find(function (b) { return b.category === "reclameaqui" && b.active && b.imageUrl; });
+  var payBadges = useMemo(function () { return badges.filter(function (b) { return b.category === "payment" && b.active && b.imageUrl; }); }, [badges]);
+  var shipBadges = useMemo(function () { return badges.filter(function (b) { return b.category === "shipping" && b.active && b.imageUrl; }); }, [badges]);
+  var raBadge = useMemo(function () { return badges.find(function (b) { return b.category === "reclameaqui" && b.active && b.imageUrl; }); }, [badges]);
 
   return (
     <footer className="bg-gray-900 text-gray-300">

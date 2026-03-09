@@ -81,7 +81,6 @@ export function GA4Provider({ children }: { children: React.ReactNode }) {
         send_page_view: false,
       });
 
-      console.log("[GA4] Initialized with " + cfg.measurementId);
     };
 
     // Use requestIdleCallback if available, else setTimeout 2s
@@ -119,7 +118,6 @@ export function GA4Provider({ children }: { children: React.ReactNode }) {
     if (configKey && !cfg[configKey]) return;
 
     window.gtag("event", eventName, params);
-    console.log("[GA4] Event: " + eventName, params);
   }, []);
 
   return (

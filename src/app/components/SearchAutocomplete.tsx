@@ -4,7 +4,7 @@ import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, H
 import * as api from "../services/api";
 import { ProductImage } from "./ProductImage";
 import type { AutocompleteResult } from "../services/api";
-import { prefetchProductDetail } from "../utils/prefetch";
+import { prefetchProductDetail, prefetchCatalog } from "../utils/prefetch";
 import "../utils/emptyStateAnimations";
 
 // ── Search History (localStorage) ──
@@ -227,6 +227,8 @@ export function SearchAutocomplete({
   };
 
   const handleFocus = () => {
+    // Prefetch CatalogPage chunk — search submit navigates to /catalogo
+    prefetchCatalog();
     if (suppressHistoryRef.current) {
       suppressHistoryRef.current = false;
       return;

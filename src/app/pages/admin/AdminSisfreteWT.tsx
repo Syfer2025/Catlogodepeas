@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Save,
   Loader2,
@@ -1058,7 +1058,7 @@ function RastreioTab() {
     }
   }, []);
 
-  const filteredEvents = events.filter((ev) => {
+  const filteredEvents = useMemo(() => events.filter((ev) => {
     if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
     return (
@@ -1066,22 +1066,22 @@ function RastreioTab() {
       (ev.pedido || "").toLowerCase().includes(q) ||
       (ev.descricao || "").toLowerCase().includes(q)
     );
-  });
+  }), [events, searchTerm]);
 
-  // Group events by pedido
-  const groupedByPedido: Record<string, SisfreteWTRastreio[]> = {};
-  for (const ev of filteredEvents) {
-    const key = ev.pedido || "sem-pedido";
-    if (!groupedByPedido[key]) groupedByPedido[key] = [];
-    groupedByPedido[key].push(ev);
-  }
-
-  // Sort groups by latest event date
-  const sortedGroups = Object.entries(groupedByPedido).sort((a, b) => {
-    const latestA = Math.max(...a[1].map((e) => new Date(e.data_hora || 0).getTime()));
-    const latestB = Math.max(...b[1].map((e) => new Date(e.data_hora || 0).getTime()));
-    return latestB - latestA;
-  });
+  // Group events by pedido + sort by latest event date (memoized)
+  const sortedGroups = useMemo(() => {
+    const grouped: Record<string, SisfreteWTRastreio[]> = {};
+    for (const ev of filteredEvents) {
+      const key = ev.pedido || "sem-pedido";
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(ev);
+    }
+    return Object.entries(grouped).sort((a, b) => {
+      const latestA = Math.max(...a[1].map((e) => new Date(e.data_hora || 0).getTime()));
+      const latestB = Math.max(...b[1].map((e) => new Date(e.data_hora || 0).getTime()));
+      return latestB - latestA;
+    });
+  }, [filteredEvents]);
 
   return (
     <div>

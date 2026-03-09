@@ -114,7 +114,7 @@ export async function refreshAdminToken(): Promise<string | null> {
       // Clear the Supabase client session from localStorage so it doesn't
       // leak to the customer side — WITHOUT calling signOut (which may revoke the JWT)
       _clearSupabaseLocalSession();
-      console.log("[AdminTokenRefresh] Token refreshed successfully.");
+      // Token refreshed successfully
       return fresh.access_token;
     }
 
@@ -148,7 +148,7 @@ export async function getValidAdminToken(): Promise<string | null> {
   var nowSec = Math.floor(Date.now() / 1000);
 
   if (expiresAt > 0 && expiresAt - nowSec < 60) {
-    console.log("[adminAuth] Token expired/expiring, refreshing…");
+    // Token expired/expiring — refreshing
     var refreshed = await refreshAdminToken();
     return refreshed;
   }

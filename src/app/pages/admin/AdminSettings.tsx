@@ -65,7 +65,8 @@ export function AdminSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.updateSettings(settings);
+      var token = await getValidAdminToken();
+      await api.updateSettings(settings, token || undefined);
       // Invalidate the settings cache so other components pick up the new values
       api.getSettingsFresh();
       setSaved(true);

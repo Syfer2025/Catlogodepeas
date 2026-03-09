@@ -13,12 +13,15 @@ import {
   ArrowRight,
   ShieldCheck,
   CreditCard,
+  Building2,
+  FileText,
 } from "lucide-react";
 import { supabase } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
 // ─── Google Logo SVG (inline for zero external dependency) ───
+// Force re-build
 function GoogleLogo() {
   return (
     <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
@@ -55,15 +58,32 @@ export function UserAuthPage() {
   const [showLoginPass, setShowLoginPass] = useState(false);
 
   // Register fields
+  const [personType, setPersonType] = useState<"pf" | "pj">("pf");
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regEmailConfirm, setRegEmailConfirm] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regCpf, setRegCpf] = useState("");
+  const [regCnpj, setRegCnpj] = useState("");
+  const [regRazaoSocial, setRegRazaoSocial] = useState("");
+  const [regInscricaoEstadual, setRegInscricaoEstadual] = useState("");
+
+  // CNPJ Receita Federal lookup
+  const [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
+  const [cnpjLookupResult, setCnpjLookupResult] = useState<api.CnpjLookupResult | null>(null);
+  const [cnpjLookupError, setCnpjLookupError] = useState<string | null>(null);
+  const [cnpjAutoFilled, setCnpjAutoFilled] = useState(false);
+  const [cnpjTaken, setCnpjTaken] = useState(false);
   const [regPassword, setRegPassword] = useState("");
   const [regPasswordConfirm, setRegPasswordConfirm] = useState("");
   const [showRegPass, setShowRegPass] = useState(false);
   const [showRegConfirm, setShowRegConfirm] = useState(false);
+
+  // Duplicate checks state
+  const [emailTaken, setEmailTaken] = useState(false);
+  const [cpfTaken, setCpfTaken] = useState(false);
+  const [cpfTakenEmail, setCpfTakenEmail] = useState("");
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   // Field touch tracking (show validation only after user interacted)
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
@@ -80,7 +100,6 @@ export function UserAuthPage() {
     const goToAccount = () => {
       if (redirected) return;
       redirected = true;
-      console.log("[UserAuthPage] Redirecting to /minha-conta");
       navigate("/", { replace: true });
     };
 
@@ -103,7 +122,6 @@ export function UserAuthPage() {
     // 1) If URL has ?code=... from PKCE OAuth callback, try manual exchange
     const code = urlParams.get("code");
     if (code) {
-      console.log("[UserAuthPage] Detected PKCE code in URL, exchanging...");
       supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchErr }) => {
         if (exchErr) {
           console.error("[UserAuthPage] Code exchange failed:", exchErr.message);
@@ -113,7 +131,6 @@ export function UserAuthPage() {
             if (d2.session?.access_token) goToAccount();
           });
         } else if (data.session?.access_token) {
-          console.log("[UserAuthPage] Code exchange succeeded");
           goToAccount();
         }
       });
@@ -125,13 +142,11 @@ export function UserAuthPage() {
 
     // 2) Check if user already has an active session
     supabase.auth.getSession().then(({ data }) => {
-      console.log("[UserAuthPage] getSession result:", data.session ? "has session" : "no session");
       if (data.session?.access_token) goToAccount();
     });
 
     // 3) Listen for auth state changes (catches INITIAL_SESSION, SIGNED_IN, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[UserAuthPage] onAuthStateChange:", event, session ? "has session" : "no session");
       if (session?.access_token) {
         goToAccount();
       }
@@ -139,7 +154,6 @@ export function UserAuthPage() {
 
     // 4) Also check hash fragment for implicit flow tokens (#access_token=...)
     if (window.location.hash && window.location.hash.includes("access_token")) {
-      console.log("[UserAuthPage] Detected tokens in hash fragment");
       setTimeout(() => {
         supabase.auth.getSession().then(({ data }) => {
           if (data.session?.access_token) goToAccount();
@@ -167,7 +181,40 @@ export function UserAuthPage() {
     return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
   };
 
+  // CNPJ mask
+  const formatCnpj = (val: string) => {
+    const digits = val.replace(/\D/g, "").slice(0, 14);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return digits.slice(0, 2) + "." + digits.slice(2);
+    if (digits.length <= 8) return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5);
+    if (digits.length <= 12) return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5, 8) + "/" + digits.slice(8);
+    return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5, 8) + "/" + digits.slice(8, 12) + "-" + digits.slice(12);
+  };
+
   // ─── Validators ───
+
+  const validateCnpj = (cnpj: string): { valid: boolean; message: string } => {
+    const digits = cnpj.replace(/\D/g, "");
+    if (!digits) return { valid: false, message: "" };
+    if (digits.length < 14) return { valid: false, message: "CNPJ incompleto" };
+    if (digits.length > 14) return { valid: false, message: "CNPJ inválido" };
+    if (/^(\d)\1{13}$/.test(digits)) return { valid: false, message: "CNPJ inválido" };
+    // First check digit
+    const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += parseInt(digits[i]) * weights1[i];
+    let remainder = sum % 11;
+    const d1 = remainder < 2 ? 0 : 11 - remainder;
+    if (d1 !== parseInt(digits[12])) return { valid: false, message: "CNPJ inválido" };
+    // Second check digit
+    const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    sum = 0;
+    for (let i = 0; i < 13; i++) sum += parseInt(digits[i]) * weights2[i];
+    remainder = sum % 11;
+    const d2 = remainder < 2 ? 0 : 11 - remainder;
+    if (d2 !== parseInt(digits[13])) return { valid: false, message: "CNPJ inválido" };
+    return { valid: true, message: "CNPJ válido" };
+  };
 
   const validateCpf = (cpf: string): { valid: boolean; message: string } => {
     const digits = cpf.replace(/\D/g, "");
@@ -250,8 +297,116 @@ export function UserAuthPage() {
 
   // Pre-compute validations for real-time feedback
   const cpfValidation = validateCpf(regCpf);
+  const cnpjValidation = validateCnpj(regCnpj);
   const phoneValidation = validatePhone(regPhone);
   const emailValidation = validateEmail(regEmail);
+
+  // ─── CNPJ auto-lookup from Receita Federal ───
+  useEffect(() => {
+    if (personType !== "pj") return;
+    if (!cnpjValidation.valid) {
+      setCnpjLookupResult(null);
+      setCnpjLookupError(null);
+      setCnpjAutoFilled(false);
+      return;
+    }
+    const cnpjDigits = regCnpj.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14) return;
+
+    // Don't re-lookup the same CNPJ
+    if (cnpjLookupResult && cnpjLookupResult.cnpj === cnpjDigits) return;
+
+    let cancelled = false;
+    setCnpjLookupLoading(true);
+    setCnpjLookupError(null);
+    setCnpjLookupResult(null);
+    setCnpjAutoFilled(false);
+
+    // Receita Federal lookup only (uniqueness check is handled by separate debounced effect)
+    api.cnpjLookup(cnpjDigits)
+      .then((data) => {
+        if (cancelled) return;
+        if (data.error) {
+          setCnpjLookupError(data.error);
+          setCnpjLookupResult(null);
+        } else {
+          setCnpjLookupResult(data);
+          // Auto-fill razão social from Receita
+          if (data.razaoSocial) {
+            setRegRazaoSocial(data.razaoSocial);
+            setCnpjAutoFilled(true);
+          }
+        }
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        const msg = err.message || "Erro ao consultar CNPJ.";
+        if (msg.includes("não encontrado")) {
+          setCnpjLookupError("CNPJ não encontrado na Receita Federal.");
+        } else {
+          setCnpjLookupError(msg);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCnpjLookupLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [regCnpj, personType, cnpjValidation.valid]);
+
+  // ─── Debounced email uniqueness check ───
+  useEffect(() => {
+    if (!emailValidation.valid) { setEmailTaken(false); return; }
+    var cancelled = false;
+    var timer = setTimeout(() => {
+      if (cancelled) return;
+      setCheckingAvailability(true);
+      api.checkSignupAvailability({ email: regEmail.trim() })
+        .then((res) => {
+          if (cancelled) return;
+          setEmailTaken(res.emailTaken || false);
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setCheckingAvailability(false); });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [regEmail, emailValidation.valid]);
+
+  // ─── Debounced CPF uniqueness check ───
+  useEffect(() => {
+    if (!cpfValidation.valid) { setCpfTaken(false); setCpfTakenEmail(""); return; }
+    var cancelled = false;
+    var timer = setTimeout(() => {
+      if (cancelled) return;
+      api.checkSignupAvailability({ cpf: regCpf.replace(/\D/g, "") })
+        .then((res) => {
+          if (cancelled) return;
+          setCpfTaken(res.cpfTaken || false);
+          setCpfTakenEmail(res.cpfEmail || "");
+        })
+        .catch(() => {});
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [regCpf, cpfValidation.valid]);
+
+  // ─── Debounced CNPJ uniqueness check (independent from Receita Federal lookup) ───
+  useEffect(() => {
+    if (personType !== "pj") { setCnpjTaken(false); return; }
+    if (!cnpjValidation.valid) { setCnpjTaken(false); return; }
+    var cnpjDigits = regCnpj.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14) { setCnpjTaken(false); return; }
+    var cancelled = false;
+    var timer = setTimeout(() => {
+      if (cancelled) return;
+      api.checkSignupAvailability({ cnpj: cnpjDigits })
+        .then((res) => {
+          if (cancelled) return;
+          setCnpjTaken(res.cnpjTaken || false);
+        })
+        .catch(() => {});
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [regCnpj, personType, cnpjValidation.valid]);
 
   // ─── Login ───
   const handleLogin = async (e: React.FormEvent) => {
@@ -347,18 +502,57 @@ export function UserAuthPage() {
       setError("Os emails não coincidem.");
       return;
     }
+    if (emailTaken) {
+      setError("Este email já está cadastrado. Use a opção 'Esqueci minha senha' para recuperar sua conta.");
+      return;
+    }
     const phoneDigits = regPhone.replace(/\D/g, "");
     if (phoneDigits.length > 0 && !phoneValidation.valid) {
       setError(phoneValidation.message || "Telefone inválido.");
       return;
     }
+    if (personType === "pj") {
+      if (!regRazaoSocial.trim()) {
+        setError("Informe a Razão Social.");
+        return;
+      }
+      const cnpjDigits = regCnpj.replace(/\D/g, "");
+      if (!cnpjDigits) {
+        setError("Informe o CNPJ.");
+        return;
+      }
+      if (!cnpjValidation.valid) {
+        setError(cnpjValidation.message || "CNPJ inválido.");
+        return;
+      }
+      // Block if CNPJ is not active in Receita Federal
+      if (cnpjLookupResult && !cnpjLookupResult.ativa) {
+        setError("Este CNPJ consta como " + cnpjLookupResult.situacao + " na Receita Federal. Não é possível cadastrar empresa com CNPJ inativo.");
+        return;
+      }
+      if (cnpjLookupError && cnpjLookupError.includes("não encontrado")) {
+        setError("CNPJ não encontrado na Receita Federal. Verifique o número informado.");
+        return;
+      }
+      if (cnpjTaken) {
+        setError("Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta.");
+        return;
+      }
+    }
     const cpfDigits = regCpf.replace(/\D/g, "");
     if (!cpfDigits) {
-      setError("Informe seu CPF.");
+      setError(personType === "pj" ? "Informe o CPF do responsável." : "Informe seu CPF.");
       return;
     }
     if (!cpfValidation.valid) {
       setError(cpfValidation.message || "CPF inválido.");
+      return;
+    }
+    if (cpfTaken) {
+      var cpfErrMsg = "Este CPF já está vinculado a outra conta";
+      if (cpfTakenEmail) cpfErrMsg = cpfErrMsg + " (" + cpfTakenEmail + ")";
+      cpfErrMsg = cpfErrMsg + ". Se é sua conta, use 'Esqueci minha senha' para recuperá-la.";
+      setError(cpfErrMsg);
       return;
     }
     if (regPassword.length < 8) {
@@ -384,12 +578,56 @@ export function UserAuthPage() {
 
     setLoading(true);
     try {
+      // ── Final availability check (blocks race conditions & incomplete debounce) ──
+      try {
+        var checkPayload: { email?: string; cpf?: string; cnpj?: string } = {
+          email: regEmail.trim(),
+          cpf: regCpf.replace(/\D/g, ""),
+        };
+        if (personType === "pj") {
+          checkPayload.cnpj = regCnpj.replace(/\D/g, "");
+        }
+        var avail = await api.checkSignupAvailability(checkPayload);
+        var blockReasons: string[] = [];
+        if (avail.emailTaken) {
+          setEmailTaken(true);
+          blockReasons.push("O email informado já está cadastrado.");
+        }
+        if (avail.cpfTaken) {
+          setCpfTaken(true);
+          setCpfTakenEmail(avail.cpfEmail || "");
+          var cpfBlock = "O CPF informado já está vinculado a outra conta";
+          if (avail.cpfEmail) cpfBlock = cpfBlock + " (" + avail.cpfEmail + ")";
+          cpfBlock = cpfBlock + ".";
+          blockReasons.push(cpfBlock);
+        }
+        if (avail.cnpjTaken) {
+          setCnpjTaken(true);
+          blockReasons.push("O CNPJ informado já está vinculado a outra conta.");
+        }
+        if (blockReasons.length > 0) {
+          setError(blockReasons.join(" ") + " Use 'Esqueci minha senha' para recuperar sua conta ou faça login.");
+          setLoading(false);
+          return;
+        }
+      } catch (checkErr) {
+        // If the availability check itself fails, proceed with signup
+        // (the server-side signup route has its own duplicate checks)
+        console.error("Pre-signup availability check failed:", checkErr);
+      }
+
       await api.userSignup({
         email: regEmail.trim(),
         password: regPassword,
         name: regName.trim(),
         phone: regPhone.replace(/\D/g, ""),
         cpf: regCpf.replace(/\D/g, ""),
+        personType,
+        ...(personType === "pj" ? {
+          cnpj: regCnpj.replace(/\D/g, ""),
+          razaoSocial: regRazaoSocial.trim(),
+          inscricaoEstadual: regInscricaoEstadual.trim(),
+        } : {}),
       });
 
       // Show email confirmation screen
@@ -708,9 +946,33 @@ export function UserAuthPage() {
           {/* Content */}
           <div className="p-8">
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                <p className="text-red-700" style={{ fontSize: "0.85rem" }}>{error}</p>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-red-700" style={{ fontSize: "0.85rem" }}>{error}</p>
+                </div>
+                {(error.includes("Esqueci minha senha") || error.includes("recuperá-la") || error.includes("recuperar")) && (
+                  <div className="flex gap-2 mt-3 ml-8">
+                    <button
+                      type="button"
+                      onClick={() => { setTab("login"); setLoginEmail(regEmail || ""); setError(null); }}
+                      className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1"
+                      style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                    >
+                      <Lock className="w-3 h-3" />
+                      Fazer Login
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotStep("form"); setForgotEmail(regEmail || ""); setError(null); }}
+                      className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                      style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                    >
+                      <Mail className="w-3 h-3" />
+                      Recuperar senha
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -835,10 +1097,236 @@ export function UserAuthPage() {
                   <label htmlFor="company_url_reg">Company URL</label>
                   <input type="text" id="company_url_reg" name="company_url" tabIndex={-1} autoComplete="off" />
                 </div>
+
+                {/* PF / PJ Toggle */}
+                <div>
+                  <label className="block text-gray-700 mb-2" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                    Tipo de Cadastro
+                  </label>
+                  <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => { setPersonType("pf"); setError(null); }}
+                      className={"flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer " + (personType === "pf" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                      style={{ fontSize: "0.85rem", fontWeight: 600 }}
+                    >
+                      <User className="w-4 h-4" />
+                      Pessoa Física
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPersonType("pj"); setError(null); }}
+                      className={"flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer " + (personType === "pj" ? "bg-white text-red-600 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                      style={{ fontSize: "0.85rem", fontWeight: 600 }}
+                    >
+                      <Building2 className="w-4 h-4" />
+                      Pessoa Jurídica
+                    </button>
+                  </div>
+                </div>
+
+                {/* PJ Fields — CNPJ first (triggers auto-fill), then Razão Social, IE */}
+                {personType === "pj" && (
+                  <>
+                    {/* CNPJ */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        CNPJ *
+                      </label>
+                      <div className="relative">
+                        <CreditCard className={"absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 " + (cnpjTaken ? "text-amber-500" : cnpjLookupResult && cnpjLookupResult.ativa ? "text-green-500" : touchedFields.cnpj && cnpjValidation.valid ? "text-blue-500" : "text-gray-400")} />
+                        <input
+                          type="text"
+                          value={regCnpj}
+                          onChange={(e) => {
+                            setRegCnpj(formatCnpj(e.target.value));
+                            if (cnpjAutoFilled) {
+                              setCnpjAutoFilled(false);
+                              setRegRazaoSocial("");
+                            }
+                          }}
+                          placeholder="00.000.000/0000-00"
+                          className={"w-full pl-11 pr-10 py-3 border rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:ring-2 transition-all " + (cnpjTaken ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500/20" : cnpjLookupResult && !cnpjLookupResult.ativa ? "border-red-400 focus:border-red-500 focus:ring-red-500/20" : cnpjLookupResult && cnpjLookupResult.ativa ? "border-green-400 focus:border-green-500 focus:ring-green-500/20" : touchedFields.cnpj && regCnpj && !cnpjValidation.valid ? "border-red-400 focus:border-red-500 focus:ring-red-500/20" : touchedFields.cnpj && cnpjValidation.valid ? "border-blue-400 focus:border-blue-500 focus:ring-blue-500/20" : "border-gray-300 focus:border-red-500 focus:ring-red-500/20")}
+                          style={{ fontSize: "0.9rem" }}
+                          autoComplete="off"
+                          onBlur={() => markTouched("cnpj")}
+                        />
+                        {cnpjLookupLoading && (
+                          <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-blue-500 animate-spin" />
+                        )}
+                        {!cnpjLookupLoading && cnpjTaken && (
+                          <AlertTriangle className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-amber-500" />
+                        )}
+                        {!cnpjLookupLoading && !cnpjTaken && cnpjLookupResult && cnpjLookupResult.ativa && (
+                          <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-green-500" />
+                        )}
+                        {!cnpjLookupLoading && !cnpjTaken && cnpjLookupResult && !cnpjLookupResult.ativa && (
+                          <AlertTriangle className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-red-500" />
+                        )}
+                        {!cnpjLookupLoading && !cnpjLookupResult && touchedFields.cnpj && cnpjValidation.valid && !cnpjLookupError && (
+                          <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-blue-500" />
+                        )}
+                      </div>
+                      {touchedFields.cnpj && regCnpj && !cnpjValidation.valid && cnpjValidation.message && (
+                        <p className="text-red-500 mt-1" style={{ fontSize: "0.75rem" }}>
+                          {cnpjValidation.message}
+                        </p>
+                      )}
+                      {cnpjLookupLoading && (
+                        <p className="text-blue-500 mt-1 flex items-center gap-1" style={{ fontSize: "0.75rem" }}>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Consultando Receita Federal...
+                        </p>
+                      )}
+                      {cnpjLookupError && (
+                        <p className="text-red-500 mt-1 flex items-center gap-1" style={{ fontSize: "0.75rem" }}>
+                          <AlertTriangle className="w-3 h-3" />
+                          {cnpjLookupError}
+                        </p>
+                      )}
+                      {cnpjLookupResult && !cnpjLookupResult.ativa && (
+                        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-red-700 flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            CNPJ {cnpjLookupResult.situacao}
+                          </p>
+                          <p className="text-red-600 mt-1" style={{ fontSize: "0.75rem" }}>
+                            Este CNPJ consta como <strong>{cnpjLookupResult.situacao}</strong> na Receita Federal{cnpjLookupResult.dataSituacao ? " desde " + cnpjLookupResult.dataSituacao : ""}. Não é possível cadastrar empresa com CNPJ inativo.
+                          </p>
+                        </div>
+                      )}
+                      {cnpjLookupResult && cnpjLookupResult.ativa && (
+                        <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg space-y-1">
+                          <p className="text-green-700 flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            CNPJ Ativo — Verificado na Receita Federal
+                          </p>
+                          {cnpjLookupResult.nomeFantasia && (
+                            <p className="text-gray-600" style={{ fontSize: "0.75rem" }}>
+                              <span className="text-gray-500">Nome Fantasia:</span> {cnpjLookupResult.nomeFantasia}
+                            </p>
+                          )}
+                          {cnpjLookupResult.atividadePrincipal && (
+                            <p className="text-gray-600" style={{ fontSize: "0.75rem" }}>
+                              <span className="text-gray-500">Atividade:</span> {cnpjLookupResult.atividadePrincipal}
+                            </p>
+                          )}
+                          {(cnpjLookupResult.cidade || cnpjLookupResult.uf) && (
+                            <p className="text-gray-600" style={{ fontSize: "0.75rem" }}>
+                              <span className="text-gray-500">Localização:</span> {[cnpjLookupResult.cidade, cnpjLookupResult.uf].filter(Boolean).join("/")}
+                            </p>
+                          )}
+                          {cnpjLookupResult.dataAbertura && (
+                            <p className="text-gray-600" style={{ fontSize: "0.75rem" }}>
+                              <span className="text-gray-500">Abertura:</span> {cnpjLookupResult.dataAbertura}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {cnpjTaken && (
+                        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-amber-700 flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            CNPJ já cadastrado
+                          </p>
+                          <p className="text-amber-600 mt-1" style={{ fontSize: "0.75rem" }}>
+                            Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta.
+                          </p>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={function () { setTab("login"); setError(null); }}
+                              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1"
+                              style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                            >
+                              <Lock className="w-3 h-3" />
+                              Fazer Login
+                            </button>
+                            <button
+                              type="button"
+                              onClick={function () { setForgotStep("form"); setForgotEmail(""); setError(null); }}
+                              className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                              style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                            >
+                              <Mail className="w-3 h-3" />
+                              Recuperar conta
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Razão Social — auto-filled from Receita Federal */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        Razão Social *
+                        {cnpjAutoFilled && (
+                          <span className="text-green-600 ml-2" style={{ fontSize: "0.7rem", fontWeight: 400 }}>
+                            (preenchido automaticamente pela Receita Federal)
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <Building2 className={"absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 " + (cnpjAutoFilled ? "text-green-500" : "text-gray-400")} />
+                        <input
+                          type="text"
+                          value={regRazaoSocial}
+                          onChange={(e) => {
+                            if (!cnpjAutoFilled) {
+                              setRegRazaoSocial(e.target.value);
+                            }
+                          }}
+                          readOnly={cnpjAutoFilled}
+                          placeholder={cnpjLookupLoading ? "Aguardando consulta do CNPJ..." : "Digite o CNPJ acima para preencher automaticamente"}
+                          className={"w-full pl-11 pr-4 py-3 border rounded-xl placeholder-gray-400 outline-none transition-all " + (cnpjAutoFilled ? "border-green-300 bg-green-50/50 text-gray-800 cursor-not-allowed" : "border-gray-300 text-gray-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20")}
+                          style={{ fontSize: "0.9rem" }}
+                          autoComplete="organization"
+                        />
+                        {cnpjAutoFilled && (
+                          <ShieldCheck className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-green-500" />
+                        )}
+                      </div>
+                      {cnpjAutoFilled && (
+                        <p className="text-green-600 mt-1 flex items-center gap-1" style={{ fontSize: "0.7rem" }}>
+                          <ShieldCheck className="w-3 h-3" />
+                          Dado verificado — Receita Federal
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Inscrição Estadual */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        Inscrição Estadual
+                        <span className="text-gray-400 ml-1" style={{ fontSize: "0.75rem", fontWeight: 400 }}>(opcional)</span>
+                      </label>
+                      <div className="relative">
+                        <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={regInscricaoEstadual}
+                          onChange={(e) => setRegInscricaoEstadual(e.target.value.slice(0, 20))}
+                          placeholder="Inscrição estadual ou ISENTO"
+                          className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                          style={{ fontSize: "0.9rem" }}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-gray-400" style={{ fontSize: "0.75rem" }}>Dados do Responsável</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                  </>
+                )}
+
                 {/* Nome */}
                 <div>
                   <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                    Nome Completo *
+                    {personType === "pj" ? "Nome do Responsável *" : "Nome Completo *"}
                   </label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400" />
@@ -846,7 +1334,7 @@ export function UserAuthPage() {
                       type="text"
                       value={regName}
                       onChange={(e) => setRegName(e.target.value)}
-                      placeholder="Seu nome completo"
+                      placeholder={personType === "pj" ? "Nome do responsável legal" : "Seu nome completo"}
                       className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
                       style={{ fontSize: "0.9rem" }}
                       autoComplete="name"
@@ -861,14 +1349,16 @@ export function UserAuthPage() {
                     Email *
                   </label>
                   <div className="relative">
-                    <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${touchedFields.email && emailValidation.valid ? "text-green-500" : "text-gray-400"}`} />
+                    <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${emailTaken ? "text-amber-500" : touchedFields.email && emailValidation.valid ? "text-green-500" : "text-gray-400"}`} />
                     <input
                       type="email"
                       value={regEmail}
                       onChange={(e) => setRegEmail(e.target.value)}
                       placeholder="seu@email.com"
                       className={`w-full pl-11 pr-10 py-3 border rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:ring-2 transition-all ${
-                        touchedFields.email && regEmail && !emailValidation.valid
+                        emailTaken
+                          ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500/20"
+                          : touchedFields.email && regEmail && !emailValidation.valid
                           ? "border-red-400 focus:border-red-500 focus:ring-red-500/20"
                           : touchedFields.email && emailValidation.valid
                           ? "border-green-400 focus:border-green-500 focus:ring-green-500/20"
@@ -878,8 +1368,14 @@ export function UserAuthPage() {
                       autoComplete="email"
                       onBlur={() => markTouched("email")}
                     />
-                    {touchedFields.email && emailValidation.valid && (
+                    {emailTaken && (
+                      <AlertTriangle className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-amber-500" />
+                    )}
+                    {!emailTaken && touchedFields.email && emailValidation.valid && (
                       <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-green-500" />
+                    )}
+                    {checkingAvailability && emailValidation.valid && (
+                      <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-blue-400 animate-spin" />
                     )}
                   </div>
                   {touchedFields.email && regEmail && !emailValidation.valid && emailValidation.message && (
@@ -887,9 +1383,40 @@ export function UserAuthPage() {
                       {emailValidation.message}
                     </p>
                   )}
-                  {touchedFields.email && emailValidation.valid && (
+                  {emailTaken && (
+                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-amber-700 flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                        Email já cadastrado
+                      </p>
+                      <p className="text-amber-600 mt-1" style={{ fontSize: "0.75rem" }}>
+                        Este email já está vinculado a uma conta existente.
+                      </p>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => { setTab("login"); setLoginEmail(regEmail); setError(null); }}
+                          className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1"
+                          style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                        >
+                          <Lock className="w-3 h-3" />
+                          Fazer Login
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setForgotStep("form"); setForgotEmail(regEmail); setError(null); }}
+                          className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                          style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                        >
+                          <Mail className="w-3 h-3" />
+                          Esqueci minha senha
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!emailTaken && touchedFields.email && emailValidation.valid && (
                     <p className="text-green-600 mt-1" style={{ fontSize: "0.75rem" }}>
-                      ✓ Email válido
+                      ✓ Email disponível
                     </p>
                   )}
                 </div>
@@ -965,17 +1492,19 @@ export function UserAuthPage() {
                 {/* CPF */}
                 <div>
                   <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                    CPF *
+                    {personType === "pj" ? "CPF do Responsável *" : "CPF *"}
                   </label>
                   <div className="relative">
-                    <CreditCard className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${touchedFields.cpf && cpfValidation.valid ? "text-green-500" : "text-gray-400"}`} />
+                    <CreditCard className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${cpfTaken ? "text-amber-500" : touchedFields.cpf && cpfValidation.valid ? "text-green-500" : "text-gray-400"}`} />
                     <input
                       type="text"
                       value={regCpf}
                       onChange={(e) => setRegCpf(formatCpf(e.target.value))}
                       placeholder="000.000.000-00"
                       className={`w-full pl-11 pr-10 py-3 border rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:ring-2 transition-all ${
-                        touchedFields.cpf && regCpf && !cpfValidation.valid
+                        cpfTaken
+                          ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500/20"
+                          : touchedFields.cpf && regCpf && !cpfValidation.valid
                           ? "border-red-400 focus:border-red-500 focus:ring-red-500/20"
                           : touchedFields.cpf && cpfValidation.valid
                           ? "border-green-400 focus:border-green-500 focus:ring-green-500/20"
@@ -985,7 +1514,10 @@ export function UserAuthPage() {
                       autoComplete="off"
                       onBlur={() => markTouched("cpf")}
                     />
-                    {touchedFields.cpf && cpfValidation.valid && (
+                    {cpfTaken && (
+                      <AlertTriangle className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-amber-500" />
+                    )}
+                    {!cpfTaken && touchedFields.cpf && cpfValidation.valid && (
                       <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-green-500" />
                     )}
                   </div>
@@ -994,7 +1526,38 @@ export function UserAuthPage() {
                       {cpfValidation.message}
                     </p>
                   )}
-                  {touchedFields.cpf && cpfValidation.valid && (
+                  {cpfTaken && (
+                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-amber-700 flex items-center gap-1.5" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                        CPF já cadastrado
+                      </p>
+                      <p className="text-amber-600 mt-1" style={{ fontSize: "0.75rem" }}>
+                        Este CPF já está vinculado a uma conta existente{cpfTakenEmail ? " (" + cpfTakenEmail + ")" : ""}.
+                      </p>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => { setTab("login"); setError(null); }}
+                          className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1"
+                          style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                        >
+                          <Lock className="w-3 h-3" />
+                          Fazer Login
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setForgotStep("form"); setForgotEmail(""); setError(null); }}
+                          className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                          style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                        >
+                          <Mail className="w-3 h-3" />
+                          Recuperar conta
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!cpfTaken && touchedFields.cpf && cpfValidation.valid && (
                     <p className="text-green-600 mt-1" style={{ fontSize: "0.75rem" }}>
                       ✓ CPF válido
                     </p>
@@ -1083,7 +1646,7 @@ export function UserAuthPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || emailTaken || cpfTaken || cnpjTaken}
                   className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white py-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2"
                   style={{ fontSize: "0.95rem", fontWeight: 600 }}
                 >
@@ -1098,43 +1661,38 @@ export function UserAuthPage() {
                 </button>
 
                 <p className="text-center text-gray-400 mt-3" style={{ fontSize: "0.75rem" }}>
-                  Ao criar sua conta, você concorda com nossos termos de uso.
-                  <br />
-                  Este site é protegido pelo reCAPTCHA e a{" "}
-                  <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
-                    Política de Privacidade
-                  </a>{" "}
-                  e{" "}
-                  <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
-                    Termos de Serviço
-                  </a>{" "}
-                  do Google se aplicam.
+                  Ao criar sua conta, você concorda com nossos{" "}
+                  <Link to="/termos" className="underline hover:text-gray-600">termos de uso</Link>
+                  {" "}e{" "}
+                  <Link to="/politica-de-privacidade" className="underline hover:text-gray-600">política de privacidade</Link>.
                 </p>
 
-                {/* Divider */}
-                <div className="flex items-center gap-3 mt-4">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou cadastre-se com</span>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </div>
-
-                {/* Google OAuth */}
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={googleLoading}
-                  className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
-                  style={{ fontSize: "0.9rem", fontWeight: 500 }}
-                >
-                  {googleLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                  ) : (
-                    <>
-                      <GoogleLogo />
-                      Continuar com Google
-                    </>
-                  )}
-                </button>
+                {/* Google OAuth — only for PF; PJ must register with full form */}
+                {personType === "pf" ? (
+                  <>
+                    <div className="flex items-center gap-3 mt-4">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou cadastre-se com</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={googleLoading}
+                      className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
+                      style={{ fontSize: "0.9rem", fontWeight: 500 }}
+                    >
+                      {googleLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                      ) : (
+                        <>
+                          <GoogleLogo />
+                          Continuar com Google
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : null}
               </form>
             )}
           </div>

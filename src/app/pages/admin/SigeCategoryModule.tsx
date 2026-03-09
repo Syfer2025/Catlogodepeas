@@ -81,10 +81,8 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
       if (searchClasse.trim()) params.classe = searchClasse.trim();
       const result = await api.sigeCategoryGet(token, params);
       setSearchResult(result);
-      console.log("[SIGE] GET /category result:", result);
     } catch (e: any) {
       setSearchError(e.message || "Erro ao buscar categorias.");
-      console.log("[SIGE] GET /category error:", e.message);
     } finally { setSearching(false); }
   };
 
@@ -101,10 +99,8 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
         classe: createClasse,
       });
       setCreateResult(result);
-      console.log("[SIGE] POST /category result:", result);
     } catch (e: any) {
       setCreateError(e.message || "Erro ao criar categoria.");
-      console.log("[SIGE] POST /category error:", e.message);
     } finally { setCreating(false); }
   };
 
@@ -120,10 +116,8 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
         classe: updateClasse,
       });
       setUpdateResult(result);
-      console.log("[SIGE] PUT /category result:", result);
     } catch (e: any) {
       setUpdateError(e.message || "Erro ao alterar categoria.");
-      console.log("[SIGE] PUT /category error:", e.message);
     } finally { setUpdating(false); }
   };
 
@@ -134,10 +128,8 @@ export function SigeCategoryModule({ isConnected }: SigeCategoryModuleProps) {
       const token = await getAccessToken();
       const result = await api.sigeCategoryDelete(token, deleteId.trim());
       setDeleteResult(result);
-      console.log("[SIGE] DELETE /category result:", result);
     } catch (e: any) {
       setDeleteError(e.message || "Erro ao deletar categoria.");
-      console.log("[SIGE] DELETE /category error:", e.message);
     } finally { setDeleting(false); }
   };
 

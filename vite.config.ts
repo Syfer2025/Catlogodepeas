@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig({
   plugins: [
@@ -9,6 +10,14 @@ export default defineConfig({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    // Bundle analysis — generates stats.html after `vite build`
+    // Open stats.html in browser to see chunk sizes and dependencies
+    visualizer({
+      filename: 'stats.html',
+      gzipSize: true,
+      brotliSize: true,
+      open: false,
+    }),
   ],
   resolve: {
     alias: {

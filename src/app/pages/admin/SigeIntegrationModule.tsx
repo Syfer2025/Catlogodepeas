@@ -158,7 +158,7 @@ export function SigeIntegrationModule({ isConnected }: SigeIntegrationModuleProp
       const result = await api.sigeListSales(token);
       setSales(result.sales || []);
     } catch (e: any) {
-      console.log("Error loading sales:", e.message);
+      console.error("Error loading sales:", e.message);
     } finally {
       setLoadingSales(false);
     }
@@ -230,7 +230,7 @@ export function SigeIntegrationModule({ isConnected }: SigeIntegrationModuleProp
       setCustomerResults(Array.isArray(dados) ? dados : [dados].filter(Boolean));
       setShowCustomerResults(true);
     } catch (e: any) {
-      console.log("Customer search error:", e.message);
+      console.error("Customer search error:", e.message);
     } finally {
       setSearchingCustomer(false);
     }

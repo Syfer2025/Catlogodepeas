@@ -1,19 +1,19 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Package } from "lucide-react";
 
 /**
  * ProductImage — Multi-format fallback image component for product photos.
  *
- * Problem: `getProductMainImageUrl()` hardcodes `.1.webp` extension, but many
- * existing images are stored as `.png`, `.jpg`, or `.jpeg` in the Storage bucket.
+ * Uses HEAD-based probing (fetch) to find the correct image extension silently,
+ * avoiding browser console "Failed to load resource" errors that the old
+ * <img> onError chain produced.
  *
- * Solution: This component tries each extension in sequence (webp, png, jpg, jpeg)
- * using native `<img>` onError. A **module-level cache** ensures each SKU is only
- * resolved once per page session — subsequent renders skip straight to the working URL.
+ * A **module-level cache** ensures each SKU is only resolved once per page
+ * session — subsequent renders skip straight to the working URL.
  *
- * After implementing WebP conversion on upload, all NEW images will be `.webp` and
- * resolve on the first try. This fallback chain is for backward compatibility with
- * existing images in other formats.
+ * After implementing WebP conversion on upload, all NEW images will be `.webp`
+ * and resolve on the first try. This fallback chain is for backward
+ * compatibility with existing images in other formats.
  */
 
 var STORAGE_BASE = "https://aztdgagxvrlylszieujs.supabase.co/storage/v1/object/public/produtos";
@@ -21,8 +21,11 @@ var STORAGE_BASE = "https://aztdgagxvrlylszieujs.supabase.co/storage/v1/object/p
 /** Extensions to try, in priority order */
 var EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".gif"];
 
-/** Module-level cache: sku -> resolved URL (string) or null (no image found) */
+/** Module-level cache: cacheKey -> resolved URL (string) or null (no image found) */
 var _resolved: Record<string, string | null> = {};
+
+/** In-flight probe promises — prevents duplicate HEAD requests for the same key */
+var _inflight: Record<string, Promise<string | null>> = {};
 
 /** Build a candidate URL for a given SKU, image number, and extension */
 function buildCandidateUrl(sku: string, num: number, ext: string): string {
@@ -30,7 +33,7 @@ function buildCandidateUrl(sku: string, num: number, ext: string): string {
   return STORAGE_BASE + "/" + s + "/" + s + "." + String(num) + ext;
 }
 
-/** Get all candidate URLs for image #1 of a SKU */
+/** Get all candidate URLs for image #N of a SKU */
 export function getProductImageCandidates(sku: string, num?: number): string[] {
   var n = num || 1;
   var result: string[] = [];
@@ -38,6 +41,43 @@ export function getProductImageCandidates(sku: string, num?: number): string[] {
     result.push(buildCandidateUrl(sku, n, EXTENSIONS[i]));
   }
   return result;
+}
+
+/**
+ * Probe URLs via HEAD requests (silent — no console errors).
+ * Returns the first URL that responds with 2xx, or null if all fail.
+ */
+async function _probeUrls(candidates: string[]): Promise<string | null> {
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      var resp = await fetch(candidates[i], { method: "HEAD", mode: "cors" });
+      if (resp.ok) return candidates[i];
+    } catch {
+      // Network error — skip to next
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve the working URL for a given cache key + candidates.
+ * Deduplicates in-flight requests so multiple components rendering the
+ * same SKU don't fire parallel HEAD chains.
+ */
+function resolveImageUrl(cacheKey: string, candidates: string[]): Promise<string | null> {
+  // Already resolved
+  if (cacheKey in _resolved) return Promise.resolve(_resolved[cacheKey]);
+
+  // Already probing
+  if (cacheKey in _inflight) return _inflight[cacheKey];
+
+  var promise = _probeUrls(candidates).then(function (url) {
+    _resolved[cacheKey] = url;
+    delete _inflight[cacheKey];
+    return url;
+  });
+  _inflight[cacheKey] = promise;
+  return promise;
 }
 
 /** Read from the resolution cache (used by AddToCartButton etc.) */
@@ -63,7 +103,7 @@ interface ProductImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElemen
   fallback?: React.ReactNode;
 }
 
-export function ProductImage({
+function ProductImageInner({
   sku,
   alt,
   imageNumber,
@@ -77,20 +117,40 @@ export function ProductImage({
   var num = imageNumber || 1;
   var cacheKey = num === 1 ? sku : sku + ":" + String(num);
 
-  // Check module-level cache
+  // Check module-level cache synchronously
   var cachedUrl = cacheKey in _resolved ? _resolved[cacheKey] : undefined;
 
-  var [extIdx, setExtIdx] = useState(0);
-  var [allFailed, setAllFailed] = useState(false);
+  // State for async probe result
+  var [resolvedUrl, setResolvedUrl] = useState<string | null | undefined>(cachedUrl);
 
-  // Reset state when SKU changes
+  var candidates = useMemo(function () { return getProductImageCandidates(sku, num); }, [sku, num]);
+
+  // Run HEAD probe when not cached
   useEffect(function () {
-    setExtIdx(0);
-    setAllFailed(false);
-  }, [sku, num]);
+    // Already cached
+    if (cacheKey in _resolved) {
+      setResolvedUrl(_resolved[cacheKey]);
+      return;
+    }
 
-  // ── Case 1: Cached as null (no image) ──
-  if (cachedUrl === null || allFailed) {
+    var cancelled = false;
+    resolveImageUrl(cacheKey, candidates).then(function (url) {
+      if (!cancelled) setResolvedUrl(url);
+    });
+    return function () { cancelled = true; };
+  }, [cacheKey, candidates]);
+
+  // Reset when SKU changes and cache doesn't have it
+  useEffect(function () {
+    if (cacheKey in _resolved) {
+      setResolvedUrl(_resolved[cacheKey]);
+    } else {
+      setResolvedUrl(undefined);
+    }
+  }, [cacheKey]);
+
+  // ── Case 1: Probe complete, no image found ──
+  if (resolvedUrl === null) {
     if (fallback) return <>{fallback}</>;
     return (
       <div className="flex flex-col items-center justify-center gap-2 text-gray-200">
@@ -100,11 +160,11 @@ export function ProductImage({
     );
   }
 
-  // ── Case 2: Cached with a valid URL ──
-  if (cachedUrl !== undefined) {
+  // ── Case 2: Probe complete, image found ──
+  if (resolvedUrl) {
     return (
       <img
-        src={cachedUrl}
+        src={resolvedUrl}
         alt={alt}
         className={className}
         style={style}
@@ -113,48 +173,27 @@ export function ProductImage({
         {...rest}
         onLoad={externalOnLoad}
         onError={function (e) {
-          // Cached URL no longer works — clear and retry
+          // Cached URL no longer works — clear cache and re-probe
           delete _resolved[cacheKey];
-          setExtIdx(0);
-          setAllFailed(false);
+          setResolvedUrl(undefined);
           if (externalOnError) externalOnError(e);
         }}
       />
     );
   }
 
-  // ── Case 3: Not cached — try extensions in sequence ──
-  var candidates = getProductImageCandidates(sku, num);
-  var currentUrl = candidates[extIdx];
-
+  // ── Case 3: Still probing (loading state) ──
   return (
-    <img
-      src={currentUrl}
-      alt={alt}
-      className={className}
+    <div
+      className={"flex items-center justify-center bg-gray-50 animate-pulse " + (className || "")}
       style={style}
-      loading="lazy"
-      decoding="async"
-      {...rest}
-      onLoad={function (e) {
-        // Success! Cache the working URL
-        _resolved[cacheKey] = currentUrl;
-        if (externalOnLoad) externalOnLoad(e);
-      }}
-      onError={function (e) {
-        var nextIdx = extIdx + 1;
-        if (nextIdx < candidates.length) {
-          setExtIdx(nextIdx);
-        } else {
-          // All extensions failed
-          _resolved[cacheKey] = null;
-          setAllFailed(true);
-        }
-        if (externalOnError) externalOnError(e);
-      }}
-    />
+    >
+      <Package className="w-10 h-10 text-gray-200" />
+    </div>
   );
 }
+
+export const ProductImage = React.memo(ProductImageInner);
 
 /**
  * Utility: Convert any image File to WebP format using Canvas API.

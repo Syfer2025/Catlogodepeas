@@ -85,9 +85,6 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
       var freshAvailable = fresh.found ? (fresh.disponivel ?? fresh.quantidade ?? 0) : null;
       var freshOutOfStock = fresh.found && freshAvailable !== null && freshAvailable <= 0;
 
-      console.log("[AddToCart] Layer 2 stock validation: SKU=" + sku +
-        " requested=" + qtyToAdd + " available=" + freshAvailable);
-
       // Update live state
       if (freshAvailable !== null) {
         setLiveAvailableQty(freshAvailable);

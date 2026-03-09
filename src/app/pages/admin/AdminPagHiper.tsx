@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
@@ -425,7 +425,7 @@ function TransactionsSection() {
     }
   };
 
-  const filtered = transactions.filter((tx) => {
+  const filtered = useMemo(() => transactions.filter((tx) => {
     if (!tx) return false;
     if (filterType !== "all" && tx.type !== filterType) return false;
     if (filterStatus !== "all" && tx.status !== filterStatus) return false;
@@ -439,7 +439,7 @@ function TransactionsSection() {
       );
     }
     return true;
-  });
+  }), [transactions, filterType, filterStatus, filter]);
 
   if (loading) {
     return (

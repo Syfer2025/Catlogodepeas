@@ -69,7 +69,6 @@ export function SigeProductPriceModule({ isConnected }: Props) {
     try {
       const res = await api.getProductPrice(trimmed);
       setResult(res);
-      console.log("[Price Module] Result:", res);
     } catch (e: any) {
       setError(e.message || "Erro ao buscar preco.");
     } finally { setSearching(false); }

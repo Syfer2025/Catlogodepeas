@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
 import {
   User,
@@ -58,6 +58,10 @@ interface UserProfile {
   phone: string;
   role: string;
   cpf: string;
+  personType?: string;
+  cnpj?: string;
+  razaoSocial?: string;
+  inscricaoEstadual?: string;
   address: string;
   city: string;
   state: string;
@@ -82,6 +86,16 @@ function formatCpf(val: string): string {
   if (digits.length <= 6) return digits.slice(0, 3) + "." + digits.slice(3);
   if (digits.length <= 9) return digits.slice(0, 3) + "." + digits.slice(3, 6) + "." + digits.slice(6);
   return digits.slice(0, 3) + "." + digits.slice(3, 6) + "." + digits.slice(6, 9) + "-" + digits.slice(9);
+}
+
+// CNPJ mask
+function formatCnpj(val: string): string {
+  var digits = val.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return digits.slice(0, 2) + "." + digits.slice(2);
+  if (digits.length <= 8) return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5);
+  if (digits.length <= 12) return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5, 8) + "/" + digits.slice(8);
+  return digits.slice(0, 2) + "." + digits.slice(2, 5) + "." + digits.slice(5, 8) + "/" + digits.slice(8, 12) + "-" + digits.slice(12);
 }
 
 // CEP mask
@@ -127,7 +141,18 @@ export function UserAccountPage() {
   var [name, setName] = useState("");
   var [phone, setPhone] = useState("");
   var [cpf, setCpf] = useState("");
+  var [editPersonType, setEditPersonType] = useState<string>("pf");
+  var [editCnpj, setEditCnpj] = useState("");
+  var [editRazaoSocial, setEditRazaoSocial] = useState("");
+  var [editInscricaoEstadual, setEditInscricaoEstadual] = useState("");
   var [avatarUploading, setAvatarUploading] = useState(false);
+
+  // CNPJ Receita Federal lookup
+  var [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
+  var [cnpjLookupResult, setCnpjLookupResult] = useState<api.CnpjLookupResult | null>(null);
+  var [cnpjLookupError, setCnpjLookupError] = useState<string | null>(null);
+  var [cnpjAutoFilled, setCnpjAutoFilled] = useState(false);
+  var [cnpjTaken, setCnpjTaken] = useState(false);
 
   // Password change (via email link)
   var [sendingReset, setSendingReset] = useState(false);
@@ -141,6 +166,10 @@ export function UserAccountPage() {
       setName(data.name || "");
       setPhone(data.phone ? formatPhone(data.phone) : "");
       setCpf(data.cpf ? formatCpf(data.cpf) : "");
+      setEditPersonType(data.personType || "pf");
+      setEditCnpj(data.cnpj ? formatCnpj(data.cnpj) : "");
+      setEditRazaoSocial(data.razaoSocial || "");
+      setEditInscricaoEstadual(data.inscricaoEstadual || "");
     } catch (err: any) {
       console.error("Load profile error:", err);
       try {
@@ -159,6 +188,10 @@ export function UserAccountPage() {
         setName(data2.name || "");
         setPhone(data2.phone ? formatPhone(data2.phone) : "");
         setCpf(data2.cpf ? formatCpf(data2.cpf) : "");
+        setEditPersonType(data2.personType || "pf");
+        setEditCnpj(data2.cnpj ? formatCnpj(data2.cnpj) : "");
+        setEditRazaoSocial(data2.razaoSocial || "");
+        setEditInscricaoEstadual(data2.inscricaoEstadual || "");
       } catch (retryErr: any) {
         console.error("Retry after refresh also failed:", retryErr);
         await supabase.auth.signOut();
@@ -225,6 +258,93 @@ export function UserAccountPage() {
       setActiveTab("perfil");
     }
   }, [loading, profile, incompleteChecked, searchParams]);
+
+  // ─── CNPJ auto-lookup from Receita Federal ───
+  // Validate CNPJ digits (same algo as UserAuthPage)
+  var _isCnpjValid = useCallback(function (cnpjVal: string): boolean {
+    var digits = cnpjVal.replace(/\D/g, "");
+    if (digits.length !== 14) return false;
+    if (/^(\d)\1{13}$/.test(digits)) return false;
+    var weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    var sum = 0;
+    for (var i = 0; i < 12; i++) sum += parseInt(digits[i]) * weights1[i];
+    var remainder = sum % 11;
+    var d1 = remainder < 2 ? 0 : 11 - remainder;
+    if (d1 !== parseInt(digits[12])) return false;
+    var weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    sum = 0;
+    for (var j = 0; j < 13; j++) sum += parseInt(digits[j]) * weights2[j];
+    remainder = sum % 11;
+    var d2 = remainder < 2 ? 0 : 11 - remainder;
+    if (d2 !== parseInt(digits[13])) return false;
+    return true;
+  }, []);
+
+  useEffect(function () {
+    if (editPersonType !== "pj") {
+      setCnpjLookupResult(null);
+      setCnpjLookupError(null);
+      setCnpjAutoFilled(false);
+      setCnpjTaken(false);
+      return;
+    }
+    var cnpjDigits = editCnpj.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14 || !_isCnpjValid(editCnpj)) {
+      setCnpjLookupResult(null);
+      setCnpjLookupError(null);
+      setCnpjAutoFilled(false);
+      setCnpjTaken(false);
+      return;
+    }
+    // Don't re-lookup the same CNPJ
+    if (cnpjLookupResult && cnpjLookupResult.cnpj === cnpjDigits) return;
+
+    var cancelled = false;
+    setCnpjLookupLoading(true);
+    setCnpjLookupError(null);
+    setCnpjLookupResult(null);
+    setCnpjAutoFilled(false);
+    setCnpjTaken(false);
+
+    // Run both lookups in parallel: Receita Federal + uniqueness check
+    var currentUserId = profile && profile.id ? profile.id : "";
+    Promise.all([
+      api.cnpjLookup(cnpjDigits),
+      api.checkCnpjUniqueness(cnpjDigits, currentUserId).catch(function () { return { cnpj: cnpjDigits, taken: false } as api.CnpjCheckResult; }),
+    ])
+      .then(function (results) {
+        if (cancelled) return;
+        var data = results[0];
+        var uniqueCheck = results[1];
+        if (data.error) {
+          setCnpjLookupError(data.error);
+          setCnpjLookupResult(null);
+        } else {
+          setCnpjLookupResult(data);
+          if (data.razaoSocial) {
+            setEditRazaoSocial(data.razaoSocial);
+            setCnpjAutoFilled(true);
+          }
+        }
+        if (uniqueCheck && uniqueCheck.taken) {
+          setCnpjTaken(true);
+        }
+      })
+      .catch(function (err: any) {
+        if (cancelled) return;
+        var msg = err.message || "Erro ao consultar CNPJ.";
+        if (msg.includes("não encontrado")) {
+          setCnpjLookupError("CNPJ não encontrado na Receita Federal.");
+        } else {
+          setCnpjLookupError(msg);
+        }
+      })
+      .finally(function () {
+        if (!cancelled) setCnpjLookupLoading(false);
+      });
+
+    return function () { cancelled = true; };
+  }, [editCnpj, editPersonType, _isCnpjValid, profile]);
 
   // ─── Helper: sync avatar to Header's localStorage cache ───
   var AVATAR_CACHE_KEY = "carretao_user_session_cache";
@@ -310,6 +430,36 @@ export function UserAccountPage() {
       return;
     }
 
+    // PJ validation
+    if (editPersonType === "pj") {
+      if (!editRazaoSocial.trim()) {
+        setError("Razão Social é obrigatória para Pessoa Jurídica.");
+        return;
+      }
+      if (editRazaoSocial.trim().length < 3) {
+        setError("Razão Social deve ter pelo menos 3 caracteres.");
+        return;
+      }
+      var cnpjDigitsVal = editCnpj.replace(/\D/g, "");
+      if (!cnpjDigitsVal || cnpjDigitsVal.length !== 14) {
+        setError("CNPJ é obrigatório para Pessoa Jurídica.");
+        return;
+      }
+      // Block if CNPJ is not active in Receita Federal
+      if (cnpjLookupResult && !cnpjLookupResult.ativa) {
+        setError("Este CNPJ consta como " + cnpjLookupResult.situacao + " na Receita Federal. Não é possível salvar empresa com CNPJ inativo.");
+        return;
+      }
+      if (cnpjLookupError && cnpjLookupError.includes("não encontrado")) {
+        setError("CNPJ não encontrado na Receita Federal. Verifique o número informado.");
+        return;
+      }
+      if (cnpjTaken) {
+        setError("Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta.");
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       await api.userUpdateProfile(accessToken, {
@@ -320,6 +470,10 @@ export function UserAccountPage() {
         city: profile?.city || "",
         state: profile?.state || "",
         cep: profile?.cep || "",
+        personType: editPersonType,
+        cnpj: editCnpj.replace(/\D/g, ""),
+        razaoSocial: editRazaoSocial.trim(),
+        inscricaoEstadual: editInscricaoEstadual.trim(),
       });
       api.invalidateUserMeCache();
       setSuccess("Perfil atualizado com sucesso!");
@@ -360,6 +514,19 @@ export function UserAccountPage() {
     navigate("/conta", { replace: true });
   };
 
+  // IMPORTANT: useMemo MUST be declared before any conditional returns
+  // to comply with the Rules of Hooks (same number/order every render).
+  var menuItems = useMemo(function () {
+    return [
+      { key: "perfil" as ActiveTab, label: "Meus Dados", icon: User, desc: "Informações pessoais" },
+      { key: "enderecos" as ActiveTab, label: "Endereços", icon: MapPin, desc: "Endereços de entrega" },
+      { key: "pedidos" as ActiveTab, label: "Meus Pedidos", icon: Package, desc: "Histórico de compras" },
+      { key: "favoritos" as ActiveTab, label: "Favoritos", icon: Heart, desc: "Produtos salvos" },
+      { key: "avaliacoes" as ActiveTab, label: "Avaliações", icon: Star, desc: "Minhas avaliações" },
+      { key: "senha" as ActiveTab, label: "Segurança", icon: Lock, desc: "Alterar senha" },
+    ];
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -367,15 +534,6 @@ export function UserAccountPage() {
       </div>
     );
   }
-
-  var menuItems = [
-    { key: "perfil" as ActiveTab, label: "Meus Dados", icon: User, desc: "Informações pessoais" },
-    { key: "enderecos" as ActiveTab, label: "Endereços", icon: MapPin, desc: "Endereços de entrega" },
-    { key: "pedidos" as ActiveTab, label: "Meus Pedidos", icon: Package, desc: "Histórico de compras" },
-    { key: "favoritos" as ActiveTab, label: "Favoritos", icon: Heart, desc: "Produtos salvos" },
-    { key: "avaliacoes" as ActiveTab, label: "Avaliações", icon: Star, desc: "Minhas avaliações" },
-    { key: "senha" as ActiveTab, label: "Segurança", icon: Lock, desc: "Alterar senha" },
-  ];
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -538,7 +696,7 @@ export function UserAccountPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      Nome Completo *
+                      {editPersonType === "pj" ? "Nome do Responsável *" : "Nome Completo *"}
                     </label>
                     <input
                       type="text"
@@ -565,6 +723,182 @@ export function UserAccountPage() {
                   </div>
                 </div>
 
+                {/* PF / PJ Toggle — locked after account creation */}
+                <div>
+                  <label className="block text-gray-700 mb-2" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                    Tipo de Cadastro
+                    <Lock className="w-3 h-3 inline-block ml-1.5 text-gray-400" />
+                  </label>
+                  <div className="flex bg-gray-100 rounded-xl p-1 gap-1 max-w-sm">
+                    <div
+                      className={"flex-1 py-2 rounded-lg flex items-center justify-center gap-2 " + (editPersonType === "pf" ? "bg-white text-red-600 shadow-sm" : "text-gray-400")}
+                      style={{ fontSize: "0.82rem", fontWeight: 600 }}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      Pessoa Física
+                    </div>
+                    <div
+                      className={"flex-1 py-2 rounded-lg flex items-center justify-center gap-2 " + (editPersonType === "pj" ? "bg-white text-red-600 shadow-sm" : "text-gray-400")}
+                      style={{ fontSize: "0.82rem", fontWeight: 600 }}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      Pessoa Jurídica
+                    </div>
+                  </div>
+                  <p className="text-gray-400 mt-1.5 flex items-center gap-1" style={{ fontSize: "0.72rem" }}>
+                    <Lock className="w-3 h-3" />
+                    O tipo de cadastro não pode ser alterado após a criação da conta.
+                  </p>
+                </div>
+
+                {/* PJ Fields */}
+                {editPersonType === "pj" && (
+                  <>
+                    {/* CNPJ — triggers auto-fill of Razão Social */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        CNPJ *
+                      </label>
+                      <div className="relative">
+                        <CreditCard className={"absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 " + (cnpjTaken ? "text-amber-500" : cnpjLookupResult && cnpjLookupResult.ativa ? "text-green-500" : "text-gray-400")} />
+                        <input
+                          type="text"
+                          value={editCnpj}
+                          onChange={function (e) {
+                            setEditCnpj(formatCnpj(e.target.value));
+                            if (cnpjAutoFilled) {
+                              setCnpjAutoFilled(false);
+                              setEditRazaoSocial("");
+                            }
+                          }}
+                          placeholder="00.000.000/0000-00"
+                          className={"w-full pl-10 pr-10 py-2.5 border rounded-lg text-gray-800 placeholder-gray-400 outline-none focus:ring-2 transition-all " + (cnpjTaken ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500/20" : cnpjLookupResult && !cnpjLookupResult.ativa ? "border-red-400 focus:border-red-500 focus:ring-red-500/20" : cnpjLookupResult && cnpjLookupResult.ativa ? "border-green-400 focus:border-green-500 focus:ring-green-500/20" : "border-gray-300 focus:border-red-500 focus:ring-red-500/20")}
+                          style={{ fontSize: "0.9rem" }}
+                        />
+                        {cnpjLookupLoading && (
+                          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 animate-spin" />
+                        )}
+                        {!cnpjLookupLoading && cnpjTaken && (
+                          <AlertTriangle className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+                        )}
+                        {!cnpjLookupLoading && !cnpjTaken && cnpjLookupResult && cnpjLookupResult.ativa && (
+                          <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                        )}
+                        {!cnpjLookupLoading && !cnpjTaken && cnpjLookupResult && !cnpjLookupResult.ativa && (
+                          <AlertTriangle className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                      {cnpjLookupLoading && (
+                        <p className="text-blue-500 mt-1 flex items-center gap-1" style={{ fontSize: "0.72rem" }}>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Consultando Receita Federal...
+                        </p>
+                      )}
+                      {cnpjLookupError && (
+                        <p className="text-red-500 mt-1 flex items-center gap-1" style={{ fontSize: "0.72rem" }}>
+                          <AlertTriangle className="w-3 h-3" />
+                          {cnpjLookupError}
+                        </p>
+                      )}
+                      {cnpjLookupResult && !cnpjLookupResult.ativa && (
+                        <div className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-red-700 flex items-center gap-1.5" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                            CNPJ {cnpjLookupResult.situacao}
+                          </p>
+                          <p className="text-red-600 mt-1" style={{ fontSize: "0.72rem" }}>
+                            Este CNPJ consta como <strong>{cnpjLookupResult.situacao}</strong> na Receita Federal. Não é possível salvar com CNPJ inativo.
+                          </p>
+                        </div>
+                      )}
+                      {cnpjLookupResult && cnpjLookupResult.ativa && (
+                        <div className="mt-2 p-2.5 bg-green-50 border border-green-200 rounded-lg space-y-0.5">
+                          <p className="text-green-700 flex items-center gap-1.5" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                            CNPJ Ativo — Verificado na Receita Federal
+                          </p>
+                          {cnpjLookupResult.nomeFantasia && (
+                            <p className="text-gray-600" style={{ fontSize: "0.72rem" }}>
+                              <span className="text-gray-500">Fantasia:</span> {cnpjLookupResult.nomeFantasia}
+                            </p>
+                          )}
+                          {cnpjLookupResult.atividadePrincipal && (
+                            <p className="text-gray-600" style={{ fontSize: "0.72rem" }}>
+                              <span className="text-gray-500">Atividade:</span> {cnpjLookupResult.atividadePrincipal}
+                            </p>
+                          )}
+                          {(cnpjLookupResult.cidade || cnpjLookupResult.uf) && (
+                            <p className="text-gray-600" style={{ fontSize: "0.72rem" }}>
+                              <span className="text-gray-500">Local:</span> {[cnpjLookupResult.cidade, cnpjLookupResult.uf].filter(Boolean).join("/")}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {cnpjTaken && (
+                        <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-amber-700 flex items-center gap-1.5" style={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                            CNPJ já cadastrado
+                          </p>
+                          <p className="text-amber-600 mt-0.5" style={{ fontSize: "0.72rem" }}>
+                            Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Razão Social — auto-filled from Receita Federal */}
+                    <div>
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        Razão Social *
+                        {cnpjAutoFilled && (
+                          <span className="text-green-600 ml-2" style={{ fontSize: "0.68rem", fontWeight: 400 }}>
+                            (da Receita Federal)
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <Building2 className={"absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 " + (cnpjAutoFilled ? "text-green-500" : "text-gray-400")} />
+                        <input
+                          type="text"
+                          value={editRazaoSocial}
+                          onChange={function (e) {
+                            if (!cnpjAutoFilled) {
+                              setEditRazaoSocial(e.target.value);
+                            }
+                          }}
+                          readOnly={cnpjAutoFilled}
+                          placeholder={cnpjLookupLoading ? "Consultando CNPJ..." : "Digite o CNPJ para preencher"}
+                          className={"w-full pl-10 pr-10 py-2.5 border rounded-lg placeholder-gray-400 outline-none transition-all " + (cnpjAutoFilled ? "border-green-300 bg-green-50/50 text-gray-800 cursor-not-allowed" : "border-gray-300 text-gray-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20")}
+                          style={{ fontSize: "0.9rem" }}
+                        />
+                        {cnpjAutoFilled && (
+                          <ShieldCheck className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="max-w-xs">
+                      <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                        Inscrição Estadual
+                        <span className="text-gray-400 ml-1" style={{ fontSize: "0.75rem", fontWeight: 400 }}>(opcional)</span>
+                      </label>
+                      <div className="relative">
+                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={editInscricaoEstadual}
+                          onChange={function (e) { setEditInscricaoEstadual(e.target.value.slice(0, 20)); }}
+                          placeholder="IE ou ISENTO"
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                          style={{ fontSize: "0.9rem" }}
+                        />
+                      </div>
+                    </div>
+                    <div className="h-px bg-gray-100" />
+                  </>
+                )}
+
                 {/* Telefone + CPF */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -585,7 +919,7 @@ export function UserAccountPage() {
                   </div>
                   <div>
                     <label className="block text-gray-700 mb-1.5" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      CPF
+                      {editPersonType === "pj" ? "CPF do Responsável" : "CPF"}
                     </label>
                     <div className="relative">
                       <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1468,19 +1802,23 @@ function OrdersTab({ accessToken }: { accessToken: string | null }) {
   };
 
   // Unique statuses for filter
-  var uniqueStatuses = Array.from(new Set(orders.map(function (o) { return o.status; })));
+  var uniqueStatuses = useMemo(function () {
+    return Array.from(new Set(orders.map(function (o) { return o.status; })));
+  }, [orders]);
 
   // Filtered + sorted orders
-  var filteredOrders = orders.filter(function (o) {
-    if (statusFilter === "all") return true;
-    return o.status === statusFilter;
-  });
-
-  if (sortOrder === "newest") {
-    filteredOrders.sort(function (a, b) { return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); });
-  } else {
-    filteredOrders.sort(function (a, b) { return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); });
-  }
+  var filteredOrders = useMemo(function () {
+    var result = orders.filter(function (o) {
+      if (statusFilter === "all") return true;
+      return o.status === statusFilter;
+    });
+    if (sortOrder === "newest") {
+      result.sort(function (a, b) { return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); });
+    } else {
+      result.sort(function (a, b) { return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); });
+    }
+    return result;
+  }, [orders, statusFilter, sortOrder]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1938,15 +2276,25 @@ function MinhasAvaliacoesTab({ accessToken }: { accessToken: string }) {
     loadReviews();
   }, [loadReviews]);
 
-  // Counts
-  var pendingCount = reviews.filter(function (r) { return r.status === "pending"; }).length;
-  var approvedCount = reviews.filter(function (r) { return r.status === "approved"; }).length;
-  var rejectedCount = reviews.filter(function (r) { return r.status === "rejected"; }).length;
+  // Counts (memoized — avoids 3 filter passes per render)
+  var reviewCounts = useMemo(function () {
+    var pending = 0, approved = 0, rejected = 0;
+    for (var i = 0; i < reviews.length; i++) {
+      if (reviews[i].status === "pending") pending++;
+      else if (reviews[i].status === "approved") approved++;
+      else if (reviews[i].status === "rejected") rejected++;
+    }
+    return { pending: pending, approved: approved, rejected: rejected };
+  }, [reviews]);
+  var pendingCount = reviewCounts.pending;
+  var approvedCount = reviewCounts.approved;
+  var rejectedCount = reviewCounts.rejected;
 
   // Filtered reviews
-  var filteredReviews = statusFilter === "all"
-    ? reviews
-    : reviews.filter(function (r) { return r.status === statusFilter; });
+  var filteredReviews = useMemo(function () {
+    if (statusFilter === "all") return reviews;
+    return reviews.filter(function (r) { return r.status === statusFilter; });
+  }, [reviews, statusFilter]);
 
   function statusConfig(status: string) {
     if (status === "approved") return {
@@ -2391,7 +2739,7 @@ function FavoritosTab() {
       try {
         var skus = favorites.map(function (f) { return f.sku; });
         // Bulk load prices
-        var priceResult = await api.getProductPricesBulk(skus);
+        var priceResult = await api.getProductPricesBulkSafe(skus);
         var map: Record<string, any> = {};
         if (priceResult.results) {
           for (var i = 0; i < priceResult.results.length; i++) {

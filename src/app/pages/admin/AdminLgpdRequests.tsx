@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Shield,
   Loader2,
@@ -152,29 +152,36 @@ export function AdminLgpdRequests() {
     }
   }
 
-  // Filtered requests
-  var filtered = requests.filter(function (r) {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (search) {
-      var q = search.toLowerCase();
-      return (
-        r.fullName.toLowerCase().includes(q) ||
-        r.email.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q) ||
-        (r.cpf && r.cpf.includes(q)) ||
-        (REQUEST_TYPE_LABELS[r.requestType] || "").toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  // Filtered requests (memoized)
+  var filtered = useMemo(function () {
+    return requests.filter(function (r) {
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (search) {
+        var q = search.toLowerCase();
+        return (
+          r.fullName.toLowerCase().includes(q) ||
+          r.email.toLowerCase().includes(q) ||
+          r.id.toLowerCase().includes(q) ||
+          (r.cpf && r.cpf.includes(q)) ||
+          (REQUEST_TYPE_LABELS[r.requestType] || "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [requests, statusFilter, search]);
 
-  var statusCounts = {
-    all: requests.length,
-    pending: requests.filter(function (r) { return r.status === "pending"; }).length,
-    in_progress: requests.filter(function (r) { return r.status === "in_progress"; }).length,
-    completed: requests.filter(function (r) { return r.status === "completed"; }).length,
-    rejected: requests.filter(function (r) { return r.status === "rejected"; }).length,
-  };
+  // Status counts (memoized — single pass)
+  var statusCounts = useMemo(function () {
+    var pending = 0, in_progress = 0, completed = 0, rejected = 0;
+    for (var i = 0; i < requests.length; i++) {
+      var s = requests[i].status;
+      if (s === "pending") pending++;
+      else if (s === "in_progress") in_progress++;
+      else if (s === "completed") completed++;
+      else if (s === "rejected") rejected++;
+    }
+    return { all: requests.length, pending: pending, in_progress: in_progress, completed: completed, rejected: rejected };
+  }, [requests]);
 
   return (
     <div className="space-y-5">

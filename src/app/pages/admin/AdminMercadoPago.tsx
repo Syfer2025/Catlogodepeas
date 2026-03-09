@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
@@ -579,7 +579,7 @@ function PaymentsSection() {
     }
   };
 
-  const filtered = payments.filter((p) => {
+  const filtered = useMemo(() => payments.filter((p) => {
     if (!p) return false;
     if (filter) {
       const q = filter.toLowerCase();
@@ -592,7 +592,7 @@ function PaymentsSection() {
       );
     }
     return true;
-  });
+  }), [payments, filter]);
 
   if (loading) {
     return (

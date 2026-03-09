@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 
 /**
  * OptimizedImage — Progressive image component with Supabase Storage transformations.
@@ -84,7 +84,7 @@ function getDefaultSizes(variant: string): string {
   }
 }
 
-export function OptimizedImage({
+function OptimizedImageInner({
   src,
   alt,
   variant = "product",
@@ -99,25 +99,28 @@ export function OptimizedImage({
   var [error, setError] = useState(false);
   var [useFallbackSrc, setUseFallbackSrc] = useState(false);
 
+  var { srcSet, sizesAttr, mainSrc } = useMemo(function () {
+    var widths = variant === "banner" ? BANNER_WIDTHS : variant === "thumbnail" ? [120, 200, 400] : SRCSET_WIDTHS;
+    var canTransform = isSupabasePublicUrl(src);
+    var sSet = canTransform ? buildSrcSet(src, widths, quality) : undefined;
+    var sAttr = sizes || getDefaultSizes(variant);
+    var mSrc = src;
+    if (canTransform) {
+      var defaultWidth = variant === "banner" ? 1200 : variant === "thumbnail" ? 200 : 400;
+      mSrc = getTransformUrl(src, defaultWidth, quality);
+    }
+    return { srcSet: sSet, sizesAttr: sAttr, mainSrc: mSrc, canTransform: canTransform };
+  }, [src, variant, quality, sizes]);
+
+  var canTransform = isSupabasePublicUrl(src);
+
   if (error && fallback) {
     return <>{fallback}</>;
   }
 
-  var widths = variant === "banner" ? BANNER_WIDTHS : variant === "thumbnail" ? [120, 200, 400] : SRCSET_WIDTHS;
-  var canTransform = isSupabasePublicUrl(src);
-  var srcSet = canTransform ? buildSrcSet(src, widths, quality) : undefined;
-  var sizesAttr = sizes || getDefaultSizes(variant);
-
-  // For the main src, use a medium-sized version if transformable
-  var mainSrc = src;
-  if (canTransform && !useFallbackSrc) {
-    var defaultWidth = variant === "banner" ? 1200 : variant === "thumbnail" ? 200 : 400;
-    mainSrc = getTransformUrl(src, defaultWidth, quality);
-  }
-
   return (
     <img
-      src={mainSrc}
+      src={useFallbackSrc ? src : mainSrc}
       srcSet={!useFallbackSrc ? srcSet : undefined}
       sizes={!useFallbackSrc ? sizesAttr : undefined}
       alt={alt}
@@ -126,17 +129,17 @@ export function OptimizedImage({
       {...rest}
       onError={function (e) {
         if (!useFallbackSrc && canTransform) {
-          // Transform endpoint might not be available (free tier) — fall back to original
           setUseFallbackSrc(true);
         } else {
           setError(true);
         }
-        // Also call external onError if provided
         if (externalOnError) externalOnError(e);
       }}
     />
   );
 }
+
+export const OptimizedImage = React.memo(OptimizedImageInner);
 
 /**
  * Utility: get an optimized URL for a Supabase Storage image at a given width.

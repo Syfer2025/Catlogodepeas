@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, Zap, CreditCard } from "lucide-react";
 import * as api from "../services/api";
 import type { ProductPrice, PriceConfig } from "../services/api";
@@ -87,7 +87,7 @@ function fetchPriceThrottled(sku: string): Promise<ProductPrice> {
   const inflight = _inflightRequests.get(sku);
   if (inflight) return inflight;
 
-  const promise = _enqueue(() => api.getProductPrice(sku))
+  const promise = _enqueue(() => api.getProductPriceSafe(sku))
     .then((data) => {
       _priceCache.set(sku, { data, fetchedAt: Date.now() });
       _inflightRequests.delete(sku);
@@ -188,7 +188,7 @@ async function getPriceConfigCached(): Promise<PriceConfig> {
   });
 }
 
-export function PriceBadge({ sku, variant = "full", preloaded, forceShow }: PriceBadgeProps) {
+function PriceBadgeInner({ sku, variant = "full", preloaded, forceShow }: PriceBadgeProps) {
   const { catalogMode } = useCatalogMode();
   const [priceData, setPriceData] = useState<ProductPrice | null>(preloaded ?? null);
   const [loading, setLoading] = useState(preloaded === undefined);
@@ -419,3 +419,5 @@ export function PriceBadge({ sku, variant = "full", preloaded, forceShow }: Pric
     </div>
   );
 }
+
+export const PriceBadge = React.memo(PriceBadgeInner);

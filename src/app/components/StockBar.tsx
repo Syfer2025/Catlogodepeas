@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import * as api from "../services/api";
 import type { ProductBalance } from "../services/api";
 
@@ -77,7 +77,9 @@ interface StockBarProps {
   preloaded?: ProductBalance | null;
 }
 
-export function StockBar({ sku, preloaded }: StockBarProps) {
+export const StockBar = React.memo(StockBarInner);
+
+export function StockBarInner({ sku, preloaded }: StockBarProps) {
   const [qty, setQty] = useState<number | null>(() => {
     if (preloaded !== undefined && preloaded !== null && preloaded.found) {
       return preloaded.disponivel ?? preloaded.quantidade ?? 0;

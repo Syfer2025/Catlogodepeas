@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Image as ImageIcon,
   Plus,
@@ -248,7 +248,14 @@ export function AdminBanners() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
-  const activeCount = banners.filter((b) => b.active).length;
+  const { activeCount, linkedCount } = useMemo(() => {
+    var active = 0, linked = 0;
+    for (var i = 0; i < banners.length; i++) {
+      if (banners[i].active) active++;
+      if (banners[i].buttonLink) linked++;
+    }
+    return { activeCount: active, linkedCount: linked };
+  }, [banners]);
 
   return (
     <div className="space-y-6">
@@ -288,7 +295,7 @@ export function AdminBanners() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-blue-600" style={{ fontSize: "0.72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Com Link</p>
-          <p className="text-blue-600 mt-1" style={{ fontSize: "1.5rem", fontWeight: 700 }}>{banners.filter((b) => b.buttonLink).length}</p>
+          <p className="text-blue-600 mt-1" style={{ fontSize: "1.5rem", fontWeight: 700 }}>{linkedCount}</p>
         </div>
       </div>
 

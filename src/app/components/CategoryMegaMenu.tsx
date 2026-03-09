@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import {
   Layers,
@@ -138,6 +138,8 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
   const handleMouseEnter = () => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     setIsOpen(true);
+    // Prefetch CatalogPage chunk — all mega menu links go to /catalogo
+    import("../utils/prefetch").then(function (m) { m.prefetchCatalog(); }).catch(function () {});
   };
 
   const handleMouseLeave = () => {
@@ -158,8 +160,8 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
   const leftColItemPy = availableHeight < 500 ? "py-1" : "py-1.5";
   const leftColFontSize = availableHeight < 500 ? "0.76rem" : "0.82rem";
 
-  // Sort parents alphabetically for display
-  const sortedTree = sortByName(tree);
+  // Sort parents alphabetically for display (memoized)
+  const sortedTree = useMemo(() => sortByName(tree), [tree]);
 
   return (
     <div
@@ -396,8 +398,8 @@ function ChildrenPanel({
     );
   }
 
-  // Sort children alphabetically, and grandchildren within each child
-  const sorted = sortTreeRecursive(children);
+  // Sort children alphabetically, and grandchildren within each child (memoized)
+  const sorted = useMemo(() => sortTreeRecursive(children), [children]);
 
   // Decide column count based on number of items
   const colCount = sorted.length <= 6 ? 1 : sorted.length <= 14 ? 2 : 3;
@@ -576,8 +578,8 @@ export function MobileCategoryMenu({ onNavigate }: { onNavigate?: () => void }) 
 
   if (tree.length === 0 && !loading) return null;
 
-  // Sort parents alphabetically for mobile display
-  const sortedTree = sortByName(tree);
+  // Sort parents alphabetically for mobile display (memoized)
+  const sortedTree = useMemo(() => sortByName(tree), [tree]);
 
   return (
     <div className="pt-1">
@@ -623,7 +625,7 @@ function MobileParentItem({
   categoryCounts: Record<string, number>;
 }) {
   const hasChildren = parent.children && parent.children.length > 0;
-  const sortedChildren = hasChildren ? sortByName(parent.children!) : [];
+  const sortedChildren = useMemo(() => hasChildren ? sortByName(parent.children!) : [], [parent.children, hasChildren]);
   const parentCount = categoryCounts[parent.slug] || 0;
   const parentEmpty = parentCount === 0;
 

@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import React from "react";
 import { Package, ShoppingCart } from "lucide-react";
 import type { ProductBalance, ProductPrice } from "../services/api";
 import { StockBadge } from "./StockBadge";
@@ -24,7 +25,7 @@ interface ProductCardProps {
   reviewSummary?: { averageRating: number; totalReviews: number } | null;
 }
 
-export function ProductCard({ product, balance, preloadedPrice, reviewSummary }: ProductCardProps) {
+export function ProductCardInner({ product, balance, preloadedPrice, reviewSummary }: ProductCardProps) {
   const inStock = balance ? (balance.disponivel ?? balance.quantidade ?? 0) > 0 : true;
   const showOutOfStock = balance !== undefined && balance !== null && balance.found && !inStock;
 
@@ -138,3 +139,5 @@ export function ProductCard({ product, balance, preloadedPrice, reviewSummary }:
     </Link>
   );
 }
+
+export const ProductCard = React.memo(ProductCardInner);

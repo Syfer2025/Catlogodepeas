@@ -35,24 +35,19 @@ async function getAuthUserId(request: Request): Promise<string | null> {
   var userToken = queryToken
     || legacyToken
     || (authHeader ? authHeader.split(" ")[1] : null);
-  console.log("[getAuthUserId] queryToken: " + String(!!queryToken) + " | legacyToken: " + String(!!legacyToken) + " | authHeader: " + String(!!authHeader) + " | tokenLen: " + String(userToken ? userToken.length : 0));
   if (!userToken) return null;
   try {
     var authResult = await supabaseAdmin.auth.getUser(userToken);
     var user = authResult.data ? authResult.data.user : null;
     var authErr = authResult.error;
     if (authErr) {
-      console.log("[getAuthUserId] getUser error: " + String(authErr.message));
       return null;
     }
     if (!user || !user.id) {
-      console.log("[getAuthUserId] getUser returned no user id");
       return null;
     }
-    console.log("[getAuthUserId] Success: userId=" + user.id + " email=" + String(user.email));
     return user.id;
   } catch (ex) {
-    console.log("[getAuthUserId] Exception: " + String(ex));
     return null;
   }
 }
@@ -94,7 +89,7 @@ async function _getAdminWhitelist(): Promise<string[]> {
       }
     }
   } catch (parseErr) {
-    console.log("[AdminWhitelist] Parse error: " + parseErr);
+    console.error("[AdminWhitelist] Parse error: " + parseErr);
   }
   return list;
 }
@@ -113,7 +108,7 @@ async function _getAdminPermissions(email: string): Promise<string[]> {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch (e) {
-    console.log("[AdminPerms] Parse error for " + email + ": " + e);
+    console.error("[AdminPerms] Parse error for " + email + ": " + e);
   }
   return ALL_ADMIN_TABS.filter(function(t) { return t !== "admins"; });
 }
@@ -142,9 +137,8 @@ async function isAdminUser(request: Request): Promise<{ isAdmin: boolean; userId
           await supabaseAdmin.auth.admin.updateUserById(userId, {
             user_metadata: Object.assign({}, user.user_metadata, { role: "admin" }),
           });
-          console.log("[isAdminUser] Auto-fixed master admin metadata for: " + email);
         } catch (fixErr) {
-          console.log("[isAdminUser] Master metadata fix error: " + fixErr);
+          console.error("[isAdminUser] Master metadata fix error: " + fixErr);
         }
       }
       return { isAdmin: true, userId: userId, email: email, isMaster: true };
@@ -164,9 +158,8 @@ async function isAdminUser(request: Request): Promise<{ isAdmin: boolean; userId
               await supabaseAdmin.auth.admin.updateUserById(userId, {
                 user_metadata: Object.assign({}, user.user_metadata, { role: "admin" }),
               });
-              console.log("[isAdminUser] Auto-fixed role to admin for: " + email);
             } catch (fixErr) {
-              console.log("[isAdminUser] Auto-fix error: " + fixErr);
+              console.error("[isAdminUser] Auto-fix error: " + fixErr);
             }
           }
           return { isAdmin: true, userId: userId, email: email, isMaster: false };
@@ -176,7 +169,7 @@ async function isAdminUser(request: Request): Promise<{ isAdmin: boolean; userId
 
     return { isAdmin: false, userId: userId, email: email, isMaster: false };
   } catch (e) {
-    console.log("[isAdminUser] Error: " + e);
+    console.error("[isAdminUser] Error: " + e);
     return { isAdmin: false, userId: userId, email: null, isMaster: false };
   }
 }
@@ -200,7 +193,7 @@ async function checkAdmin(userId: string): Promise<boolean> {
     }
     return false;
   } catch (e) {
-    console.log("[checkAdmin] Error: " + e);
+    console.error("[checkAdmin] Error: " + e);
     return false;
   }
 }
@@ -238,7 +231,7 @@ app.use("*", async function (c: any, next: any) {
 
 // Global error handler — catches unhandled exceptions without leaking details
 app.onError(function (err: any, c: any) {
-  console.log("[GlobalError] " + c.req.method + " " + c.req.path + ": " + String(err));
+  console.error("[GlobalError] " + c.req.method + " " + c.req.path + ": " + String(err));
   return c.json({ error: "Erro interno do servidor." }, 500);
 });
 
@@ -266,7 +259,7 @@ app.use(
       if (origin.endsWith(".supabase.co")) return origin;
       // Allow any *.figma.site subdomain (production + preview builds)
       if (origin.endsWith(".figma.site")) return origin;
-      console.log("[CORS] Blocked unknown origin: " + origin);
+      console.warn("[CORS] Blocked unknown origin: " + origin);
       return ALLOWED_ORIGINS[0];
     },
     allowHeaders: ["Content-Type", "Authorization", "X-User-Token"],
@@ -381,13 +374,13 @@ function _recordFailedLogin(email: string): void {
   entry.count = entry.count + 1;
   if (entry.count >= LOCKOUT_THRESHOLD_3) {
     entry.lockedUntil = now + LOCKOUT_DURATION_3;
-    console.log("[BruteForce] Email " + key + " locked 60min after " + entry.count + " failures");
+    console.warn("[BruteForce] Email " + key + " locked 60min after " + entry.count + " failures");
   } else if (entry.count >= LOCKOUT_THRESHOLD_2) {
     entry.lockedUntil = now + LOCKOUT_DURATION_2;
-    console.log("[BruteForce] Email " + key + " locked 30min after " + entry.count + " failures");
+    console.warn("[BruteForce] Email " + key + " locked 30min after " + entry.count + " failures");
   } else if (entry.count >= LOCKOUT_THRESHOLD_1) {
     entry.lockedUntil = now + LOCKOUT_DURATION_1;
-    console.log("[BruteForce] Email " + key + " locked 15min after " + entry.count + " failures");
+    console.warn("[BruteForce] Email " + key + " locked 15min after " + entry.count + " failures");
   }
   _failedLoginMap.set(key, entry);
 }
@@ -413,7 +406,7 @@ function _checkAuthRateLimit(c: any, action: string): Response | null {
   var rl = _checkRateLimit(rlKey, maxReqs);
   if (!rl.allowed) {
     var retrySeconds = Math.ceil(rl.retryAfterMs / 1000);
-    console.log("[AuthRateLimit] Blocked " + action + " from IP, retry in " + retrySeconds + "s");
+    console.warn("[AuthRateLimit] Blocked " + action + " from IP, retry in " + retrySeconds + "s");
     return _rl429(c, "Muitas tentativas. Aguarde " + retrySeconds + " segundos antes de tentar novamente.", rl);
   }
   return null;
@@ -475,11 +468,14 @@ async function _findUserByEmail(emailToFind: string): Promise<any | null> {
           }
         }
       }
-      // If the API returned 0 results with valid response, user doesn't exist
-      if (Array.isArray(users)) return null;
+      // If the API returned an explicitly empty array, user doesn't exist
+      // NOTE: GoTrue may ignore the email query param and return unrelated users,
+      // so only trust an empty result — if users were returned but none matched,
+      // fall through to the paginated search below.
+      if (Array.isArray(users) && users.length === 0) return null;
     }
     // Fallback: paginated search (avoids loading all users at once)
-    console.log("[_findUserByEmail] REST email filter unavailable, using paginated fallback");
+    // REST email filter unavailable — using paginated fallback
     var page = 1;
     var perPage = 100;
     var maxPages = 20;
@@ -496,7 +492,7 @@ async function _findUserByEmail(emailToFind: string): Promise<any | null> {
     }
     return null;
   } catch (err) {
-    console.log("[_findUserByEmail] Error: " + err);
+    console.error("[_findUserByEmail] Error: " + err);
     return null;
   }
 }
@@ -518,7 +514,7 @@ async function _listAllAuthUsersPaginated(): Promise<any[]> {
       page++;
     }
   } catch (err) {
-    console.log("[_listAllAuthUsersPaginated] Error at page " + page + ": " + err);
+    console.error("[_listAllAuthUsersPaginated] Error at page " + page + ": " + err);
   }
   return allUsers;
 }
@@ -527,7 +523,7 @@ async function _listAllAuthUsersPaginated(): Promise<any[]> {
 // Safe error helper — logs full error server-side, returns generic msg
 // ═══════════════════════════════════════════════════════════════════════
 function _safeError(prefix: string, e: any): string {
-  console.log("[SafeError] " + prefix + ": " + String(e));
+  console.error("[SafeError] " + prefix + ": " + String(e));
   return prefix;
 }
 
@@ -580,7 +576,7 @@ app.use("*", async function (c: any, next: any) {
   var rlResult = _checkRateLimit(rlKey, RATE_LIMIT_GLOBAL);
   if (!rlResult.allowed) {
     var retrySeconds = Math.ceil(rlResult.retryAfterMs / 1000);
-    console.log("[GlobalRateLimit] BLOCKED IP " + rlKey + " — retry in " + retrySeconds + "s");
+    console.warn("[GlobalRateLimit] BLOCKED IP " + rlKey + " — retry in " + retrySeconds + "s");
     return _rl429(c, "Too many requests. Retry after " + retrySeconds + " seconds.", rlResult);
   }
   await next();
@@ -597,7 +593,7 @@ app.use("*", async function (c: any, next: any) {
   if (contentLength) {
     var len = parseInt(contentLength, 10);
     if (!isNaN(len) && len > MAX_BODY_BYTES) {
-      console.log("[BodySize] BLOCKED: content-length " + len + " exceeds " + MAX_BODY_BYTES);
+      console.warn("[BodySize] BLOCKED: content-length " + len + " exceeds " + MAX_BODY_BYTES);
       return c.json({ error: "Payload too large." }, 413);
     }
   }
@@ -610,7 +606,7 @@ app.use(BASE + "/auth/user/signup", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "auth_signup");
   var rlResult = _checkRateLimit(rlKey, 10);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED signup from " + rlKey);
+    console.warn("[RateLimit] BLOCKED signup from " + rlKey);
     return _rl429(c, "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds.", rlResult);
   }
   return next();
@@ -621,7 +617,7 @@ app.use(BASE + "/auth/user/forgot-password", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "auth_forgot");
   var rlResult = _checkRateLimit(rlKey, 5);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED forgot-password from " + rlKey);
+    console.warn("[RateLimit] BLOCKED forgot-password from " + rlKey);
     return _rl429(c, "Too many requests. Try again in " + Math.ceil(rlResult.retryAfterMs / 1000) + " seconds.", rlResult);
   }
   return next();
@@ -637,7 +633,7 @@ app.use(BASE + "/auth/user/*", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "auth_user");
   var rlResult = _checkRateLimit(rlKey, RATE_LIMIT_AUTH_USER);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED auth/user from " + rlKey);
+    console.warn("[RateLimit] BLOCKED auth/user from " + rlKey);
     return _rl429(c, "Muitas requisições. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
@@ -649,7 +645,7 @@ app.use(BASE + "/paghiper/notification", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "webhook_paghiper");
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED PagHiper webhook from " + rlKey);
+    console.warn("[RateLimit] BLOCKED PagHiper webhook from " + rlKey);
     return _rl429(c, "Too many requests", rlResult);
   }
   return next();
@@ -659,7 +655,7 @@ app.use(BASE + "/mercadopago/webhook", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "webhook_mp");
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED MP webhook from " + rlKey);
+    console.warn("[RateLimit] BLOCKED MP webhook from " + rlKey);
     return _rl429(c, "Too many requests", rlResult);
   }
   return next();
@@ -669,7 +665,7 @@ app.use(BASE + "/safrapay/webhook", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "webhook_safrapay");
   var rlResult = _checkRateLimit(rlKey, 60);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED SafraPay webhook from " + rlKey);
+    console.warn("[RateLimit] BLOCKED SafraPay webhook from " + rlKey);
     return _rl429(c, "Too many requests", rlResult);
   }
   return next();
@@ -681,7 +677,7 @@ app.use(BASE + "/auth/user/login", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "auth_login");
   var rlResult = _checkRateLimit(rlKey, 10);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED login from " + rlKey);
+    console.warn("[RateLimit] BLOCKED login from " + rlKey);
     return _rl429(c, "Muitas tentativas de login. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
@@ -693,7 +689,7 @@ app.use(BASE + "/auth/user/login", async (c: any, next: any) => {
 async function adminGuard(c: any, next: any) {
   var result = await isAdminUser(c.req.raw);
   if (!result.isAdmin) {
-    console.log("[adminGuard] BLOCKED: " + c.req.method + " " + c.req.path + " (userId=" + String(result.userId) + " email=" + String(result.email) + ")");
+    console.warn("[adminGuard] BLOCKED: " + c.req.method + " " + c.req.path + " (userId=" + String(result.userId) + " email=" + String(result.email) + ")");
     return c.json({ error: "Forbidden: admin access required" }, 403);
   }
   await next();
@@ -903,7 +899,7 @@ app.post(BASE + "/captcha/verify", async (c) => {
     }
     return c.json({ ok: true, score: captchaResult.score });
   } catch (e) {
-    console.log("[Captcha] verify endpoint error: " + String(e));
+    console.error("[Captcha] verify endpoint error: " + String(e));
     return c.json({ error: "Erro na verificação de segurança." }, 500);
   }
 });
@@ -923,7 +919,7 @@ app.post(BASE + "/seed", async (c) => {
     const wasSeeded = await seedData();
     return c.json({ seeded: wasSeeded });
   } catch (e) {
-    console.log("Error seeding data:", e);
+    console.error("Error seeding data:", e);
     return c.json({ error: "Erro ao inicializar dados." }, 500);
   }
 });
@@ -940,7 +936,7 @@ app.post(BASE + "/auth/pre-login-check", async (c) => {
     if (rlBlock) return rlBlock;
     var body = await c.req.json();
     if (_checkHoneypot(body)) {
-      console.log("[Honeypot] Bot detected on pre-login-check");
+      console.warn("[Honeypot] Bot detected on pre-login-check");
       return c.json({ ok: true });
     }
     // Input validation
@@ -957,7 +953,7 @@ app.post(BASE + "/auth/pre-login-check", async (c) => {
     var lockout = _checkEmailLockout(email);
     if (lockout.locked) {
       var lockMinutes = Math.ceil(lockout.retryAfterMs / 60000);
-      console.log("[BruteForce] Login blocked for locked email: " + email + " (" + lockMinutes + "min remaining)");
+      console.warn("[BruteForce] Login blocked for locked email: " + email + " (" + lockMinutes + "min remaining)");
       var lockRetrySeconds = Math.ceil(lockout.retryAfterMs / 1000);
       return c.json({
         error: "Conta temporariamente bloqueada por muitas tentativas. Tente novamente em " + lockMinutes + " minutos.",
@@ -970,7 +966,7 @@ app.post(BASE + "/auth/pre-login-check", async (c) => {
     }
     return c.json({ ok: true });
   } catch (e) {
-    console.log("[PreLoginCheck] Error: " + String(e));
+    console.error("[PreLoginCheck] Error: " + String(e));
     return c.json({ ok: true });
   }
 });
@@ -1019,28 +1015,27 @@ app.post(BASE + "/auth/login-result", async (c) => {
             var tokenEmail = (userData.email || "").toLowerCase().trim();
             if (tokenEmail === email) {
               _clearFailedLogin(email);
-              console.log("[LoginResult] Verified success for: " + email + " — cleared failed attempts");
             } else {
-              console.log("[LoginResult] Token email mismatch: " + tokenEmail + " != " + email + " — ignoring clear");
+              console.warn("[LoginResult] Token email mismatch: " + tokenEmail + " != " + email + " — ignoring clear");
             }
           } else {
-            console.log("[LoginResult] Token verification failed (status " + verifyResp.status + ") — ignoring clear for: " + email);
+            console.warn("[LoginResult] Token verification failed (status " + verifyResp.status + ") — ignoring clear for: " + email);
           }
         } catch (verifyErr) {
-          console.log("[LoginResult] Token verification error: " + String(verifyErr) + " — ignoring clear for: " + email);
+          console.error("[LoginResult] Token verification error: " + String(verifyErr) + " — ignoring clear for: " + email);
         }
       } else {
         // No token provided — silently ignore the success claim
-        console.log("[LoginResult] Success claimed without token for: " + email + " — ignoring (no lockout cleared)");
+        console.warn("[LoginResult] Success claimed without token for: " + email + " — ignoring (no lockout cleared)");
       }
     } else {
       _recordFailedLogin(email);
       var lockout = _checkEmailLockout(email);
-      console.log("[LoginResult] Failure for: " + email + " — total attempts: " + lockout.attempts);
+      console.warn("[LoginResult] Failure for: " + email + " — total attempts: " + lockout.attempts);
     }
     return c.json({ ok: true });
   } catch (e) {
-    console.log("[LoginResult] Error: " + String(e));
+    console.error("[LoginResult] Error: " + String(e));
     return c.json({ ok: true });
   }
 });
@@ -1076,7 +1071,7 @@ app.post(BASE + "/signup", async (c) => {
       email_confirm: true,
     });
     if (error) {
-      console.log("Signup error:", error.message);
+      console.error("Signup error:", error.message);
       return c.json({ error: "Erro ao criar usuario." }, 400);
     }
     // Add to admin whitelist
@@ -1084,11 +1079,11 @@ app.post(BASE + "/signup", async (c) => {
     if (!existingAdmins.some(function(e: string) { return e.toLowerCase() === emailLower; })) {
       existingAdmins.push(emailLower);
       await _saveAdminWhitelist(existingAdmins);
-      console.log("[Signup] Added " + email + " to admin whitelist");
+      // Admin added to whitelist
     }
     return c.json({ user: { id: data.user.id, email: data.user.email } }, 201);
   } catch (e) {
-    console.log("Signup exception:", e);
+    console.error("Signup exception:", e);
     return c.json({ error: "Erro interno no signup." }, 500);
   }
 });
@@ -1110,7 +1105,7 @@ app.get(BASE + "/auth/me", async (c) => {
       name: user.user_metadata?.name || "Admin",
     });
   } catch (e) {
-    console.log("Auth/me exception:", e);
+    console.error("Auth/me exception:", e);
     return c.json({ error: _safeError("Erro na verificação de auth", e) }, 500);
   }
 });
@@ -1123,9 +1118,7 @@ app.get(BASE + "/auth/check-admin", async (c) => {
   try {
     var reqUrl = new URL(c.req.raw.url);
     var hasUtParam = !!reqUrl.searchParams.get("_ut");
-    console.log("[check-admin] _ut param present: " + String(hasUtParam));
     var result = await isAdminUser(c.req.raw);
-    console.log("[check-admin] result: isAdmin=" + String(result.isAdmin) + " isMaster=" + String(result.isMaster) + " email=" + String(result.email));
     var permissions: string[] = [];
     if (result.isAdmin && result.email) {
       permissions = await _getAdminPermissions(result.email);
@@ -1138,7 +1131,7 @@ app.get(BASE + "/auth/check-admin", async (c) => {
       noAdminsExist: false
     });
   } catch (e) {
-    console.log("Check-admin error:", e);
+    console.error("Check-admin error:", e);
     return c.json({ isAdmin: false, error: "Erro ao verificar admin.", noAdminsExist: false, isMaster: false, permissions: [] });
   }
 });
@@ -1174,7 +1167,7 @@ app.post(BASE + "/auth/bootstrap-admin", async (c) => {
     // Verify credentials
     var signInResult = await supabaseAnon.auth.signInWithPassword({ email: email, password: password });
     if (signInResult.error) {
-      console.log("[Bootstrap] Auth failed for " + email + ": " + signInResult.error.message);
+      console.warn("[Bootstrap] Auth failed for " + email + ": " + signInResult.error.message);
       return c.json({ error: "Credenciais inválidas." }, 401);
     }
 
@@ -1190,19 +1183,19 @@ app.post(BASE + "/auth/bootstrap-admin", async (c) => {
         user_metadata: Object.assign({}, user.user_metadata, { role: "admin" }),
       });
     } catch (updateErr) {
-      console.log("[Bootstrap] Metadata update error:", updateErr);
+      console.error("[Bootstrap] Metadata update error:", updateErr);
     }
     await kv.set("admin_emails", JSON.stringify([emailLower]));
-    console.log("[Bootstrap] First admin configured: " + emailLower);
+    // First admin configured
 
     // Sign out the server-side anon session (frontend handles its own session)
     try { await supabaseAnon.auth.signOut(); } catch (signOutErr) {
-      console.log("[Bootstrap] Signout cleanup error:", signOutErr);
+      console.error("[Bootstrap] Signout cleanup error:", signOutErr);
     }
 
     return c.json({ ok: true, email: emailLower });
   } catch (e) {
-    console.log("Bootstrap-admin error:", e);
+    console.error("Bootstrap-admin error:", e);
     return c.json({ error: "Erro interno no bootstrap." }, 500);
   }
 });
@@ -1239,11 +1232,11 @@ app.post(BASE + "/auth/claim-admin", async (c) => {
       user_metadata: Object.assign({}, user.user_metadata, { role: "admin" }),
     });
     await kv.set("admin_emails", JSON.stringify([emailLower]));
-    console.log("[ClaimAdmin] First admin claimed by: " + emailLower);
+    // First admin claimed
 
     return c.json({ ok: true, email: emailLower });
   } catch (e) {
-    console.log("Claim-admin error:", e);
+    console.error("Claim-admin error:", e);
     return c.json({ error: "Erro ao ativar admin." }, 500);
   }
 });
@@ -1292,7 +1285,7 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
             });
           }
         } catch (updateErr) {
-          console.log("[AdminWhitelist] Update user metadata error:", updateErr);
+          console.error("[AdminWhitelist] Update user metadata error:", updateErr);
         }
       }
       // Save permissions if provided
@@ -1306,7 +1299,7 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
       await _saveAdminWhitelist(filtered);
       // Clean up permissions
       try { await kv.del("admin_perms:" + emailLower); } catch (delErr) {
-        console.log("[AdminWhitelist] Del perms error:", delErr);
+        console.error("[AdminWhitelist] Del perms error:", delErr);
       }
       // Downgrade user role
       try {
@@ -1317,14 +1310,14 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
           });
         }
       } catch (updateErr2) {
-        console.log("[AdminWhitelist] Downgrade user metadata error:", updateErr2);
+        console.error("[AdminWhitelist] Downgrade user metadata error:", updateErr2);
       }
       return c.json({ ok: true, list: filtered });
     } else {
       return c.json({ error: "Action inválida. Use 'add' ou 'remove'." }, 400);
     }
   } catch (e) {
-    console.log("Admin-whitelist error:", e);
+    console.error("Admin-whitelist error:", e);
     return c.json({ error: "Erro ao gerenciar whitelist." }, 500);
   }
 });
@@ -1349,7 +1342,7 @@ app.get(BASE + "/auth/admin-list", async (c) => {
     }
     return c.json({ admins: admins, allTabs: ALL_ADMIN_TABS });
   } catch (e) {
-    console.log("Admin-list error:", e);
+    console.error("Admin-list error:", e);
     return c.json({ error: "Erro ao buscar lista de admins." }, 500);
   }
 });
@@ -1394,10 +1387,10 @@ app.post(BASE + "/auth/admin-permissions", async (c) => {
     }
 
     await _setAdminPermissions(emailLower, permissions);
-    console.log("[AdminPerms] Updated permissions for " + emailLower + ": " + permissions.join(", "));
+    // Permissions updated + ": " + permissions.join(", "));
     return c.json({ ok: true, email: emailLower, permissions: permissions });
   } catch (e) {
-    console.log("Admin-permissions error:", e);
+    console.error("Admin-permissions error:", e);
     return c.json({ error: "Erro ao atualizar permissoes." }, 500);
   }
 });
@@ -1411,7 +1404,7 @@ app.get(BASE + "/auth/admin-whitelist", async (c) => {
     var list = await _getAdminWhitelist();
     return c.json({ list: list });
   } catch (e) {
-    console.log("Admin-whitelist get error:", e);
+    console.error("Admin-whitelist get error:", e);
     return c.json({ error: "Erro ao buscar whitelist." }, 500);
   }
 });
@@ -1437,7 +1430,7 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     var fpBody = await c.req.json();
     // Honeypot check
     if (_checkHoneypot(fpBody)) {
-      console.log("[Honeypot] Bot detected on forgot-password");
+      console.warn("[Honeypot] Bot detected on forgot-password");
       return c.json({ ok: true, message: "Se este e-mail estiver cadastrado, enviaremos um link de recuperacao." });
     }
     // Input validation via schema
@@ -1452,7 +1445,7 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     }
 
     const recoveryId = crypto.randomUUID();
-    console.log("Forgot-password: sending for:", email, "rid:", recoveryId);
+    // Recovery initiated
 
     // Look up user to get their current last_sign_in_at (efficient single-user lookup)
     let userId: string | null = null;
@@ -1461,9 +1454,9 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
       const user = await _findUserByEmail(email);
       userId = user?.id || null;
       lastSignInBefore = user?.last_sign_in_at || null;
-      console.log("Forgot-password: userId:", userId, "lastSignInBefore:", lastSignInBefore);
+      // User lookup complete
     } catch (lookupErr) {
-      console.log("Forgot-password: user lookup error:", lookupErr);
+      console.error("Forgot-password: user lookup error:", lookupErr);
     }
 
     await kv.set(`recovery:${recoveryId}`, JSON.stringify({
@@ -1481,15 +1474,15 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     });
 
     if (error) {
-      console.log("Forgot-password error:", error.message);
+      console.error("Forgot-password error:", error.message);
     } else {
-      console.log("Forgot-password: email sent, rid:", recoveryId);
+      // Recovery email sent
     }
 
     // Always respond with sent: true (don't reveal if email exists)
     return c.json({ sent: true, recoveryId });
   } catch (e) {
-    console.log("Forgot-password exception:", e);
+    console.error("Forgot-password exception:", e);
     return c.json({ error: "Erro interno ao processar recuperação." }, 500);
   }
 });
@@ -1535,12 +1528,12 @@ app.post(BASE + "/auth/recovery-status", async (c) => {
     try {
       const { data: { user }, error: getErr } = await supabaseAdmin.auth.admin.getUserById(data.userId);
       if (getErr || !user) {
-        console.log("Recovery-status: getUserById error:", getErr?.message);
+        console.error("Recovery-status: getUserById error:", getErr?.message);
         return c.json({ status: "pending" });
       }
 
       const currentSignIn = user.last_sign_in_at;
-      console.log("Recovery-status poll: before=", data.lastSignInBefore, " current=", currentSignIn);
+      // Poll check
 
       // Detect change: either there was no previous sign-in and now there is,
       // or the timestamp has changed
@@ -1549,7 +1542,7 @@ app.post(BASE + "/auth/recovery-status", async (c) => {
         (data.lastSignInBefore && currentSignIn && currentSignIn !== data.lastSignInBefore);
 
       if (changed) {
-        console.log("Recovery-status: link clicked detected! Marking as verified.");
+        // Link clicked, marking verified
         await kv.set("recovery:" + rid, JSON.stringify({
           ...data,
           status: "verified",
@@ -1558,12 +1551,12 @@ app.post(BASE + "/auth/recovery-status", async (c) => {
         return c.json({ status: "verified" });
       }
     } catch (pollErr) {
-      console.log("Recovery-status: poll error:", pollErr);
+      console.error("Recovery-status: poll error:", pollErr);
     }
 
     return c.json({ status: "pending" });
   } catch (e) {
-    console.log("Recovery-status exception:", e);
+    console.error("Recovery-status exception:", e);
     return c.json({ status: "error" });
   }
 });
@@ -1619,17 +1612,17 @@ app.post(BASE + "/auth/reset-password", async (c) => {
     });
 
     if (updateErr) {
-      console.log("Reset-password: updateUserById error:", updateErr.message);
+      console.error("Reset-password: updateUserById error:", updateErr.message);
       return c.json({ error: "Erro ao redefinir senha." }, 500);
     }
 
     // Clean up
     await kv.del("recovery:" + rid);
-    console.log("Reset-password: password updated for userId:", data.userId);
+    // Password reset complete
 
     return c.json({ ok: true });
   } catch (e) {
-    console.log("Reset-password exception:", e);
+    console.error("Reset-password exception:", e);
     return c.json({ error: "Erro interno ao redefinir senha." }, 500);
   }
 });
@@ -1638,6 +1631,214 @@ app.post(BASE + "/auth/reset-password", async (c) => {
 // ─── USER AUTH (public user accounts) ─
 // ═══════════════════════════════��═══════
 
+// ─── CNPJ Lookup via Receita Federal (BrasilAPI) ───
+app.get(BASE + "/auth/cnpj-lookup", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "cnpj_lookup");
+    var rl = _checkRateLimit(rlKey, 10);
+    if (!rl.allowed) {
+      return _rl429(c, "Muitas consultas de CNPJ. Aguarde alguns segundos.", rl);
+    }
+
+    var cnpjRaw = c.req.query("cnpj") || "";
+    var cnpjDigits = cnpjRaw.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14) {
+      return c.json({ error: "CNPJ deve ter 14 dígitos." }, 400);
+    }
+    if (/^(\d)\1{13}$/.test(cnpjDigits)) {
+      return c.json({ error: "CNPJ inválido." }, 400);
+    }
+
+    // Check KV cache first (24h TTL)
+    var cacheKey = "cnpj_cache:" + cnpjDigits;
+    try {
+      var cached = await kv.get(cacheKey);
+      if (cached) {
+        var cachedData = typeof cached === "string" ? JSON.parse(cached) : cached;
+        if (cachedData._ts && (Date.now() - cachedData._ts) < 86400000) {
+          // Cache hit
+          return c.json(cachedData.data);
+        }
+      }
+    } catch (_cacheErr) {
+      // ignore cache errors
+    }
+
+    // Call BrasilAPI
+    // Fetching from BrasilAPI
+    var brasilApiUrl = "https://brasilapi.com.br/api/cnpj/v1/" + cnpjDigits;
+    var brasilResp = await fetch(brasilApiUrl, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!brasilResp.ok) {
+      if (brasilResp.status === 404) {
+        return c.json({ error: "CNPJ não encontrado na Receita Federal.", notFound: true }, 404);
+      }
+      console.error("[CNPJ Lookup] BrasilAPI error: " + brasilResp.status);
+      return c.json({ error: "Erro ao consultar CNPJ na Receita Federal." }, 502);
+    }
+
+    var apiData = await brasilResp.json();
+
+    var situacao = (apiData.descricao_situacao_cadastral || apiData.situacao_cadastral || "").toUpperCase();
+    var ativa = situacao === "ATIVA";
+    var enderecoParts = [];
+    if (apiData.logradouro) enderecoParts.push(apiData.logradouro);
+    if (apiData.numero) enderecoParts.push(apiData.numero);
+    if (apiData.complemento) enderecoParts.push(apiData.complemento);
+    var enderecoLinha2Parts = [];
+    if (apiData.bairro) enderecoLinha2Parts.push(apiData.bairro);
+    if (apiData.municipio) enderecoLinha2Parts.push(apiData.municipio);
+    if (apiData.uf) enderecoLinha2Parts.push(apiData.uf);
+
+    var result = {
+      cnpj: cnpjDigits,
+      razaoSocial: apiData.razao_social || "",
+      nomeFantasia: apiData.nome_fantasia || "",
+      situacao: situacao,
+      ativa: ativa,
+      endereco: enderecoParts.join(", "),
+      bairro: apiData.bairro || "",
+      cidade: apiData.municipio || "",
+      uf: apiData.uf || "",
+      cep: (apiData.cep || "").replace(/\D/g, ""),
+      atividadePrincipal: apiData.cnae_fiscal_descricao || "",
+      dataAbertura: apiData.data_inicio_atividade || "",
+      dataSituacao: apiData.data_situacao_cadastral || "",
+    };
+
+    // Cache in KV (24h)
+    try {
+      await kv.set(cacheKey, JSON.stringify({ _ts: Date.now(), data: result }));
+    } catch (_kvErr) {
+      console.warn("[CNPJ Lookup] Cache write error (non-fatal):", _kvErr);
+    }
+
+    return c.json(result);
+  } catch (e) {
+    console.error("[CNPJ Lookup] Exception:", e);
+    return c.json({ error: _safeError("Erro ao consultar CNPJ", e) }, 500);
+  }
+});
+
+// ─── CNPJ Uniqueness Check ───
+app.get(BASE + "/auth/cnpj-check", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "cnpj_check");
+    var rl = _checkRateLimit(rlKey, 15);
+    if (!rl.allowed) {
+      return _rl429(c, "Muitas verificações de CNPJ. Aguarde alguns segundos.", rl);
+    }
+    var cnpjParam = (c.req.query("cnpj") || "").replace(/\D/g, "");
+    if (!cnpjParam || cnpjParam.length !== 14) {
+      return c.json({ error: "CNPJ invalido." }, 400);
+    }
+    // Optional: exclude a specific userId (for profile update scenario)
+    var excludeUserId = c.req.query("excludeUserId") || "";
+    var profiles = await kv.getByPrefix("user_profile:");
+    var taken = false;
+    if (profiles && profiles.length > 0) {
+      for (var pi = 0; pi < profiles.length; pi++) {
+        try {
+          var p = typeof profiles[pi] === "string" ? JSON.parse(profiles[pi]) : profiles[pi];
+          var existingCnpj = (p.cnpj || "").replace(/\D/g, "");
+          if (existingCnpj === cnpjParam) {
+            if (excludeUserId && p.id === excludeUserId) continue;
+            taken = true;
+            break;
+          }
+        } catch {}
+      }
+    }
+    return c.json({ cnpj: cnpjParam, taken: taken });
+  } catch (e) {
+    console.error("[CNPJ Check] Exception:", e);
+    return c.json({ error: _safeError("Erro ao verificar CNPJ", e) }, 500);
+  }
+});
+
+// ─── Signup Availability Check (email + CPF + CNPJ) ───
+app.post(BASE + "/auth/signup-check", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "signup_check");
+    var rl = _checkRateLimit(rlKey, 20);
+    if (!rl.allowed) {
+      return _rl429(c, "Muitas verificações. Aguarde alguns segundos.", rl);
+    }
+    var body = await c.req.json();
+    var checkEmail = (body.email || "").toLowerCase().trim();
+    var checkCpf = (body.cpf || "").replace(/\D/g, "");
+    var checkCnpj = (body.cnpj || "").replace(/\D/g, "");
+
+    var result: any = { emailTaken: false, cpfTaken: false, cnpjTaken: false, cpfPersonType: null, cnpjPersonType: null };
+
+    // Check email in Supabase Auth
+    if (checkEmail) {
+      try {
+        var existingUser = await _findUserByEmail(checkEmail);
+        if (existingUser) {
+          result.emailTaken = true;
+        }
+      } catch (emailErr) {
+        console.error("[signup-check] Email lookup error:", emailErr);
+      }
+    }
+
+    // Check CPF and CNPJ in user profiles
+    if (checkCpf || checkCnpj) {
+      try {
+        var profiles = await kv.getByPrefix("user_profile:");
+        if (profiles && profiles.length > 0) {
+          for (var si = 0; si < profiles.length; si++) {
+            try {
+              var sp = typeof profiles[si] === "string" ? JSON.parse(profiles[si]) : profiles[si];
+              if (checkCpf && checkCpf.length === 11) {
+                var existCpf = (sp.cpf || "").replace(/\D/g, "");
+                if (existCpf === checkCpf) {
+                  result.cpfTaken = true;
+                  result.cpfPersonType = sp.personType || "pf";
+                  if (sp.email) {
+                    var emailParts = (sp.email || "").split("@");
+                    if (emailParts.length === 2 && emailParts[0].length > 2) {
+                      result.cpfEmail = emailParts[0].slice(0, 2) + "***@" + emailParts[1];
+                    } else {
+                      result.cpfEmail = "***@" + (emailParts[1] || "email.com");
+                    }
+                  }
+                }
+              }
+              if (checkCnpj && checkCnpj.length === 14) {
+                var existCnpjVal = (sp.cnpj || "").replace(/\D/g, "");
+                if (existCnpjVal === checkCnpj) {
+                  result.cnpjTaken = true;
+                  result.cnpjPersonType = sp.personType || "pj";
+                  if (sp.email) {
+                    var cnpjEmailParts = (sp.email || "").split("@");
+                    if (cnpjEmailParts.length === 2 && cnpjEmailParts[0].length > 2) {
+                      result.cnpjEmail = cnpjEmailParts[0].slice(0, 2) + "***@" + cnpjEmailParts[1];
+                    } else {
+                      result.cnpjEmail = "***@" + (cnpjEmailParts[1] || "email.com");
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch (profErr) {
+        console.error("[signup-check] Profile lookup error:", profErr);
+      }
+    }
+
+    return c.json(result);
+  } catch (e) {
+    console.error("[signup-check] Exception:", e);
+    return c.json({ error: _safeError("Erro ao verificar disponibilidade", e) }, 500);
+  }
+});
+
 // Signup for regular site users
 app.post(BASE + "/auth/user/signup", async (c) => {
   try {
@@ -1645,7 +1846,7 @@ app.post(BASE + "/auth/user/signup", async (c) => {
     if (rlBlock) return rlBlock;
     const body = await c.req.json();
     if (_checkHoneypot(body)) {
-      console.log("[Honeypot] Bot detected on user signup");
+      console.warn("[Honeypot] Bot detected on user signup");
       return c.json({ ok: true, message: "Se este e-mail estiver disponível, um link de confirmação será enviado." });
     }
     // Input validation via schema
@@ -1658,6 +1859,10 @@ app.post(BASE + "/auth/user/signup", async (c) => {
     var name = vResult.data.name || "";
     var phone = vResult.data.phone || "";
     var cpf = vResult.data.cpf || "";
+    var personType = vResult.data.personType || "pf";
+    var cnpj = vResult.data.cnpj || "";
+    var razaoSocial = vResult.data.razaoSocial || "";
+    var inscricaoEstadual = vResult.data.inscricaoEstadual || "";
 
     if (!email || !password) {
       return c.json({ error: "Email e senha são obrigatórios." }, 400);
@@ -1668,16 +1873,57 @@ app.post(BASE + "/auth/user/signup", async (c) => {
       return c.json({ error: pwErr }, 400);
     }
 
-    // Check if user already exists (efficient lookup, generic message to prevent email enumeration)
+    // PJ-specific server-side validation
+    if (personType === "pj") {
+      var cnpjDigits = (cnpj || "").replace(/\D/g, "");
+      if (!cnpjDigits || cnpjDigits.length !== 14) {
+        return c.json({ error: "CNPJ é obrigatório para Pessoa Jurídica." }, 400);
+      }
+      if (!razaoSocial || !razaoSocial.trim()) {
+        return c.json({ error: "Razão Social é obrigatória para Pessoa Jurídica." }, 400);
+      }
+      if (razaoSocial.trim().length < 3) {
+        return c.json({ error: "Razão Social deve ter pelo menos 3 caracteres." }, 400);
+      }
+
+      // Validate CNPJ status via Receita Federal (BrasilAPI)
+      try {
+        var brasilUrl = "https://brasilapi.com.br/api/cnpj/v1/" + cnpjDigits;
+        var brasilRes = await fetch(brasilUrl, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (brasilRes.ok) {
+          var brasilData = await brasilRes.json();
+          var situacaoSignup = (brasilData.descricao_situacao_cadastral || brasilData.situacao_cadastral || "").toUpperCase();
+          if (situacaoSignup && situacaoSignup !== "ATIVA") {
+            console.warn("[Signup] CNPJ " + cnpjDigits + " has situacao: " + situacaoSignup + " — blocking signup");
+            return c.json({ error: "Este CNPJ consta como " + situacaoSignup + " na Receita Federal. Não é possível cadastrar empresa com CNPJ inativo." }, 400);
+          }
+          // Auto-correct razaoSocial from Receita if it differs
+          if (brasilData.razao_social) {
+            razaoSocial = brasilData.razao_social;
+          }
+        } else if (brasilRes.status === 404) {
+          console.warn("[Signup] CNPJ " + cnpjDigits + " not found in Receita Federal");
+          return c.json({ error: "CNPJ não encontrado na Receita Federal." }, 400);
+        } else {
+          console.warn("[Signup] BrasilAPI returned status " + brasilRes.status + " for CNPJ " + cnpjDigits + " (non-blocking)");
+        }
+      } catch (brasilErr) {
+        // Non-blocking: if BrasilAPI is down, allow signup but log
+        console.warn("[Signup] BrasilAPI check failed (non-blocking):", brasilErr);
+      }
+    }
+
+    // Check if user already exists by email
     try {
       const existing = await _findUserByEmail(email);
       if (existing) {
-        // Log the real reason server-side, but return generic message
-        console.log("User signup: email already exists: " + email);
-        return c.json({ ok: true, message: "Se este e-mail estiver disponível, um link de confirmação será enviado." });
+        return c.json({ error: "Este email já está cadastrado. Use a opção 'Esqueci minha senha' para recuperar sua conta.", field: "email", recovery: true }, 409);
       }
     } catch (lookupErr) {
-      console.log("User signup: lookup error:", lookupErr);
+      console.error("User signup: lookup error:", lookupErr);
     }
 
     // Check for duplicate CPF across existing user profiles
@@ -1686,20 +1932,53 @@ app.post(BASE + "/auth/user/signup", async (c) => {
         const cpfClean = cpf.replace(/\D/g, "");
         if (cpfClean.length === 11) {
           const profiles = await kv.getByPrefix("user_profile:");
+          var cpfOwnerEmail = "";
           const cpfTaken = profiles?.some((raw: any) => {
             try {
               const p = typeof raw === "string" ? JSON.parse(raw) : raw;
               const existingCpf = (p.cpf || "").replace(/\D/g, "");
-              return existingCpf === cpfClean;
+              if (existingCpf === cpfClean) {
+                if (p.email) {
+                  var eParts = (p.email || "").split("@");
+                  cpfOwnerEmail = eParts.length === 2 && eParts[0].length > 2 ? eParts[0].slice(0, 2) + "***@" + eParts[1] : "***@" + (eParts[1] || "email.com");
+                }
+                return true;
+              }
+              return false;
             } catch { return false; }
           });
           if (cpfTaken) {
-            console.log("User signup: CPF already taken: " + cpfClean);
-            return c.json({ ok: true, message: "Se este e-mail estiver disponível, um link de confirmação será enviado." });
+            var cpfMsg = "Este CPF já está vinculado a outra conta";
+            if (cpfOwnerEmail) cpfMsg = cpfMsg + " (" + cpfOwnerEmail + ")";
+            cpfMsg = cpfMsg + ". Se é sua conta, use 'Esqueci minha senha' para recuperá-la.";
+            return c.json({ error: cpfMsg, field: "cpf", recovery: true }, 409);
           }
         }
       } catch (cpfLookupErr) {
-        console.log("User signup: CPF lookup error:", cpfLookupErr);
+        console.error("User signup: CPF lookup error:", cpfLookupErr);
+      }
+    }
+
+    // Check for duplicate CNPJ across existing user profiles
+    if (cnpj) {
+      try {
+        const cnpjClean = cnpj.replace(/\D/g, "");
+        if (cnpjClean.length === 14) {
+          const profiles = await kv.getByPrefix("user_profile:");
+          const cnpjTaken = profiles?.some((raw: any) => {
+            try {
+              const p = typeof raw === "string" ? JSON.parse(raw) : raw;
+              const existingCnpj = (p.cnpj || "").replace(/\D/g, "");
+              return existingCnpj === cnpjClean;
+            } catch { return false; }
+          });
+          if (cnpjTaken) {
+            console.warn("User signup: CNPJ already taken: " + cnpjClean);
+            return c.json({ error: "Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta." }, 422);
+          }
+        }
+      } catch (cnpjLookupErr) {
+        console.error("User signup: CNPJ lookup error:", cnpjLookupErr);
       }
     }
 
@@ -1712,19 +1991,20 @@ app.post(BASE + "/auth/user/signup", async (c) => {
           name: name || "",
           phone: phone || "",
           role: "user",
+          personType: personType || "pf",
         },
         emailRedirectTo: "https://cafe-puce-47800704.figma.site/conta",
       },
     });
 
     if (error) {
-      console.log("User signup error:", error.message);
+      console.error("User signup error:", error.message);
       // Don't leak specific Supabase error messages to frontend
       return c.json({ error: "Erro ao criar conta. Tente novamente." }, 400);
     }
 
     if (!data.user?.id) {
-      console.log("User signup: no user returned");
+      console.error("User signup: no user returned");
       return c.json({ error: "Erro ao criar conta. Tente novamente." }, 500);
     }
 
@@ -1733,16 +2013,22 @@ app.post(BASE + "/auth/user/signup", async (c) => {
     var randomAvatar = avatarIds[Math.floor(Math.random() * avatarIds.length)];
 
     // Store user profile in KV for additional data
-    const userProfile = {
+    const userProfile: any = {
       id: data.user.id,
       email: data.user.email,
       name: name || "",
       phone: phone || "",
       cpf: cpf || "",
+      personType: personType || "pf",
       avatarId: randomAvatar,
       customAvatarUrl: null,
       created_at: new Date().toISOString(),
     };
+    if (personType === "pj") {
+      userProfile.cnpj = cnpj || "";
+      userProfile.razaoSocial = razaoSocial || "";
+      userProfile.inscricaoEstadual = inscricaoEstadual || "";
+    }
     await kv.set(`user_profile:${data.user.id}`, JSON.stringify(userProfile));
 
     // Auto-sync to SIGE (non-blocking, best-effort)
@@ -1753,13 +2039,15 @@ app.post(BASE + "/auth/user/signup", async (c) => {
       const rawToken = await kv.get("sige_api_token");
       if (rawConfig && rawToken) {
         const cpfClean = (cpf || "").replace(/\D/g, "");
+        const cnpjCleanSige = (cnpj || "").replace(/\D/g, "");
+        var lookupDoc = cnpjCleanSige.length === 14 ? cnpjCleanSige : cpfClean;
 
-        // First, check if customer already exists in SIGE by CPF
+        // First, check if customer already exists in SIGE by CPF/CNPJ
         let existingFound = false;
-        if (cpfClean) {
-          const existing = await findSigeCustomerByCpf(cpfClean);
+        if (lookupDoc) {
+          const existing = await findSigeCustomerByCpf(lookupDoc);
           if (existing.found && existing.sigeCustomerId) {
-            console.log(`User signup: SIGE customer already exists for CPF ${cpfClean}: ${existing.sigeCustomerId}, linking`);
+            // SIGE customer found, linking
             await saveSigeCustomerMapping(data.user.id, existing.sigeCustomerId, existing.customerData, userProfile);
             sigeCustomerId = existing.sigeCustomerId;
             sigeSynced = true;
@@ -1770,7 +2058,7 @@ app.post(BASE + "/auth/user/signup", async (c) => {
         if (!existingFound) {
           // Create new customer using the proper payload builder
           const sigePayload = buildSigeCustomerPayload(userProfile);
-          console.log("User signup: auto-syncing to SIGE...", JSON.stringify(sigePayload));
+          // Auto-syncing to SIGE
           const sigeResult = await sigeAuthFetch("POST", "/customer", sigePayload);
           if (sigeResult.ok) {
             const sigeDados = sigeResult.data?.dados || sigeResult.data?.data || sigeResult.data;
@@ -1779,15 +2067,15 @@ app.post(BASE + "/auth/user/signup", async (c) => {
             if (sigeCustomerId) sigeCustomerId = String(sigeCustomerId);
             await saveSigeCustomerMapping(data.user.id, sigeCustomerId, sigeDados, userProfile);
             sigeSynced = true;
-            console.log(`User signup: SIGE auto-sync SUCCESS -> customer ${sigeCustomerId}`);
+            // SIGE auto-sync success
           } else {
             const errMsg = sigeResult.data?.message || sigeResult.data?.error || "";
-            console.log("User signup: SIGE auto-sync create failed:", sigeResult.status, errMsg);
+            console.warn("User signup: SIGE auto-sync create failed:", sigeResult.status, errMsg);
             // If duplicate CPF error, try linking existing
             if (cpfClean && (errMsg.toLowerCase().includes("cpf") || errMsg.toLowerCase().includes("cadastro"))) {
               const fallback = await findSigeCustomerByCpf(cpfClean);
               if (fallback.found && fallback.sigeCustomerId) {
-                console.log(`User signup: SIGE fallback link to ${fallback.sigeCustomerId}`);
+                // SIGE fallback link
                 await saveSigeCustomerMapping(data.user.id, fallback.sigeCustomerId, fallback.customerData, userProfile);
                 sigeCustomerId = fallback.sigeCustomerId;
                 sigeSynced = true;
@@ -1796,13 +2084,13 @@ app.post(BASE + "/auth/user/signup", async (c) => {
           }
         }
       } else {
-        console.log("User signup: SIGE not configured, skipping auto-sync");
+        // SIGE not configured
       }
     } catch (sigeErr) {
-      console.log("User signup: SIGE auto-sync exception (non-fatal):", sigeErr);
+      console.warn("User signup: SIGE auto-sync exception (non-fatal):", sigeErr);
     }
 
-    console.log("User signup: created user:", data.user.id, email, "- confirmation email sent");
+    // User created, confirmation email sent
     return c.json({
       user: {
         id: data.user.id,
@@ -1814,7 +2102,7 @@ app.post(BASE + "/auth/user/signup", async (c) => {
       sigeCustomerId,
     }, 201);
   } catch (e) {
-    console.log("User signup exception:", e);
+    console.error("User signup exception:", e);
     return c.json({ error: "Erro interno ao criar conta." }, 500);
   }
 });
@@ -1849,9 +2137,9 @@ app.get(BASE + "/auth/user/me", async (c) => {
         profile.email = profile.email || user.email;
         profile.updated_at = new Date().toISOString();
         await kv.set("user_profile:" + userId, JSON.stringify(profile));
-        console.log("Auto-assigned avatar " + profile.avatarId + " to user " + userId);
+        // Avatar auto-assigned
       } catch (_avErr) {
-        console.log("Auto-assign avatar error (non-fatal):", _avErr);
+        console.warn("Auto-assign avatar error (non-fatal):", _avErr);
       }
     }
 
@@ -1862,6 +2150,10 @@ app.get(BASE + "/auth/user/me", async (c) => {
       phone: user.user_metadata?.phone || profile.phone || "",
       role: user.user_metadata?.role || "user",
       cpf: profile.cpf || "",
+      personType: profile.personType || "pf",
+      cnpj: profile.cnpj || "",
+      razaoSocial: profile.razaoSocial || "",
+      inscricaoEstadual: profile.inscricaoEstadual || "",
       address: profile.address || "",
       city: profile.city || "",
       state: profile.state || "",
@@ -1871,7 +2163,7 @@ app.get(BASE + "/auth/user/me", async (c) => {
       created_at: user.created_at,
     });
   } catch (e) {
-    console.log("User me exception:", e);
+    console.error("User me exception:", e);
     return c.json({ error: _safeError("Erro ao buscar perfil", e) }, 500);
   }
 });
@@ -1897,6 +2189,10 @@ app.put(BASE + "/auth/user/profile", async (c) => {
     var city = _maxLen(sanitizeInput(body.city || "").trim(), 100);
     var state = _maxLen(sanitizeInput(body.state || "").trim(), 2);
     var cep = _maxLen(sanitizeInput(body.cep || "").trim(), 10);
+    var profPersonType = profValid.data.personType || body.personType || undefined;
+    var profCnpj = profValid.data.cnpj || _maxLen((body.cnpj || "").trim(), 25);
+    var profRazaoSocial = profValid.data.razaoSocial || _maxLen(sanitizeInput(body.razaoSocial || "").trim(), 200);
+    var profInscricaoEstadual = profValid.data.inscricaoEstadual || _maxLen(sanitizeInput(body.inscricaoEstadual || "").trim(), 30);
 
     // Update user_metadata in Supabase Auth
     const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
@@ -1908,7 +2204,7 @@ app.put(BASE + "/auth/user/profile", async (c) => {
     });
 
     if (updateErr) {
-      console.log("User profile update auth error:", updateErr.message);
+      console.error("User profile update auth error:", updateErr.message);
       return c.json({ error: "Erro ao atualizar perfil." }, 500);
     }
 
@@ -1921,7 +2217,13 @@ app.put(BASE + "/auth/user/profile", async (c) => {
       }
     } catch {}
 
-    const updatedProfile = {
+    // Lock personType: once set at signup, it cannot be changed
+    var lockedPersonType = existing.personType || "pf";
+    if (profPersonType && profPersonType !== lockedPersonType) {
+      return c.json({ error: "O tipo de cadastro (" + (lockedPersonType === "pj" ? "Pessoa Jurídica" : "Pessoa Física") + ") não pode ser alterado. Entre em contato com o suporte se precisar de ajuda." }, 400);
+    }
+
+    const updatedProfile: any = {
       ...existing,
       id: userId,
       name: name || "",
@@ -1931,15 +2233,102 @@ app.put(BASE + "/auth/user/profile", async (c) => {
       city: city || "",
       state: state || "",
       cep: cep || "",
+      personType: lockedPersonType,
       updated_at: new Date().toISOString(),
     };
+    if (lockedPersonType === "pj") {
+      if (profCnpj) updatedProfile.cnpj = profCnpj;
+      if (profRazaoSocial) updatedProfile.razaoSocial = profRazaoSocial;
+      if (profInscricaoEstadual !== undefined) updatedProfile.inscricaoEstadual = profInscricaoEstadual;
+    }
 
-    await kv.set(`user_profile:${userId}`, JSON.stringify(updatedProfile));
-    console.log("User profile updated:", userId);
+    // PJ server-side validation on profile update
+    if (updatedProfile.personType === "pj") {
+      var pjCnpjDigits = (updatedProfile.cnpj || "").replace(/\D/g, "");
+      if (!pjCnpjDigits || pjCnpjDigits.length !== 14) {
+        return c.json({ error: "CNPJ é obrigatório para Pessoa Jurídica." }, 400);
+      }
+      if (!updatedProfile.razaoSocial || !updatedProfile.razaoSocial.trim()) {
+        return c.json({ error: "Razão Social é obrigatória para Pessoa Jurídica." }, 400);
+      }
+      // CNPJ uniqueness check (exclude current user)
+      try {
+        var profilesForCnpj = await kv.getByPrefix("user_profile:");
+        var cnpjAlreadyUsed = false;
+        if (profilesForCnpj && profilesForCnpj.length > 0) {
+          for (var ci = 0; ci < profilesForCnpj.length; ci++) {
+            try {
+              var pp = typeof profilesForCnpj[ci] === "string" ? JSON.parse(profilesForCnpj[ci]) : profilesForCnpj[ci];
+              var ppCnpj = (pp.cnpj || "").replace(/\D/g, "");
+              if (ppCnpj === pjCnpjDigits && pp.id !== userId) {
+                cnpjAlreadyUsed = true;
+                break;
+              }
+            } catch {}
+          }
+        }
+        if (cnpjAlreadyUsed) {
+          console.warn("User profile update: CNPJ already taken by another user: " + pjCnpjDigits);
+          return c.json({ error: "Este CNPJ já está vinculado a outra conta. Cada CNPJ pode ser usado em apenas uma conta." }, 422);
+        }
+      } catch (cnpjCheckErr) {
+        console.warn("User profile update: CNPJ uniqueness check error (non-blocking):", cnpjCheckErr);
+      }
+    }
+
+    await kv.set("user_profile:" + userId, JSON.stringify(updatedProfile));
+    // Profile updated
+
+    // Re-sync to SIGE when profile changes (non-blocking, best-effort)
+    try {
+      var rawSigeConfig = await kv.get("sige_api_config");
+      var rawSigeToken = await kv.get("sige_api_token");
+      if (rawSigeConfig && rawSigeToken) {
+        var existingMapping = await kv.get("sige_customer_map:" + userId);
+        var mappingObj = existingMapping ? (typeof existingMapping === "string" ? JSON.parse(existingMapping) : existingMapping) : null;
+        var sigePayloadUpdate = buildSigeCustomerPayload(updatedProfile);
+
+        if (mappingObj && mappingObj.sigeCustomerId) {
+          // Update existing SIGE customer
+          var sigeUpd = await sigeAuthFetch("PUT", "/customer/" + mappingObj.sigeCustomerId, sigePayloadUpdate);
+          if (sigeUpd.ok) {
+            // SIGE re-sync OK
+            await saveSigeCustomerMapping(userId, mappingObj.sigeCustomerId, sigeUpd.data?.dados || sigeUpd.data, updatedProfile);
+          } else {
+            console.warn("User profile update: SIGE re-sync failed:", sigeUpd.status);
+          }
+        } else {
+          // No existing mapping — try to create
+          var lookupDoc2 = (updatedProfile.personType === "pj" && (updatedProfile.cnpj || "").replace(/\D/g, "").length === 14)
+            ? (updatedProfile.cnpj || "").replace(/\D/g, "")
+            : (updatedProfile.cpf || "").replace(/\D/g, "");
+          if (lookupDoc2) {
+            var existingSige = await findSigeCustomerByCpf(lookupDoc2);
+            if (existingSige.found && existingSige.sigeCustomerId) {
+              await saveSigeCustomerMapping(userId, existingSige.sigeCustomerId, existingSige.customerData, updatedProfile);
+              // SIGE linked existing customer
+            } else {
+              var sigeCreate = await sigeAuthFetch("POST", "/customer", sigePayloadUpdate);
+              if (sigeCreate.ok) {
+                var sigeDadosNew = sigeCreate.data?.dados || sigeCreate.data?.data || sigeCreate.data;
+                var newSigeId = sigeDadosNew?.codCadastro || sigeDadosNew?.id || sigeDadosNew?.codigo || null;
+                if (newSigeId) newSigeId = String(newSigeId);
+                await saveSigeCustomerMapping(userId, newSigeId, sigeDadosNew, updatedProfile);
+                // SIGE created new customer
+              } else {
+                console.warn("User profile update: SIGE create failed:", sigeCreate.status);
+              }
+            }
+          }
+        }
+      }
+    } catch (sigeResyncErr) {
+      console.warn("User profile update: SIGE re-sync exception (non-fatal):", sigeResyncErr);
+    }
 
     return c.json({ ok: true, profile: updatedProfile });
   } catch (e) {
-    console.log("User profile update exception:", e);
+    console.error("User profile update exception:", e);
     return c.json({ error: _safeError("Erro ao atualizar perfil", e) }, 500);
   }
 });
@@ -1982,7 +2371,7 @@ app.put(BASE + "/auth/user/avatar", async (c) => {
     await kv.set("user_profile:" + userId, JSON.stringify(existing));
     return c.json({ ok: true, avatarId: avatarId, customAvatarUrl: null });
   } catch (e) {
-    console.log("User avatar update exception:", e);
+    console.error("User avatar update exception:", e);
     return c.json({ error: "Erro ao atualizar avatar." }, 500);
   }
 });
@@ -2014,7 +2403,7 @@ app.post(BASE + "/auth/user/avatar/upload", async (c) => {
     } catch (_e) {}
     var uploadResult = await supabaseAdmin.storage.from(ASSETS_BUCKET).upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
     if (uploadResult.error) {
-      console.log("User avatar upload error:", uploadResult.error.message);
+      console.error("User avatar upload error:", uploadResult.error.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
     // Generate signed URL
@@ -2032,7 +2421,7 @@ app.post(BASE + "/auth/user/avatar/upload", async (c) => {
     await kv.set("user_profile:" + userId, JSON.stringify(existing));
     return c.json({ ok: true, customAvatarUrl: url, filename: filename });
   } catch (e) {
-    console.log("User avatar upload exception:", e);
+    console.error("User avatar upload exception:", e);
     return c.json({ error: "Erro no upload do avatar." }, 500);
   }
 });
@@ -2058,7 +2447,7 @@ app.delete(BASE + "/auth/user/avatar/custom", async (c) => {
     await kv.set("user_profile:" + userId, JSON.stringify(existing));
     return c.json({ ok: true, avatarId: existing.avatarId || "robot1" });
   } catch (e) {
-    console.log("User avatar delete exception:", e);
+    console.error("User avatar delete exception:", e);
     return c.json({ error: "Erro ao remover avatar." }, 500);
   }
 });
@@ -2100,17 +2489,17 @@ app.get(BASE + "/auth/user/addresses", async (c) => {
             };
             addresses = [migratedAddr];
             await kv.set("user_addresses:" + userId, JSON.stringify(addresses));
-            console.log("Auto-migrated profile address for user:", userId);
+            // Auto-migrated profile address
           }
         }
       } catch (migErr) {
-        console.log("Address migration error (non-fatal):", migErr);
+        console.warn("Address migration error (non-fatal):", migErr);
       }
     }
 
     return c.json({ addresses: addresses });
   } catch (e) {
-    console.log("Get addresses exception:", e);
+    console.error("Get addresses exception:", e);
     return c.json({ error: _safeError("Erro ao buscar endereços", e) }, 500);
   }
 });
@@ -2186,10 +2575,10 @@ app.post(BASE + "/auth/user/addresses", async (c) => {
       await kv.set("user_profile:" + userId, JSON.stringify(prof2));
     } catch {}
 
-    console.log("Address added for user:", userId, newAddr.id);
+    // Address added
     return c.json({ ok: true, address: newAddr, addresses: addresses });
   } catch (e) {
-    console.log("Add address exception:", e);
+    console.error("Add address exception:", e);
     return c.json({ error: _safeError("Erro ao adicionar endereço", e) }, 500);
   }
 });
@@ -2258,10 +2647,10 @@ app.put(BASE + "/auth/user/addresses/:id", async (c) => {
 
     addresses[idx] = updated;
     await kv.set("user_addresses:" + userId, JSON.stringify(addresses));
-    console.log("Address updated for user:", userId, addrId);
+    // Address updated
     return c.json({ ok: true, address: updated, addresses: addresses });
   } catch (e) {
-    console.log("Update address exception:", e);
+    console.error("Update address exception:", e);
     return c.json({ error: _safeError("Erro ao atualizar endereço", e) }, 500);
   }
 });
@@ -2299,10 +2688,10 @@ app.delete(BASE + "/auth/user/addresses/:id", async (c) => {
     }
 
     await kv.set("user_addresses:" + userId, JSON.stringify(filtered));
-    console.log("Address deleted for user:", userId, addrId);
+    // Address deleted
     return c.json({ ok: true, addresses: filtered });
   } catch (e) {
-    console.log("Delete address exception:", e);
+    console.error("Delete address exception:", e);
     return c.json({ error: _safeError("Erro ao remover endereço", e) }, 500);
   }
 });
@@ -2325,7 +2714,7 @@ app.get(BASE + "/auth/user/favorites", async (c) => {
     } catch {}
     return c.json({ favorites: favorites });
   } catch (e) {
-    console.log("Get favorites exception:", e);
+    console.error("Get favorites exception:", e);
     return c.json({ error: _safeError("Erro ao buscar favoritos", e) }, 500);
   }
 });
@@ -2381,10 +2770,10 @@ app.post(BASE + "/auth/user/favorites", async (c) => {
     });
 
     await kv.set("user_favorites:" + userId, JSON.stringify(favorites));
-    console.log("Favorite added for user:", userId, sku);
+    // Favorite added
     return c.json({ ok: true, favorites: favorites });
   } catch (e) {
-    console.log("Add favorite exception:", e);
+    console.error("Add favorite exception:", e);
     return c.json({ error: _safeError("Erro ao adicionar favorito", e) }, 500);
   }
 });
@@ -2413,10 +2802,10 @@ app.delete(BASE + "/auth/user/favorites/:sku", async (c) => {
     }
 
     await kv.set("user_favorites:" + userId, JSON.stringify(filtered));
-    console.log("Favorite removed for user:", userId, sku);
+    // Favorite removed
     return c.json({ ok: true, favorites: filtered });
   } catch (e) {
-    console.log("Remove favorite exception:", e);
+    console.error("Remove favorite exception:", e);
     return c.json({ error: _safeError("Erro ao remover favorito", e) }, 500);
   }
 });
@@ -2459,7 +2848,7 @@ app.post(BASE + "/auth/user/change-password", async (c) => {
       password: currentPassword,
     });
     if (cpwSignInErr) {
-      console.log("User change-password: current password mismatch for " + userId);
+      console.warn("User change-password: current password mismatch for " + userId);
       return c.json({ error: "Senha atual incorreta." }, 403);
     }
 
@@ -2473,14 +2862,14 @@ app.post(BASE + "/auth/user/change-password", async (c) => {
     });
 
     if (updateErr) {
-      console.log("User change-password error:", updateErr.message);
+      console.error("User change-password error:", updateErr.message);
       return c.json({ error: "Erro ao alterar senha." }, 500);
     }
 
-    console.log("User password changed:", userId);
+    // Password changed
     return c.json({ ok: true });
   } catch (e) {
-    console.log("User change-password exception:", e);
+    console.error("User change-password exception:", e);
     return c.json({ error: _safeError("Erro ao alterar senha", e) }, 500);
   }
 });
@@ -2492,7 +2881,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     if (rlBlock) return rlBlock;
     const body = await c.req.json();
     if (_checkHoneypot(body)) {
-      console.log("[Honeypot] Bot detected on user forgot-password");
+      console.warn("[Honeypot] Bot detected on user forgot-password");
       return c.json({ sent: true, recoveryId: "ok" });
     }
     // Input validation
@@ -2507,7 +2896,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     }
 
     const recoveryId = crypto.randomUUID();
-    console.log("User forgot-password: sending for:", email, "rid:", recoveryId);
+    // Recovery initiated
 
     let userId: string | null = null;
     let lastSignInBefore: string | null = null;
@@ -2516,7 +2905,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
       userId = user?.id || null;
       lastSignInBefore = user?.last_sign_in_at || null;
     } catch (lookupErr) {
-      console.log("User forgot-password: user lookup error:", lookupErr);
+      console.error("User forgot-password: user lookup error:", lookupErr);
     }
 
     await kv.set(`recovery:${recoveryId}`, JSON.stringify({
@@ -2533,14 +2922,14 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     });
 
     if (error) {
-      console.log("User forgot-password error:", error.message);
+      console.error("User forgot-password error:", error.message);
     } else {
-      console.log("User forgot-password: email sent, rid:", recoveryId);
+      // Recovery email sent
     }
 
     return c.json({ sent: true, recoveryId });
   } catch (e) {
-    console.log("User forgot-password exception:", e);
+    console.error("User forgot-password exception:", e);
     return c.json({ error: "Erro interno ao processar recuperação." }, 500);
   }
 });
@@ -2577,7 +2966,7 @@ app.get(BASE + "/auth/admin/clients", async (c) => {
     try {
       authUsers = await _listAllAuthUsersPaginated();
     } catch (e) {
-      console.log("Admin clients: listUsers error:", e);
+      console.error("Admin clients: listUsers error:", e);
     }
 
     // Build auth lookup map by id
@@ -2612,10 +3001,10 @@ app.get(BASE + "/auth/admin/clients", async (c) => {
       return db - da;
     });
 
-    console.log("Admin clients: returning", clients.length, "clients");
+    // Returning clients
     return c.json({ clients, total: clients.length });
   } catch (e) {
-    console.log("Admin clients exception:", e);
+    console.error("Admin clients exception:", e);
     return c.json({ error: "Erro ao buscar clientes." }, 500);
   }
 });
@@ -2629,7 +3018,7 @@ app.get(BASE + "/products", async (c) => {
     const products = await kv.getByPrefix("product:");
     return c.json(products);
   } catch (e) {
-    console.log("Error fetching products:", e);
+    console.error("Error fetching products:", e);
     return c.json({ error: "Erro ao buscar produtos." }, 500);
   }
 });
@@ -2644,7 +3033,7 @@ app.get(BASE + "/products/:id", async (c) => {
     }
     return c.json(product);
   } catch (e) {
-    console.log("Error fetching product:", e);
+    console.error("Error fetching product:", e);
     return c.json({ error: "Erro ao buscar produto." }, 500);
   }
 });
@@ -2674,7 +3063,7 @@ app.post(BASE + "/products", async (c) => {
     await kv.set("product:" + id, product);
     return c.json(product, 201);
   } catch (e) {
-    console.log("Error creating product:", e);
+    console.error("Error creating product:", e);
     return c.json({ error: "Erro ao criar produto." }, 500);
   }
 });
@@ -2709,7 +3098,7 @@ app.put(BASE + "/products/:id", async (c) => {
     await kv.set("product:" + id, updated);
     return c.json(updated);
   } catch (e) {
-    console.log("Error updating product:", e);
+    console.error("Error updating product:", e);
     return c.json({ error: "Erro ao atualizar produto." }, 500);
   }
 });
@@ -2721,7 +3110,7 @@ app.delete(BASE + "/products/:id", async (c) => {
     await kv.del(`product:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
-    console.log("Error deleting product:", e);
+    console.error("Error deleting product:", e);
     return c.json({ error: "Erro ao excluir produto." }, 500);
   }
 });
@@ -2735,7 +3124,7 @@ app.get(BASE + "/categories", async (c) => {
     const categories = await kv.getByPrefix("category:");
     return c.json(categories);
   } catch (e) {
-    console.log("Error fetching categories:", e);
+    console.error("Error fetching categories:", e);
     return c.json({ error: "Erro ao buscar categorias." }, 500);
   }
 });
@@ -2765,7 +3154,7 @@ app.post(BASE + "/categories", async (c) => {
     await kv.set("category:" + id, category);
     return c.json(category, 201);
   } catch (e) {
-    console.log("Error creating category:", e);
+    console.error("Error creating category:", e);
     return c.json({ error: "Erro ao criar categoria." }, 500);
   }
 });
@@ -2800,7 +3189,7 @@ app.put(BASE + "/categories/:id", async (c) => {
     await kv.set("category:" + id, updated);
     return c.json(updated);
   } catch (e) {
-    console.log("Error updating category:", e);
+    console.error("Error updating category:", e);
     return c.json({ error: "Erro ao atualizar categoria." }, 500);
   }
 });
@@ -2812,7 +3201,7 @@ app.delete(BASE + "/categories/:id", async (c) => {
     await kv.del(`category:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
-    console.log("Error deleting category:", e);
+    console.error("Error deleting category:", e);
     return c.json({ error: "Erro ao excluir categoria." }, 500);
   }
 });
@@ -2829,7 +3218,7 @@ app.get(BASE + "/category-tree", async (c) => {
     }
     return c.json(tree);
   } catch (e) {
-    console.log("Error fetching category tree:", e);
+    console.error("Error fetching category tree:", e);
     return c.json({ error: "Erro ao buscar arvore de categorias." }, 500);
   }
 });
@@ -2849,7 +3238,7 @@ app.put(BASE + "/category-tree", async (c) => {
     invalidateMetaCache();
     return c.json(body);
   } catch (e) {
-    console.log("Error saving category tree:", e);
+    console.error("Error saving category tree:", e);
     return c.json({ error: "Erro ao salvar arvore de categorias." }, 500);
   }
 });
@@ -2863,7 +3252,7 @@ app.get(BASE + "/messages", async (c) => {
     const messages = await kv.getByPrefix("message:");
     return c.json(messages);
   } catch (e) {
-    console.log("Error fetching messages:", e);
+    console.error("Error fetching messages:", e);
     return c.json({ error: "Erro ao buscar mensagens." }, 500);
   }
 });
@@ -2874,7 +3263,7 @@ app.post(BASE + "/messages", async (c) => {
     if (rlBlock) return rlBlock;
     const body = await c.req.json();
     if (_checkHoneypot(body)) {
-      console.log("[Honeypot] Bot detected on contact form");
+      console.warn("[Honeypot] Bot detected on contact form");
       return c.json({ id: "ok", read: false, date: new Date().toLocaleString("pt-BR") }, 201);
     }
 
@@ -2904,7 +3293,7 @@ app.post(BASE + "/messages", async (c) => {
     await kv.set("message:" + id, message);
     return c.json(message, 201);
   } catch (e) {
-    console.log("Error creating message:", e);
+    console.error("Error creating message:", e);
     return c.json({ error: "Erro ao enviar mensagem." }, 500);
   }
 });
@@ -2936,7 +3325,7 @@ app.put(BASE + "/messages/:id", async (c) => {
     await kv.set("message:" + id, JSON.stringify(msgObj));
     return c.json(msgObj);
   } catch (e) {
-    console.log("Error updating message:", e);
+    console.error("Error updating message:", e);
     return c.json({ error: "Erro ao atualizar mensagem." }, 500);
   }
 });
@@ -2948,7 +3337,7 @@ app.delete(BASE + "/messages/:id", async (c) => {
     await kv.del(`message:${id}`);
     return c.json({ deleted: true });
   } catch (e) {
-    console.log("Error deleting message:", e);
+    console.error("Error deleting message:", e);
     return c.json({ error: "Erro ao excluir mensagem." }, 500);
   }
 });
@@ -2962,7 +3351,7 @@ app.get(BASE + "/settings", async (c) => {
     const settings = await kv.get("settings");
     return c.json(settings || {});
   } catch (e) {
-    console.log("Error fetching settings:", e);
+    console.error("Error fetching settings:", e);
     return c.json({ error: "Erro ao buscar configuracoes." }, 500);
   }
 });
@@ -2981,7 +3370,7 @@ app.put(BASE + "/settings", async (c) => {
     await kv.set("settings", body);
     return c.json(body);
   } catch (e) {
-    console.log("Error updating settings:", e);
+    console.error("Error updating settings:", e);
     return c.json({ error: "Erro ao atualizar configuracoes." }, 500);
   }
 });
@@ -3004,7 +3393,7 @@ app.get(BASE + "/ga4/config", async (c) => {
       trackViewItem: true,
     });
   } catch (e) {
-    console.log("Error fetching GA4 config:", e);
+    console.error("Error fetching GA4 config:", e);
     return c.json({ error: "Erro ao buscar configuracao GA4." }, 500);
   }
 });
@@ -3038,7 +3427,7 @@ app.put(BASE + "/ga4/config", async (c) => {
     invalidateHomepageCache();
     return c.json(ga4Safe);
   } catch (e) {
-    console.log("Error updating GA4 config:", e);
+    console.error("Error updating GA4 config:", e);
     return c.json({ error: "Erro ao atualizar configuracao GA4." }, 500);
   }
 });
@@ -3088,7 +3477,7 @@ async function lookupCep(cep: string): Promise<{ uf: string; localidade: string;
       }
     }
   } catch (e) {
-    console.log("ViaCEP lookup error:", e);
+    console.warn("ViaCEP lookup error:", e);
   }
   // Fallback: BrasilAPI
   try {
@@ -3100,7 +3489,7 @@ async function lookupCep(cep: string): Promise<{ uf: string; localidade: string;
       }
     }
   } catch (e2) {
-    console.log("BrasilAPI lookup error:", e2);
+    console.warn("BrasilAPI lookup error:", e2);
   }
   return null;
 }
@@ -3148,7 +3537,7 @@ app.get(BASE + "/shipping/config", async (c) => {
     const config = await kv.get("shipping_config");
     return c.json(config || DEFAULT_SHIPPING_CONFIG);
   } catch (e) {
-    console.log("Error fetching shipping config:", e);
+    console.error("Error fetching shipping config:", e);
     return c.json({ error: "Erro ao buscar configuracao de frete." }, 500);
   }
 });
@@ -3192,7 +3581,7 @@ app.put(BASE + "/shipping/config", async (c) => {
     await kv.set("shipping_config", cleanConfig);
     return c.json(cleanConfig);
   } catch (e) {
-    console.log("Error saving shipping config:", e);
+    console.error("Error saving shipping config:", e);
     return c.json({ error: "Erro ao salvar configuracao de frete." }, 500);
   }
 });
@@ -3240,7 +3629,7 @@ app.post(BASE + "/shipping/calculate", async (c) => {
       if (fallbackUf) {
         destInfo = { uf: fallbackUf, localidade: "" };
         cepLookupFailed = true;
-        console.log("CEP lookup failed for " + destCep + ", using range fallback UF=" + fallbackUf);
+        // CEP lookup failed, using range fallback
       } else {
         return c.json({ error: "CEP não encontrado. Verifique e tente novamente." }, 400);
       }
@@ -3265,9 +3654,9 @@ app.post(BASE + "/shipping/calculate", async (c) => {
       enrichedItems = enrichResult.enrichedItems;
       totalWeight = enrichResult.totalWeight || (totalItems * defaultWeight);
       enrichmentLog = enrichResult.enrichmentLog;
-      console.log("Shipping enrichment: totalWeight=" + totalWeight + " items=" + JSON.stringify(enrichmentLog.map(function(e: any) { return e.sku + ":" + e.weight + "kg/" + e.source; })));
+      // Shipping enrichment complete
     } catch (e) {
-      console.log("Shipping enrichment error (using defaults):", e);
+      console.warn("Shipping enrichment error (using defaults):", e);
     }
 
     const options: any[] = [];
@@ -3278,7 +3667,7 @@ app.post(BASE + "/shipping/calculate", async (c) => {
         const tableOptions = await lookupFreightTables(destCep, totalWeight, orderValue, config.freeShippingMinValue);
         options.push(...tableOptions);
       } catch (e) {
-        console.log("Table freight lookup error:", e);
+        console.error("Table freight lookup error:", e);
       }
     }
 
@@ -3288,7 +3677,7 @@ app.post(BASE + "/shipping/calculate", async (c) => {
         const apiOptions = await lookupFreightApi(config, destCep, totalWeight, enrichedItems);
         options.push(...apiOptions);
       } catch (e) {
-        console.log("API freight lookup error:", e);
+        console.error("API freight lookup error:", e);
       }
     }
 
@@ -3387,7 +3776,7 @@ app.post(BASE + "/shipping/calculate", async (c) => {
       _enrichment: enrichmentLog,
     });
   } catch (e) {
-    console.log("Error calculating shipping:", e);
+    console.error("Error calculating shipping:", e);
     return c.json({ error: _safeError("Erro ao calcular frete", e) }, 500);
   }
 });
@@ -3403,7 +3792,7 @@ app.get(BASE + "/shipping/cep/:cep", async (c) => {
     }
     return c.json(info);
   } catch (e) {
-    console.log("CEP lookup error:", e);
+    console.error("CEP lookup error:", e);
     return c.json({ error: _safeError("Erro ao consultar CEP", e) }, 500);
   }
 });
@@ -3506,18 +3895,18 @@ app.get(BASE + "/produtos/physical/:sku", async (c) => {
                 if (sigeWeight === 0 && (refBruto > 0 || refLiquido > 0)) {
                   // SIGE reference pesoBruto/pesoLiquido is already in KG
                   sigeWeight = refBruto || refLiquido;
-                  console.log("Physical data: peso via /reference para " + sku + ": pesoBruto=" + refsPhys[rpi].pesoBruto + "kg pesoLiquido=" + refsPhys[rpi].pesoLiquido + "kg");
+                  // peso via /reference found
                 }
                 break;
               }
             }
           } catch (refErrPhys) {
-            console.log("Physical data: reference fetch error for " + sku + ": " + String(refErrPhys));
+            console.warn("Physical data: reference fetch error for " + sku + ": " + String(refErrPhys));
           }
         }
       }
     } catch (e: any) {
-      console.log("Physical fetch SIGE error for " + sku + ": " + e.message);
+      console.error("Physical fetch SIGE error for " + sku + ": " + e.message);
     }
 
     // 3. Try to extract dimensions from product attributes (CSV ficha tecnica)
@@ -3550,7 +3939,7 @@ app.get(BASE + "/produtos/physical/:sku", async (c) => {
       rawAttrs: rawAttrs,
     });
   } catch (e: any) {
-    console.log("GET produto physical error:", e);
+    console.error("GET produto physical error:", e);
     return c.json({ error: "Erro ao buscar dados fisicos do produto." }, 500);
   }
 });
@@ -3589,10 +3978,10 @@ app.put(BASE + "/produtos/physical/:sku", async (c) => {
     // Invalidate in-memory cache so shipping picks up new values
     memClear("_prod_phys_" + sku);
 
-    console.log("Saved physical data for " + sku + ": " + JSON.stringify(data));
+    // Physical data saved
     return c.json({ ok: true, data: data });
   } catch (e: any) {
-    console.log("PUT produto physical error:", e);
+    console.error("PUT produto physical error:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -3658,7 +4047,7 @@ app.get(BASE + "/shipping/debug-product/:sku", async (c) => {
       baseSkuFieldNames: rawProductBase ? Object.keys(rawProductBase) : [],
     });
   } catch (e: any) {
-    console.log("Debug product physical error:", e);
+    console.error("Debug product physical error:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -3722,13 +4111,13 @@ app.post(BASE + "/shipping/tables", async (c) => {
     };
 
     await kv.set(`shipping_table:${tableId}`, table);
-    console.log(`Freight table "${name}" saved with ${validRows.length} rows, id=${tableId}`);
+    // Freight table saved
 
     // Return without rows (lighter response)
     const { rows: _, ...meta } = table;
     return c.json(meta);
   } catch (e) {
-    console.log("Error uploading freight table:", e);
+    console.error("Error uploading freight table:", e);
     return c.json({ error: "Erro ao salvar tabela de frete." }, 500);
   }
 });
@@ -3750,7 +4139,7 @@ app.get(BASE + "/shipping/tables", async (c) => {
 
     return c.json({ tables });
   } catch (e) {
-    console.log("Error listing freight tables:", e);
+    console.error("Error listing freight tables:", e);
     return c.json({ error: "Erro ao listar tabelas de frete." }, 500);
   }
 });
@@ -3767,7 +4156,7 @@ app.get(BASE + "/shipping/tables/:id", async (c) => {
     if (!table) return c.json({ error: "Tabela não encontrada" }, 404);
     return c.json(table);
   } catch (e) {
-    console.log("Error fetching freight table:", e);
+    console.error("Error fetching freight table:", e);
     return c.json({ error: "Erro ao buscar tabela de frete." }, 500);
   }
 });
@@ -3781,10 +4170,10 @@ app.delete(BASE + "/shipping/tables/:id", async (c) => {
     const tableId = (c.req.param("id") || "").substring(0, 100);
     if (!tableId) return c.json({ error: "ID invalido." }, 400);
     await kv.del(`shipping_table:${tableId}`);
-    console.log(`Freight table deleted: ${tableId}`);
+    // Freight table deleted
     return c.json({ ok: true });
   } catch (e) {
-    console.log("Error deleting freight table:", e);
+    console.error("Error deleting freight table:", e);
     return c.json({ error: "Erro ao excluir tabela." }, 500);
   }
 });
@@ -3905,7 +4294,7 @@ async function fetchProductPhysicalData(sku: string, defaultWeight: number): Pro
             _source: "manual",
             _rawFields: {},
           };
-          console.log("Physical data for " + sku + " from KV override: w=" + kvResult.weight + " " + kvResult.length + "x" + kvResult.width + "x" + kvResult.height);
+          // KV override found
           memSet(cacheKey, kvResult, 1800000);
           return kvResult;
         }
@@ -3952,13 +4341,13 @@ async function fetchProductPhysicalData(sku: string, defaultWeight: number): Pro
                   rawFields["pesoBruto_ref"] = refs2[ri2].pesoBruto;
                   rawFields["pesoLiquido_ref"] = refs2[ri2].pesoLiquido;
                   rawFields["ref_unit"] = "kg";
-                  console.log("SIGE peso via /reference para " + sku + ": pesoBruto=" + refs2[ri2].pesoBruto + "kg pesoLiquido=" + refs2[ri2].pesoLiquido + "kg");
+                  // SIGE peso via /reference found
                   break;
                 }
               }
             }
           } catch (refErr2) {
-            console.log("SIGE reference fetch error for " + sku + ": " + String(refErr2));
+            console.warn("SIGE reference fetch error for " + sku + ": " + String(refErr2));
           }
         }
         // Log ALL field names when weight is not found (diagnostic)
@@ -3971,8 +4360,7 @@ async function fetchProductPhysicalData(sku: string, defaultWeight: number): Pro
               numericFields.push(pKeys[nk] + "=" + String(nv));
             }
           }
-          console.log("SIGE peso NAO encontrado para " + sku + ". Campos numericos>0: " + numericFields.join(", ").substring(0, 500));
-          console.log("SIGE todos os campos para " + sku + ": " + pKeys.join(", ").substring(0, 500));
+          // SIGE peso not found for this SKU
         }
       }
     }
@@ -4017,12 +4405,12 @@ async function fetchProductPhysicalData(sku: string, defaultWeight: number): Pro
       _rawFields: rawFields,
     };
 
-    console.log("Physical data for " + sku + ": w=" + result.weight + " " + result.length + "x" + result.width + "x" + result.height + " src=" + srcNote);
+    // Physical data resolved
 
     memSet(cacheKey, result, 1800000);
     return result;
   } catch (e: any) {
-    console.log("Error fetching physical data for " + sku + ": " + e.message);
+    console.error("Error fetching physical data for " + sku + ": " + e.message);
     memSet(cacheKey, defaults, 300000);
     return defaults;
   }
@@ -4195,7 +4583,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           }
         }
       } else {
-        console.log("Melhor Envio API error:", res.status, await res.text().catch(() => ""));
+        console.error("Melhor Envio API error:", res.status, await res.text().catch(() => ""));
       }
     } else if (provider === "frenet") {
       // Frenet API integration
@@ -4235,7 +4623,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           }
         }
       } else {
-        console.log("Frenet API error:", res.status, await res.text().catch(() => ""));
+        console.error("Frenet API error:", res.status, await res.text().catch(() => ""));
       }
     } else if (provider === "sisfrete") {
       // SisFrete Cotacao — supports two modes:
@@ -4272,7 +4660,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           // Check for error
           var errContent = extractXmlTag(block, "erro");
           if (errContent) {
-            console.log("[SisFrete XML] Error in resultado: " + errContent);
+            console.warn("[SisFrete XML] Error in resultado: " + errContent);
             continue;
           }
           var transportadora = extractXmlTag(block, "transportadora") || extractXmlTag(block, "transp_padrao") || "";
@@ -4367,7 +4755,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
             dimensions: { length: 20, height: 10, width: 15, weight: totalWeight },
           });
         }
-        console.log("SisFrete JSON payload: " + JSON.stringify(sisPayload.items.map(function(x: any) { return x.sku + " qty=" + x.quantity + " w=" + x.dimensions.weight + " " + x.dimensions.length + "x" + x.dimensions.width + "x" + x.dimensions.height + " p=" + x.price; })));
+        // SisFrete JSON request prepared
         var sisRes = await fetch(sisUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", "token": apiConfig.apiToken },
@@ -4378,18 +4766,16 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           var sisData = await sisRes.json();
           // Capture SisFrete quotation ID — can be at top-level or per-package
           var sisTopKeys = Object.keys(sisData || {}).join(",");
-          console.log("[SisFrete JSON] Top-level keys=" + sisTopKeys);
           var sisTopQuoteId = String(sisData.id || sisData.quotation_id || sisData.idCotacao || sisData.id_cotacao || sisData.numero_cotacao || sisData.cotacao_id || sisData.numero || "");
-          console.log("[SisFrete JSON] Top-level quoteId=" + sisTopQuoteId);
+          // SisFrete JSON response received
           var packages = sisData.packages || sisData.Packages || [];
           if (Array.isArray(packages)) {
             for (var pi = 0; pi < packages.length; pi++) {
               var pkg = packages[pi];
               var pkgKeys = Object.keys(pkg || {}).join(",");
-              console.log("[SisFrete JSON] Package[" + pi + "] keys=" + pkgKeys);
               var pkgQuoteId = String(pkg.id || pkg.quotation_id || pkg.idCotacao || pkg.id_cotacao || pkg.cotacao_id || pkg.numero || "");
               var resolvedQuoteId = pkgQuoteId || sisTopQuoteId;
-              console.log("[SisFrete JSON] Package[" + pi + "] pkgQuoteId=" + pkgQuoteId + " resolved=" + resolvedQuoteId);
+              // Package quote resolved
               var quots = pkg.quotations || pkg.Quotations || [];
               if (Array.isArray(quots)) {
                 for (var qi = 0; qi < quots.length; qi++) {
@@ -4402,7 +4788,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
                   if (qPrice <= 0 && qDays <= 0) continue;
                   var qName = qTransp ? (qTransp + " - " + qCaption) : ("SisFrete - " + qCaption);
                   var qQuoteId = String(q.id || q.quotation_id || q.idCotacao || q.id_cotacao || q.cotacao_id || q.numero || "") || resolvedQuoteId;
-                  console.log("[SisFrete JSON] Quot[" + qi + "] carrier=" + qTransp + " caption=" + qCaption + " qQuoteId=" + qQuoteId + " keys=" + Object.keys(q || {}).join(","));
+                  // Quotation parsed
                   var optObj: any = {
                     carrierId: "sisfrete_" + pi + "_" + qServiceId,
                     carrierName: qName,
@@ -4427,7 +4813,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           if (sisRes && !sisRes.ok) {
             sisErrText = await sisRes.text().catch(function() { return ""; });
           }
-          console.log("SisFrete JSON mode " + (sisRes.ok ? "returned 0 results" : "error HTTP " + sisRes.status) + ", falling back to XML Web Service. " + sisErrText.slice(0, 300));
+          console.warn("SisFrete JSON mode " + (sisRes.ok ? "returned 0 results" : "error HTTP " + sisRes.status) + ", falling back to XML Web Service");
           // Fallback to XML
           sisMode = "xml_ws";
         }
@@ -4436,19 +4822,19 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
       // ── Mode: XML Web Service (GET) ──
       if (sisMode === "xml_ws") {
         var wsUrl = buildSisfreteWsUrl(sisUrl, apiConfig.apiToken, config.originCep || "", destCep, items, totalWeight, "ws_" + Date.now());
-        console.log("[SisFrete XML WS] GET " + wsUrl.replace(apiConfig.apiToken, "TOKEN***"));
+        // SisFrete XML WS request
         var wsRes = await fetch(wsUrl, {
           method: "GET",
           signal: AbortSignal.timeout(20000),
         });
         var wsText = await wsRes.text();
-        console.log("[SisFrete XML WS] HTTP " + wsRes.status + " length=" + wsText.length + " preview=" + wsText.slice(0, 300));
+        // SisFrete XML WS response received
         if (wsRes.ok && wsText.indexOf("<cotacao>") !== -1) {
           // Extract top-level id_cotacao from <cotacao> block
           var xmlTopQuoteId = extractXmlTag(wsText, "id_cotacao") || extractXmlTag(wsText, "idcotacao") || extractXmlTag(wsText, "numero_cotacao") || "";
-          console.log("[SisFrete XML WS] Top-level quoteId=" + xmlTopQuoteId);
+          // XML quote ID extracted
           var xmlResults = parseSisfreteXml(wsText);
-          console.log("[SisFrete XML WS] Parsed " + xmlResults.length + " resultado(s)");
+          // XML results parsed
           for (var xi = 0; xi < xmlResults.length; xi++) {
             var xr = xmlResults[xi];
             var xName = xr.transportadora ? (xr.transportadora + " - " + xr.servico) : ("SisFrete - " + (xr.servico || xr.transporte || "Frete"));
@@ -4475,7 +4861,7 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
             options.push(xOptObj);
           }
         } else {
-          console.log("[SisFrete XML WS] Error or no <cotacao> found. Status=" + wsRes.status);
+          console.warn("[SisFrete XML WS] Error or no <cotacao> found. Status=" + wsRes.status);
         }
       }
     } else if (provider === "custom") {
@@ -4577,13 +4963,13 @@ async function lookupFreightApi(config: any, destCep: string, totalWeight: numbe
           })
           .filter((o: any) => o.price > 0 || o.deliveryDays > 0);
       } else {
-        console.log("Custom shipping API error:", res.status, await res.text().catch(() => ""));
+        console.error("Custom shipping API error:", res.status, await res.text().catch(() => ""));
       }
     }
 
     return options;
   } catch (e) {
-    console.log("External shipping API error:", e);
+    console.error("External shipping API error:", e);
     return [];
   }
 }
@@ -4793,7 +5179,7 @@ function scoreProduct(
 
 // ═════════════════════════���═════════════════════════════
 // ─── NEW SEARCH ENGINE: Token-AND with accent variants ─
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════���═══════════════════════════════
 
 // Generate targeted accent-insensitive ILIKE patterns for a single token.
 // Returns patterns like *filtro*, *fíltro*, *f_ltro* etc.
@@ -4968,7 +5354,7 @@ app.get(BASE + "/produtos/imagens/:sku", async (c) => {
       });
 
     if (error) {
-      console.log(`Storage list error for SKU "${sku}":`, error.message);
+      console.error("Storage list error for SKU " + sku + ": " + error.message);
       return c.json({ sku, images: [], total: 0, error: "Erro ao listar imagens." });
     }
 
@@ -4990,7 +5376,7 @@ app.get(BASE + "/produtos/imagens/:sku", async (c) => {
 
     return c.json({ sku, images, total: images.length });
   } catch (e) {
-    console.log("Error listing product images:", e);
+    console.error("Error listing product images:", e);
     return c.json({ error: "Erro ao listar imagens.", sku: sku, images: [], total: 0 }, 500);
   }
 });
@@ -5020,7 +5406,7 @@ async function fetchAllDbSkus(): Promise<{ skus: Set<string>; total: number }> {
   const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseKey) {
-    console.log("fetchAllDbSkus: Missing SUPABASE_URL or SUPABASE_ANON_KEY");
+    console.error("fetchAllDbSkus: Missing SUPABASE_URL or SUPABASE_ANON_KEY");
     return { skus: new Set(), total: 0 };
   }
 
@@ -5040,7 +5426,7 @@ async function fetchAllDbSkus(): Promise<{ skus: Set<string>; total: number }> {
   });
 
   if (!firstRes.ok) {
-    console.log(`fetchAllDbSkus: first request failed [${firstRes.status}]`);
+    console.error("fetchAllDbSkus: first request failed [" + firstRes.status + "]");
     return { skus: new Set(), total: 0 };
   }
 
@@ -5055,7 +5441,7 @@ async function fetchAllDbSkus(): Promise<{ skus: Set<string>; total: number }> {
     if (match && match[1] !== "*") total = parseInt(match[1], 10);
   }
 
-  console.log(`fetchAllDbSkus: first page got ${firstData.length} SKUs, total=${total}`);
+  // First page fetched
 
   // If first page got everything, return early
   if (firstData.length >= total) {
@@ -5087,7 +5473,7 @@ async function fetchAllDbSkus(): Promise<{ skus: Set<string>; total: number }> {
     }
   }
 
-  console.log(`fetchAllDbSkus: fetched ${extraCount} more SKUs in ${promises.length} extra pages. Total unique: ${allSkus.size}`);
+  // All DB SKUs fetched
   return { skus: allSkus, total };
 }
 
@@ -5242,11 +5628,11 @@ function parseAtributosCSV(csvText: string): Map<string, Record<string, string |
   // Find SKU column index (case-insensitive)
   const skuIndex = headers.findIndex((h) => h.toLowerCase().replace(/[^a-z]/g, "") === "sku");
   if (skuIndex === -1) {
-    console.log("CSV: SKU column not found in headers:", headers);
+    console.warn("CSV: SKU column not found in headers");
     return result;
   }
 
-  console.log(`CSV parsed: ${lines.length - 1} rows, ${headers.length} columns, delimiter="${delimiter}", SKU col=${skuIndex}`);
+  // CSV parsed
 
   for (let i = 1; i < lines.length; i++) {
     const fields = splitLine(lines[i]);
@@ -5288,7 +5674,7 @@ async function getAtributosMap(): Promise<Map<string, Record<string, string | st
     return atributosCache.data;
   }
 
-  console.log("Fetching sku_atributos_limpo.csv from Supabase Storage (imports bucket)...");
+  // Fetching CSV from Storage
 
   // Generate a signed URL for the CSV file (valid 30 min)
   const { data: signedData, error: signedError } = await supabaseAdmin.storage
@@ -5296,24 +5682,24 @@ async function getAtributosMap(): Promise<Map<string, Record<string, string | st
     .createSignedUrl("sku_atributos_limpo.csv", 1800);
 
   if (signedError || !signedData?.signedUrl) {
-    console.log("Error creating signed URL for CSV:", signedError?.message);
+    console.error("Error creating signed URL for CSV:", signedError?.message);
     throw new Error(`Não foi possível gerar signed URL para o CSV: ${signedError?.message || "URL vazia"}`);
   }
 
-  console.log("Signed URL generated, downloading CSV...");
+  // Downloading CSV
 
   const response = await fetch(signedData.signedUrl);
   if (!response.ok) {
     const errText = await response.text();
-    console.log(`CSV download failed [${response.status}]:`, errText);
+    console.error("CSV download failed [" + response.status + "]: " + errText);
     throw new Error(`Falha ao baixar CSV: HTTP ${response.status}`);
   }
 
   const csvText = await response.text();
-  console.log(`CSV downloaded: ${csvText.length} bytes`);
+  // CSV downloaded
 
   const parsed = parseAtributosCSV(csvText);
-  console.log(`CSV parsed: ${parsed.size} SKUs with attributes`);
+  // CSV attributes cached
 
   atributosCache = { data: parsed, fetchedAt: now };
   return parsed;
@@ -5338,7 +5724,7 @@ app.get(BASE + "/produtos/atributos", async (c) => {
     });
     return c.json({ total: all.length, data: all });
   } catch (e) {
-    console.log("Error fetching product attributes:", e);
+    console.error("Error fetching product attributes:", e);
     return c.json({ error: "Erro ao buscar atributos.", attributes: null, found: false }, 500);
   }
 });
@@ -5522,7 +5908,7 @@ app.post(BASE + "/parse-excel", async (c) => {
     }
 
   } catch (e) {
-    console.log("Error parsing Excel:", e);
+    console.error("Error parsing Excel:", e);
     return c.json({ error: _safeError("Erro ao processar arquivo Excel.", e) }, 500);
   }
 });
@@ -5548,7 +5934,7 @@ app.post(BASE + "/produtos/atributos/upload", async (c) => {
       return c.json({ error: "O arquivo CSV está vazio." }, 400);
     }
 
-    console.log(`CSV upload: ${csvText.length} bytes, filename=${file.name}`);
+    // CSV upload received
 
     // Parse the CSV using the existing parser
     const parsed = parseAtributosCSV(csvText);
@@ -5580,7 +5966,7 @@ app.post(BASE + "/produtos/atributos/upload", async (c) => {
     const bucketExists = buckets?.some((b: { name: string }) => b.name === bucketName);
     if (!bucketExists) {
       await supabaseAdmin.storage.createBucket(bucketName, { public: false });
-      console.log(`Created storage bucket: ${bucketName}`);
+      // Storage bucket created
     }
 
     // Upload (upsert) the CSV file
@@ -5593,13 +5979,13 @@ app.post(BASE + "/produtos/atributos/upload", async (c) => {
       });
 
     if (uploadError) {
-      console.log("Storage upload error:", uploadError.message);
+      console.error("Storage upload error:", uploadError.message);
       return c.json({
         error: `Erro ao salvar CSV no Storage: ${uploadError.message}`,
       }, 500);
     }
 
-    console.log(`CSV uploaded to Storage: ${bucketName}/${fileName}`);
+    // CSV uploaded to Storage
 
     // Invalidate the in-memory cache so next reads pick up new data
     atributosCache = null;
@@ -5627,7 +6013,7 @@ app.post(BASE + "/produtos/atributos/upload", async (c) => {
       },
     });
   } catch (e) {
-    console.log("Error processing CSV upload:", e);
+    console.error("Error processing CSV upload:", e);
     return c.json({ error: "Erro ao processar upload." }, 500);
   }
 });
@@ -5645,14 +6031,14 @@ app.delete(BASE + "/produtos/atributos", async (c) => {
       .remove(["sku_atributos_limpo.csv"]);
 
     if (error) {
-      console.log("Error removing CSV from Storage:", error.message);
+      console.error("Error removing CSV from Storage:", error.message);
       return c.json({ error: "Erro ao remover CSV." }, 500);
     }
 
     atributosCache = null;
     return c.json({ success: true, message: "CSV de atributos removido com sucesso." });
   } catch (e) {
-    console.log("Error deleting attributes CSV:", e);
+    console.error("Error deleting attributes CSV:", e);
     return c.json({ error: "Erro ao remover atributos." }, 500);
   }
 });
@@ -5674,10 +6060,10 @@ app.post(BASE + "/produtos/match-skus", async (c) => {
       return c.json({ error: "Campo 'skus' deve ser um array de strings não vazio." }, 400);
     }
 
-    console.log(`match-skus: Received ${skus.length} SKUs to match`);
+    // match-skus request received
 
     const { skus: dbSkus, total: dbTotal } = await fetchAllDbSkus();
-    console.log(`match-skus: DB has ${dbSkus.size} unique SKUs (total rows: ${dbTotal})`);
+    // DB SKUs loaded
 
     const {
       matched,
@@ -5687,9 +6073,7 @@ app.post(BASE + "/produtos/match-skus", async (c) => {
       matchedAggressive,
     } = matchSkusAgainstDb(skus, dbSkus);
 
-    console.log(
-      `match-skus: Results => matched=${matched.length} (exact=${matchedExact}, norm=${matchedNormalized}, agg=${matchedAggressive}), unmatched=${unmatched.length}`
-    );
+    // match-skus results computed
 
     return c.json({
       totalDb: dbTotal,
@@ -5705,7 +6089,7 @@ app.post(BASE + "/produtos/match-skus", async (c) => {
       },
     });
   } catch (e) {
-    console.log("Error matching SKUs:", e);
+    console.error("Error matching SKUs:", e);
     return c.json({ error: "Erro ao verificar SKUs." }, 500);
   }
 });
@@ -5740,7 +6124,7 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
     const queryStr = `select=sku,titulo&or=(${encodeURIComponent(searchConditions)})&order=titulo.asc`;
     const apiUrl = `${supabaseUrl}/rest/v1/produtos?${queryStr}`;
 
-    console.log(`Autocomplete: q="${query}" | tokens=${queryNorm.split(" ").filter((t: string) => t.length >= 2 && !PT_STOPWORDS.has(t)).join(",")}`);
+    // Autocomplete query received;
 
     const response = await fetch(apiUrl, {
       method: "GET",
@@ -5755,7 +6139,7 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(`Autocomplete Supabase error [${response.status}]: ${errorText}`);
+      console.error("Autocomplete Supabase error [" + response.status + "]: " + errorText);
       return c.json({ error: "Erro na busca.", results: [] }, 502);
     }
 
@@ -5809,7 +6193,7 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
       totalMatches,
     });
   } catch (e) {
-    console.log("Autocomplete error:", e);
+    console.error("Autocomplete error:", e);
     return c.json({ error: "Erro no autocomplete.", results: [] }, 500);
   }
 });
@@ -5913,7 +6297,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
 
       const offset = (page - 1) * limit;
       const apiUrl = `${supabaseUrl}/rest/v1/produtos?${queryStr}`;
-      console.log(`Catalog (no category): Range: ${offset}-${offset + limit - 1}`);
+      // Catalog query (no category)
 
       const response = await fetch(apiUrl, {
         method: "GET",
@@ -5928,7 +6312,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.log("Catalog query error [" + response.status + "]: " + errorText);
+        console.error("Catalog query error [" + response.status + "]: " + errorText);
         return c.json({ error: "Erro ao consultar produtos." }, 502);
       }
 
@@ -5958,7 +6342,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
     const categoryName = findCategoryName(categoryTree, categoriaSlug);
     const categoryBreadcrumb = buildCategoryBreadcrumb(categoryTree, categoriaSlug);
 
-    console.log(`Catalog category: slug="${categoriaSlug}", name="${categoryName}", ${targetSlugs.length} slugs`);
+    // Catalog category query
 
     const allMetas = await getAllProductMetas();
     const matchingSkus: string[] = [];
@@ -5971,7 +6355,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
       }
     });
 
-    console.log(`Category "${categoriaSlug}": ${matchingSkus.length} visible products`);
+    // Category products matched
 
     if (matchingSkus.length === 0) {
       return c.json({
@@ -6007,7 +6391,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log("Catalog category query error [" + response.status + "]: " + errorText);
+      console.error("Catalog category query error [" + response.status + "]: " + errorText);
       return c.json({ error: "Erro ao consultar produtos." }, 502);
     }
 
@@ -6028,7 +6412,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
       categoryBreadcrumb,
     });
   } catch (e) {
-    console.log("Error in catalog endpoint:", e);
+    console.error("Error in catalog endpoint:", e);
 REMOVED - END */
 
 // ═══════════════════════════════════════════════
@@ -6131,7 +6515,7 @@ app.get(BASE + "/produtos/destaques", async (c) => {
 
     return c.json({ data: unique });
   } catch (e) {
-    console.log("Error fetching destaques:", e);
+    console.error("Error fetching destaques:", e);
     return c.json({ error: _safeError("Erro ao buscar destaques", e) }, 500);
   }
 });
@@ -6142,7 +6526,7 @@ app.get(BASE + "/produtos", async (c) => {
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
 
     if (!supabaseUrl || !supabaseKey) {
-      console.log("Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables for produtos endpoint");
+      console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables for produtos endpoint");
       return c.json(
         { error: "Configuração do servidor incompleta: variáveis de ambiente SUPABASE_URL ou SUPABASE_ANON_KEY não encontradas." },
         500
@@ -6173,7 +6557,7 @@ app.get(BASE + "/produtos", async (c) => {
     // ═══════════════════════════════════════════════════════
     var isPriceSort = sortParam === "preco-asc" || sortParam === "preco-desc" || sortParam === "estoque";
     if (isPriceSort && (publicMode === "1" || categoriaSlug)) {
-      console.log("[PriceSort] sort=" + sortParam + " page=" + page + " limit=" + limit + " search=" + (search || "(none)") + " cat=" + (categoriaSlug || "(none)"));
+      // PriceSort request
       var psT0 = Date.now();
 
       // 1. Determine visible SKU set (same logic as normal catalog)
@@ -6226,7 +6610,7 @@ app.get(BASE + "/produtos", async (c) => {
 
       // Fetch ALL rows — use large Range header
       var psApiUrl = supabaseUrl + "/rest/v1/produtos?" + psQueryStr;
-      console.log("[PriceSort] Fetching all matching products...");
+      // PriceSort fetching products
       var psResp = await fetch(psApiUrl, {
         method: "GET",
         headers: {
@@ -6239,7 +6623,7 @@ app.get(BASE + "/produtos", async (c) => {
       });
       if (!psResp.ok) {
         var psErrText = await psResp.text();
-        console.log("[PriceSort] Query error [" + psResp.status + "]: " + psErrText);
+        console.error("[PriceSort] Query error [" + psResp.status + "]: " + psErrText);
         return c.json({ error: "Erro ao consultar produtos: HTTP " + psResp.status }, psResp.status);
       }
       var psAllProducts: Array<{ sku: string; titulo: string }> = await psResp.json();
@@ -6250,7 +6634,7 @@ app.get(BASE + "/produtos", async (c) => {
         var psCRM = psCR.match(/\/(\d+|\*)/);
         if (psCRM && psCRM[1] !== "*") psTotalAll = parseInt(psCRM[1], 10);
       }
-      console.log("[PriceSort] Got " + psAllProducts.length + " products (total=" + psTotalAll + ")");
+      // PriceSort products loaded
 
       // 3. Read ALL cached prices or balances from KV in one query
       if (sortParam === "preco-asc" || sortParam === "preco-desc") {
@@ -6311,7 +6695,7 @@ app.get(BASE + "/produtos", async (c) => {
           psPriceMap[ck] = psCustomMap[ck];
         }
 
-        console.log("[PriceSort] Price map size: " + Object.keys(psPriceMap).length + " | products: " + psAllProducts.length);
+        // PriceSort price map built
 
         // 4. Sort all products by price
         var psNoPrice = sortParam === "preco-asc" ? 999999999 : -1;
@@ -6344,7 +6728,7 @@ app.get(BASE + "/produtos", async (c) => {
           if (!isNaN(bQty)) psBalMap[bSku] = bQty;
         }
 
-        console.log("[PriceSort] Balance map size: " + Object.keys(psBalMap).length);
+        // PriceSort balance map built
 
         psAllProducts.sort(function(a, b) {
           var sa = psBalMap[a.sku] !== undefined ? psBalMap[a.sku] : -1;
@@ -6358,7 +6742,7 @@ app.get(BASE + "/produtos", async (c) => {
       var psSlice = psAllProducts.slice(rangeStart, rangeStart + limit);
       var psTotalPages = Math.ceil(psTotalAll / limit);
 
-      console.log("[PriceSort] Done in " + (Date.now() - psT0) + "ms | returning page " + page + "/" + psTotalPages + " (" + psSlice.length + " items)");
+      // PriceSort complete
 
       return c.json({
         data: psSlice,
@@ -6383,7 +6767,7 @@ app.get(BASE + "/produtos", async (c) => {
         categoryName = findCategoryName(categoryTree, categoriaSlug);
         categoryBreadcrumb = buildCategoryBreadcrumb(categoryTree, categoriaSlug);
 
-        console.log(`Catalog category: slug="${categoriaSlug}", name="${categoryName}", ${targetSlugs.length} slugs`);
+        // Catalog category query
 
         const allMetas = await getAllProductMetas();
         const matchingSkus: string[] = [];
@@ -6396,7 +6780,7 @@ app.get(BASE + "/produtos", async (c) => {
           }
         });
 
-        console.log(`Category "${categoriaSlug}": ${matchingSkus.length} visible products`);
+        // Category products matched
 
         if (matchingSkus.length === 0) {
           return c.json({
@@ -6435,7 +6819,7 @@ app.get(BASE + "/produtos", async (c) => {
       catQueryStr += "&order=" + orderClause;
 
       const catApiUrl = `${supabaseUrl}/rest/v1/produtos?${catQueryStr}`;
-      console.log(`Catalog query | Range: ${rangeStart}-${rangeEnd}`);
+      // Catalog query
 
       const catResponse = await fetch(catApiUrl, {
         method: "GET",
@@ -6450,7 +6834,7 @@ app.get(BASE + "/produtos", async (c) => {
 
       if (!catResponse.ok) {
         const errorText = await catResponse.text();
-        console.log("Catalog query error [" + catResponse.status + "]: " + errorText);
+        console.error("Catalog query error [" + catResponse.status + "]: " + errorText);
         return c.json({ error: "Erro ao consultar produtos." }, 502);
       }
 
@@ -6484,7 +6868,7 @@ app.get(BASE + "/produtos", async (c) => {
 
     const apiUrl = `${supabaseUrl}/rest/v1/produtos?${queryStr}`;
 
-    console.log(`Fetching produtos from: ${apiUrl} | Range: ${rangeStart}-${rangeEnd}`);
+    // Fetching produtos
 
     const response = await fetch(apiUrl, {
       method: "GET",
@@ -6499,7 +6883,7 @@ app.get(BASE + "/produtos", async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(`Supabase REST API error [${response.status}]: ${errorText}`);
+      console.error("Supabase REST API error [" + response.status + "]: " + errorText);
 
       if (response.status === 403 || response.status === 401) {
         return c.json(
@@ -6542,7 +6926,7 @@ app.get(BASE + "/produtos", async (c) => {
       },
     });
   } catch (e) {
-    console.log("Error fetching produtos from Supabase REST API:", e);
+    console.error("Error fetching produtos from Supabase REST API:", e);
     return c.json({ error: _safeError("Erro ao buscar produtos", e) }, 500);
   }
 });
@@ -6559,7 +6943,7 @@ app.get(BASE + "/produtos/meta/:sku", async (c) => {
     const meta = await kv.get(`produto_meta:${sku}`);
     return c.json(meta || { visible: true });
   } catch (e) {
-    console.log("Error fetching product meta:", e);
+    console.error("Error fetching product meta:", e);
     return c.json({ error: "Erro ao buscar metadados." }, 500);
   }
 });
@@ -6583,7 +6967,7 @@ app.put(BASE + "/produtos/meta/:sku", async (c) => {
     invalidateMetaCache();
     return c.json(updated);
   } catch (e) {
-    console.log("Error saving product meta:", e);
+    console.error("Error saving product meta:", e);
     return c.json({ error: "Erro ao salvar metadados." }, 500);
   }
 });
@@ -6613,12 +6997,12 @@ app.put(BASE + "/produtos/:sku/titulo", async (c) => {
       .eq("sku", sku);
 
     if (error) {
-      console.log("Error updating titulo:", error.message);
+      console.error("Error updating titulo:", error.message);
       return c.json({ error: "Erro ao atualizar titulo." }, 500);
     }
     return c.json({ sku, titulo: titulo.trim(), updated: true });
   } catch (e) {
-    console.log("Error updating titulo:", e);
+    console.error("Error updating titulo:", e);
     return c.json({ error: "Erro ao atualizar titulo." }, 500);
   }
 });
@@ -6651,8 +7035,7 @@ app.put(BASE + "/produtos/:sku/rename", async (c) => {
 
     const { error: dbErr } = await supabaseAdmin.from("produtos").update({ sku: trimmed }).eq("sku", oldSku);
     if (dbErr) {
-      console.log("Error renaming SKU in DB:", dbErr.message);
-      console.log("[produtos/rename-sku] DB rename error:", dbErr);
+      console.error("Error renaming SKU in DB:", dbErr.message);
       return c.json({ error: "Erro ao renomear SKU no banco." }, 500);
     }
 
@@ -6663,12 +7046,12 @@ app.put(BASE + "/produtos/:sku/rename", async (c) => {
         await kv.del(`produto_meta:${oldSku}`);
       }
     } catch (e2) {
-      console.log("Note: Could not migrate KV meta during SKU rename:", e2);
+      console.warn("Could not migrate KV meta during SKU rename:", e2);
     }
 
     return c.json({ oldSku, newSku: trimmed, renamed: true });
   } catch (e) {
-    console.log("Error renaming SKU:", e);
+    console.error("Error renaming SKU:", e);
     return c.json({ error: "Erro ao renomear SKU." }, 500);
   }
 });
@@ -6698,7 +7081,7 @@ app.post(BASE + "/produtos/create", async (c) => {
       .insert({ sku: sku.trim(), titulo: titulo.trim() });
 
     if (error) {
-      console.log("Error inserting product:", error.message);
+      console.error("Error inserting product:", error.message);
       return c.json({ error: "Erro ao criar produto." }, 500);
     }
 
@@ -6709,7 +7092,7 @@ app.post(BASE + "/produtos/create", async (c) => {
 
     return c.json({ sku: sku.trim(), titulo: titulo.trim(), created: true }, 201);
   } catch (e) {
-    console.log("Error creating product:", e);
+    console.error("Error creating product:", e);
     return c.json({ error: "Erro ao criar produto." }, 500);
   }
 });
@@ -6723,7 +7106,7 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
     var sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ found: false, reason: "SKU vazio" });
 
-    console.log("[sige-match] Searching SIGE for SKU: " + sku);
+    // sige-match searching
 
     // Strategy 1: exact codProduto match
     var smRes = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(sku) + "&limit=5&offset=1");
@@ -6732,20 +7115,20 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
     // Strategy 2: fallback to base SKU (before last hyphen)
     if (smProds.length === 0 && sku.includes("-")) {
       var smBaseSku = sku.substring(0, sku.lastIndexOf("-"));
-      console.log("[sige-match] Trying base SKU: " + smBaseSku);
+      // Trying base SKU
       smRes = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(smBaseSku) + "&limit=5&offset=1");
       smProds = extractProdsGeneric(smRes.data);
     }
 
     // Strategy 3: search by description
     if (smProds.length === 0) {
-      console.log("[sige-match] Trying descProduto search: " + sku);
+      // Trying descProduto search
       smRes = await sigeAuthFetch("GET", "/product?descProduto=" + encodeURIComponent(sku) + "&limit=5&offset=1");
       smProds = extractProdsGeneric(smRes.data);
     }
 
     if (smProds.length === 0) {
-      console.log("[sige-match] No products found for SKU: " + sku);
+      // No products found
       return c.json({ found: false });
     }
 
@@ -6794,7 +7177,7 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
       });
     }
 
-    console.log("[sige-match] Found product: " + smSigeId + " - " + smTitulo);
+    // sige-match product found
 
     // ─── Fetch balance (stock) from SIGE ───
     var smEstoque = 0;
@@ -6849,12 +7232,12 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
           smDisponivel = smEstoque - smReservado;
           if (smEstoque > 0) smBalSuccess = true;
         }
-        console.log("[sige-match] Balance for " + smSigeId + ": estoque=" + smEstoque + ", reservado=" + smReservado + ", disponivel=" + smDisponivel);
+        // Balance data retrieved
       } else {
-        console.log("[sige-match] Balance fetch returned non-ok for " + smSigeId);
+        console.warn("[sige-match] Balance fetch returned non-ok for " + smSigeId);
       }
     } catch (smBalErr) {
-      console.log("[sige-match] Balance fetch failed (non-fatal): " + String(smBalErr));
+      console.warn("[sige-match] Balance fetch failed (non-fatal): " + String(smBalErr));
     }
 
     // ─── Fetch price list price if product price was 0 ───
@@ -6872,10 +7255,10 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
             var smPlN = parseFloat(String(smPlPrice));
             if (!isNaN(smPlN) && smPlN > 0) { smPreco = smPlN; break; }
           }
-          if (smPreco > 0) console.log("[sige-match] Got price from price-list: " + smPreco);
+          // Price from price-list obtained
         }
       } catch (smPlErr) {
-        console.log("[sige-match] Price list fetch failed (non-fatal): " + String(smPlErr));
+        console.warn("[sige-match] Price list fetch failed (non-fatal): " + String(smPlErr));
       }
     }
 
@@ -6902,7 +7285,7 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
       totalEncontrados: smProds.length,
     });
   } catch (e) {
-    console.log("[sige-match] Error:", e);
+    console.error("[sige-match] Error:", e);
     return c.json({ error: "Erro ao buscar produto." }, 500);
   }
 });
@@ -6918,8 +7301,7 @@ app.delete(BASE + "/produtos/:sku/delete", async (c) => {
 
     const { error: dbErr } = await supabaseAdmin.from("produtos").delete().eq("sku", sku);
     if (dbErr) {
-      console.log("Error deleting product from DB:", dbErr.message);
-      console.log("[produtos/delete] DB delete error:", dbErr);
+      console.error("Error deleting product from DB:", dbErr.message);
       return c.json({ error: "Erro ao excluir do banco." }, 500);
     }
 
@@ -6932,12 +7314,12 @@ app.delete(BASE + "/produtos/:sku/delete", async (c) => {
         await supabaseAdmin.storage.from("produtos").remove(paths);
       }
     } catch (e2) {
-      console.log("Note: Could not clean images for deleted product:", e2);
+      console.warn("Could not clean images for deleted product:", e2);
     }
 
     return c.json({ sku, deleted: true });
   } catch (e) {
-    console.log("Error deleting product:", e);
+    console.error("Error deleting product:", e);
     return c.json({ error: "Erro ao excluir produto." }, 500);
   }
 });
@@ -6969,7 +7351,7 @@ app.post(BASE + "/produtos/imagens/:sku/upload", async (c) => {
     if (file.type && file.type !== "image/webp") {
       // File wasn't converted client-side — accept as-is but log warning
       contentType = file.type;
-      console.log("[upload] WARNING: Non-WebP file uploaded for SKU " + sku + " (" + file.type + "). Frontend should convert to WebP before upload.");
+      console.warn("[upload] Non-WebP file uploaded for SKU " + sku + " (" + file.type + ")");
     }
 
     var filePath = sku + "/" + filename;
@@ -6983,7 +7365,7 @@ app.post(BASE + "/produtos/imagens/:sku/upload", async (c) => {
       });
 
     if (uploadErr) {
-      console.log("Image upload error:", uploadErr.message);
+      console.error("Image upload error:", uploadErr.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
 
@@ -6992,7 +7374,7 @@ app.post(BASE + "/produtos/imagens/:sku/upload", async (c) => {
 
     return c.json({ uploaded: true, path: filePath, url: url, filename: filename });
   } catch (e) {
-    console.log("Error uploading image:", e);
+    console.error("Error uploading image:", e);
     return c.json({ error: "Erro no upload de imagem." }, 500);
   }
 });
@@ -7017,13 +7399,13 @@ app.delete(BASE + "/produtos/imagens/:sku/file", async (c) => {
     const { error } = await supabaseAdmin.storage.from("produtos").remove([filePath]);
 
     if (error) {
-      console.log("Image delete error:", error.message);
+      console.error("Image delete error:", error.message);
       return c.json({ error: "Erro ao excluir imagem." }, 500);
     }
 
     return c.json({ deleted: true, path: filePath });
   } catch (e) {
-    console.log("Error deleting image:", e);
+    console.error("Error deleting image:", e);
     return c.json({ error: "Erro ao excluir imagem." }, 500);
   }
 });
@@ -7047,7 +7429,7 @@ app.post(BASE + "/produtos/meta/bulk", async (c) => {
     }
     return c.json(result);
   } catch (e) {
-    console.log("Error fetching bulk meta:", e);
+    console.error("Error fetching bulk meta:", e);
     return c.json({ error: "Erro ao buscar metadados em lote." }, 500);
   }
 });
@@ -7065,14 +7447,14 @@ const ASSETS_BUCKET = "make-b7b07654-assets";
     const exists = buckets?.some((b: any) => b.name === ASSETS_BUCKET);
     if (!exists) {
       await supabaseAdmin.storage.createBucket(ASSETS_BUCKET, { public: true });
-      console.log(`Created public bucket: ${ASSETS_BUCKET}`);
+      // Assets bucket created
     } else {
       // Force bucket to be public even if it was created private before
       await supabaseAdmin.storage.updateBucket(ASSETS_BUCKET, { public: true });
-      console.log(`Ensured bucket is public: ${ASSETS_BUCKET}`);
+      // Assets bucket ensured public
     }
   } catch (e) {
-    console.log("Error ensuring assets bucket:", e);
+    console.error("Error ensuring assets bucket:", e);
   }
 })();
 
@@ -7090,12 +7472,12 @@ app.get(BASE + "/logo", async (c) => {
         .createSignedUrl(meta.filename, 86400); // 24h
       if (signedData?.signedUrl) url = signedData.signedUrl;
     } catch (_e) {
-      console.log("Signed URL fallback failed for logo, using stored public URL");
+      // Signed URL fallback failed for logo
     }
 
     return c.json({ hasLogo: true, ...meta, url });
   } catch (e) {
-    console.log("Error fetching logo:", e);
+    console.error("Error fetching logo:", e);
     return c.json({ error: "Erro ao buscar logo." }, 500);
   }
 });
@@ -7154,7 +7536,7 @@ app.post(BASE + "/logo/upload", async (c) => {
       });
 
     if (uploadErr) {
-      console.log("Logo upload error:", uploadErr.message);
+      console.error("Logo upload error:", uploadErr.message);
       return c.json({ error: "Erro no upload do logo." }, 500);
     }
 
@@ -7175,7 +7557,7 @@ app.post(BASE + "/logo/upload", async (c) => {
     invalidateHomepageCache();
     return c.json({ uploaded: true, ...logoMeta });
   } catch (e) {
-    console.log("Error uploading logo:", e);
+    console.error("Error uploading logo:", e);
     return c.json({ error: "Erro no upload do logo." }, 500);
   }
 });
@@ -7195,7 +7577,7 @@ app.delete(BASE + "/logo", async (c) => {
     invalidateHomepageCache();
     return c.json({ deleted: true });
   } catch (e) {
-    console.log("Error deleting logo:", e);
+    console.error("Error deleting logo:", e);
     return c.json({ error: "Erro ao excluir logo." }, 500);
   }
 });
@@ -7206,7 +7588,6 @@ app.delete(BASE + "/logo", async (c) => {
 
 // GET /footer-logo — public (with signed URL for robustness)
 app.get(BASE + "/footer-logo", async (c) => {
-  console.log("GET /footer-logo called");
   try {
     const meta: any = await kv.get("site_footer_logo");
     if (!meta || !meta.filename) return c.json({ hasLogo: false, url: null });
@@ -7219,19 +7600,18 @@ app.get(BASE + "/footer-logo", async (c) => {
         .createSignedUrl(meta.filename, 86400); // 24h
       if (signedData?.signedUrl) url = signedData.signedUrl;
     } catch (_e) {
-      console.log("Signed URL fallback failed for footer logo, using stored public URL");
+      // Signed URL fallback failed for footer logo
     }
 
     return c.json({ hasLogo: true, ...meta, url });
   } catch (e: any) {
-    console.log("Error fetching footer logo:", e);
+    console.error("Error fetching footer logo:", e);
     return c.json({ error: "Erro ao buscar logo do rodape." }, 500);
   }
 });
 
 // POST /footer-logo/upload — auth required
 app.post(BASE + "/footer-logo/upload", async (c) => {
-  console.log("POST /footer-logo/upload called");
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
@@ -7269,7 +7649,7 @@ app.post(BASE + "/footer-logo/upload", async (c) => {
       .upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
 
     if (uploadErr) {
-      console.log("Footer logo upload error:", uploadErr.message);
+      console.error("Footer logo upload error:", uploadErr.message);
       return c.json({ error: "Erro no upload do footer logo." }, 500);
     }
 
@@ -7284,14 +7664,13 @@ app.post(BASE + "/footer-logo/upload", async (c) => {
     invalidateHomepageCache();
     return c.json({ uploaded: true, ...logoMeta });
   } catch (e: any) {
-    console.log("Error uploading footer logo:", e);
+    console.error("Error uploading footer logo:", e);
     return c.json({ error: "Erro no upload do logo do rodape." }, 500);
   }
 });
 
 // DELETE /footer-logo — auth required
 app.delete(BASE + "/footer-logo", async (c) => {
-  console.log("DELETE /footer-logo called");
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
@@ -7304,7 +7683,7 @@ app.delete(BASE + "/footer-logo", async (c) => {
     invalidateHomepageCache();
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("Error deleting footer logo:", e);
+    console.error("Error deleting footer logo:", e);
     return c.json({ error: "Erro ao excluir logo do rodape." }, 500);
   }
 });
@@ -7323,11 +7702,11 @@ app.get(BASE + "/favicon", async (c) => {
       var signResult = await supabaseAdmin.storage.from(ASSETS_BUCKET).createSignedUrl(meta.filename, 86400);
       if (signResult.data && signResult.data.signedUrl) url = signResult.data.signedUrl;
     } catch (_e) {
-      console.log("Signed URL fallback failed for favicon");
+      // Signed URL fallback failed for favicon
     }
     return c.json({ hasFavicon: true, url: url, filename: meta.filename, contentType: meta.contentType, size: meta.size, uploadedAt: meta.uploadedAt });
   } catch (e: any) {
-    console.log("Error fetching favicon:", e);
+    console.error("Error fetching favicon:", e);
     return c.json({ error: "Erro ao buscar favicon." }, 500);
   }
 });
@@ -7361,7 +7740,7 @@ app.post(BASE + "/favicon/upload", async (c) => {
     } catch (_e) { /* ignore */ }
     var uploadResult = await supabaseAdmin.storage.from(ASSETS_BUCKET).upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
     if (uploadResult.error) {
-      console.log("Favicon upload error:", uploadResult.error.message);
+      console.error("Favicon upload error:", uploadResult.error.message);
       return c.json({ error: "Erro no upload do favicon." }, 500);
     }
     var supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -7373,7 +7752,7 @@ app.post(BASE + "/favicon/upload", async (c) => {
     await kv.set("site_favicon", faviconMeta);
     return c.json({ uploaded: true, url: url, filename: filename, contentType: file.type, size: file.size, uploadedAt: faviconMeta.uploadedAt });
   } catch (e: any) {
-    console.log("Error uploading favicon:", e);
+    console.error("Error uploading favicon:", e);
     return c.json({ error: "Erro no upload do favicon." }, 500);
   }
 });
@@ -7390,7 +7769,7 @@ app.delete(BASE + "/favicon", async (c) => {
     await kv.del("site_favicon");
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("Error deleting favicon:", e);
+    console.error("Error deleting favicon:", e);
     return c.json({ error: "Erro ao excluir favicon." }, 500);
   }
 });
@@ -7426,7 +7805,7 @@ app.get(BASE + "/banners", async (c) => {
 
     return c.json({ banners });
   } catch (e: any) {
-    console.log("Error fetching banners:", e);
+    console.error("Error fetching banners:", e);
     return c.json({ error: "Erro ao buscar banners." }, 500);
   }
 });
@@ -7461,7 +7840,7 @@ app.get(BASE + "/admin/banners", async (c) => {
 
     return c.json({ banners });
   } catch (e: any) {
-    console.log("Error fetching admin banners:", e);
+    console.error("Error fetching admin banners:", e);
     return c.json({ error: "Erro ao buscar banners." }, 500);
   }
 });
@@ -7505,7 +7884,7 @@ app.post(BASE + "/admin/banners", async (c) => {
       .upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
 
     if (uploadErr) {
-      console.log("Banner upload error:", uploadErr.message);
+      console.error("Banner upload error:", uploadErr.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
 
@@ -7530,12 +7909,12 @@ app.post(BASE + "/admin/banners", async (c) => {
     };
 
     await kv.set("banner:" + bannerId, JSON.stringify(banner));
-    console.log("Banner created: " + bannerId);
+    // Banner created
 
     invalidateHomepageCache();
     return c.json({ created: true, banner });
   } catch (e: any) {
-    console.log("Error creating banner:", e);
+    console.error("Error creating banner:", e);
     return c.json({ error: "Erro ao criar banner." }, 500);
   }
 });
@@ -7592,7 +7971,7 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
           .upload(newFilename, ab, { contentType: file.type, upsert: true });
 
         if (uploadErr) {
-          console.log("Banner update upload error:", uploadErr.message);
+          console.error("Banner update upload error:", uploadErr.message);
           return c.json({ error: "Erro no upload da imagem." }, 500);
         }
 
@@ -7625,12 +8004,12 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
 
     banner.updatedAt = new Date().toISOString();
     await kv.set("banner:" + bannerId, JSON.stringify(banner));
-    console.log("Banner updated: " + bannerId);
+    // Banner updated
 
     invalidateHomepageCache();
     return c.json({ updated: true, banner });
   } catch (e: any) {
-    console.log("Error updating banner:", e);
+    console.error("Error updating banner:", e);
     return c.json({ error: "Erro ao atualizar banner." }, 500);
   }
 });
@@ -7653,12 +8032,12 @@ app.delete(BASE + "/admin/banners/:id", async (c) => {
     }
 
     await kv.del("banner:" + bannerId);
-    console.log("Banner deleted: " + bannerId);
+    // Banner deleted
 
     invalidateHomepageCache();
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("Error deleting banner:", e);
+    console.error("Error deleting banner:", e);
     return c.json({ error: "Erro ao excluir banner." }, 500);
   }
 });
@@ -7689,11 +8068,11 @@ app.put(BASE + "/admin/banners-reorder", async (c) => {
       }
     }
 
-    console.log("Banners reordered: " + orderedIds.length + " items");
+    // Banners reordered
     invalidateHomepageCache();
     return c.json({ reordered: true, count: orderedIds.length });
   } catch (e: any) {
-    console.log("Error reordering banners:", e);
+    console.error("Error reordering banners:", e);
     return c.json({ error: "Erro ao reordenar banners." }, 500);
   }
 });
@@ -7734,10 +8113,10 @@ app.post(BASE + "/sige/save-config", async (c) => {
       updatedAt: new Date().toISOString(), updatedBy: userId,
     }));
     memClear("_sige_config");
-    console.log("SIGE save-config: saved for user", userId, "baseUrl:", normalizedUrl);
+    // SIGE config saved
     return c.json({ success: true });
   } catch (e) {
-    console.log("Error saving SIGE config:", e);
+    console.error("Error saving SIGE config:", e);
     return c.json({ error: "Erro ao salvar configuracao." }, 500);
   }
 });
@@ -7755,7 +8134,7 @@ app.get(BASE + "/sige/config", async (c) => {
       hasPassword: !!config.password, updatedAt: config.updatedAt || null,
     });
   } catch (e) {
-    console.log("Error getting SIGE config:", e);
+    console.error("Error getting SIGE config:", e);
     return c.json({ error: "Erro ao buscar configuracao." }, 500);
   }
 });
@@ -7771,15 +8150,15 @@ app.post(BASE + "/sige/connect", async (c) => {
     if (!config.baseUrl || !config.email || !config.password) {
       return c.json({ error: "Configuracao incompleta. Preencha URL base, email e senha." }, 400);
     }
-    const authUrl = `${config.baseUrl}/auth`;
-    console.log(`SIGE connect: POST ${authUrl} for ${config.email}`);
+    const authUrl = config.baseUrl + "/auth";
+    // SIGE connect request
     const response = await fetch(authUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: config.email, password: config.password }),
     });
     const responseText = await response.text();
-    console.log(`SIGE connect: HTTP ${response.status}, body length: ${responseText.length}`);
+    // SIGE connect response received
     if (!response.ok) {
       let errorMsg = `SIGE retornou HTTP ${response.status}`;
       try {
@@ -7787,7 +8166,7 @@ app.post(BASE + "/sige/connect", async (c) => {
         if (errData.message) errorMsg = errData.message;
         else if (errData.error) errorMsg = errData.error;
       } catch {}
-      console.log(`SIGE connect: error — ${errorMsg}`);
+      console.error("SIGE connect error: " + errorMsg);
       return c.json({ error: errorMsg, httpStatus: response.status }, 502);
     }
     let authData: any;
@@ -7803,14 +8182,14 @@ app.post(BASE + "/sige/connect", async (c) => {
     };
     await kv.set("sige_api_token", JSON.stringify(tokenData));
     memClear("_sige_token");
-    console.log("SIGE connect: token stored, expires at", tokenData.expiresAt);
+    // SIGE token stored
     return c.json({
       connected: true, hasToken: !!tokenData.token,
       hasRefreshToken: !!tokenData.refreshToken,
       expiresAt: tokenData.expiresAt, responseKeys: Object.keys(authData),
     });
   } catch (e) {
-    console.log("SIGE connect exception:", e);
+    console.error("SIGE connect exception:", e);
     return c.json({ error: "Erro ao conectar com SIGE." }, 500);
   }
 });
@@ -7829,15 +8208,15 @@ app.post(BASE + "/sige/refresh-token", async (c) => {
     if (!tokenData.refreshToken) {
       return c.json({ error: "Refresh token não disponível. Faça login novamente." }, 400);
     }
-    const refreshUrl = `${config.baseUrl}/auth/refresh`;
-    console.log(`SIGE refresh-token: POST ${refreshUrl}`);
+    const refreshUrl = config.baseUrl + "/auth/refresh";
+    // SIGE refresh-token request
     const response = await fetch(refreshUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken: tokenData.refreshToken }),
     });
     const responseText = await response.text();
-    console.log(`SIGE refresh-token: HTTP ${response.status}`);
+    // SIGE refresh-token response received
     if (!response.ok) {
       let errorMsg = `SIGE retornou HTTP ${response.status}`;
       try {
@@ -7860,10 +8239,10 @@ app.post(BASE + "/sige/refresh-token", async (c) => {
     };
     await kv.set("sige_api_token", JSON.stringify(newTokenData));
     memClear("_sige_token");
-    console.log("SIGE refresh-token: new token stored, expires at", newTokenData.expiresAt);
+    // SIGE token refreshed
     return c.json({ refreshed: true, hasToken: !!newTokenData.token, expiresAt: newTokenData.expiresAt });
   } catch (e) {
-    console.log("SIGE refresh-token exception:", e);
+    console.error("SIGE refresh-token exception:", e);
     return c.json({ error: "Erro ao renovar token." }, 500);
   }
 });
@@ -7902,7 +8281,7 @@ app.get(BASE + "/sige/status", async (c) => {
     }
     return c.json({ configured: hasConfig, ...configInfo, ...tokenInfo });
   } catch (e) {
-    console.log("SIGE status exception:", e);
+    console.error("SIGE status exception:", e);
     return c.json({ error: "Erro ao buscar status." }, 500);
   }
 });
@@ -7913,10 +8292,10 @@ app.post(BASE + "/sige/disconnect", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     await kv.del("sige_api_token");
-    console.log("SIGE disconnect: token cleared by user", userId);
+    // SIGE disconnected
     return c.json({ disconnected: true });
   } catch (e) {
-    console.log("SIGE disconnect exception:", e);
+    console.error("SIGE disconnect exception:", e);
     return c.json({ error: "Erro ao desconectar." }, 500);
   }
 });
@@ -7935,7 +8314,7 @@ function parseJwtExpiration(token: string): string | null {
     }
     return null;
   } catch (e) {
-    console.log("parseJwtExpiration: failed to decode JWT", e);
+    // JWT decode failed
     return null;
   }
 }
@@ -7944,12 +8323,12 @@ function parseJwtExpiration(token: string): string | null {
 function computeTokenExpiry(token: string): string {
   const jwtExpiry = parseJwtExpiration(token);
   if (jwtExpiry) {
-    console.log(`SIGE token: real JWT expiration detected: ${jwtExpiry}`);
+    // JWT expiration detected
     return jwtExpiry;
   }
   // Fallback: 7 days (generous — auto-relogin via 401 will handle actual expiry)
   const fallback = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  console.log(`SIGE token: no exp in JWT, using 7-day fallback: ${fallback}`);
+  // Using 7-day fallback
   return fallback;
 }
 
@@ -7957,41 +8336,107 @@ function computeTokenExpiry(token: string): string {
 const PROACTIVE_RENEWAL_BUFFER_MS = 15 * 60 * 1000;
 
 // ─── Helper: re-authenticate with SIGE using stored credentials ───
+// Includes retry with backoff for transient errors (502/503/504/429)
+// and a mutex + cooldown to prevent concurrent relogin stampede.
+var _sigeReLoginPromise: Promise<string | null> | null = null;
+var _sigeReLoginCooldownUntil = 0;
+var _SIGE_RELOGIN_COOLDOWN_MS = 10000; // 10s cooldown after failed relogin (was 30s — too aggressive, blocked recovery)
+
 async function sigeReLogin(): Promise<string | null> {
+  // Cooldown: if we recently failed, don't hammer the auth endpoint
+  if (Date.now() < _sigeReLoginCooldownUntil) {
+    console.warn("SIGE auto-relogin: in cooldown for " + Math.round((_sigeReLoginCooldownUntil - Date.now()) / 1000) + "s, skipping");
+    return null;
+  }
+  // Mutex: if a relogin is already in progress, piggyback on it
+  if (_sigeReLoginPromise) {
+    return _sigeReLoginPromise;
+  }
+  _sigeReLoginPromise = _sigeReLoginInner();
+  try {
+    return await _sigeReLoginPromise;
+  } finally {
+    _sigeReLoginPromise = null;
+  }
+}
+
+async function _sigeReLoginInner(): Promise<string | null> {
   try {
     const rawConfig = await kv.get("sige_api_config");
     if (!rawConfig) return null;
     const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
     if (!config.baseUrl || !config.email || !config.password) return null;
-    const authUrl = `${config.baseUrl}/auth`;
-    console.log(`SIGE auto-relogin: POST ${authUrl} for ${config.email}`);
-    const response = await fetch(authUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: config.email, password: config.password }),
-    });
-    if (!response.ok) {
-      console.log(`SIGE auto-relogin: FAILED HTTP ${response.status}`);
-      return null;
+    const authUrl = config.baseUrl + "/auth";
+
+    // Retry up to 3 times for transient errors (502/503/504/429)
+    var RELOGIN_MAX_RETRIES = 3;
+    var RELOGIN_RETRY_STATUSES = new Set([429, 502, 503, 504]);
+    var reloginTimer: any;
+
+    for (var attempt = 0; attempt <= RELOGIN_MAX_RETRIES; attempt++) {
+      try {
+        var reloginAc = new AbortController();
+        reloginTimer = setTimeout(function () { reloginAc.abort(); }, 12000);
+        var response = await fetch(authUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: config.email, password: config.password }),
+          signal: reloginAc.signal,
+        });
+        clearTimeout(reloginTimer);
+
+        if (response.ok) {
+          var responseText = await response.text();
+          var authData: any;
+          try { authData = JSON.parse(responseText); } catch { return null; }
+          var newToken = authData.token || authData.access_token || authData.accessToken || "";
+          if (!newToken) return null;
+          var newTokenData = {
+            token: newToken,
+            refreshToken: authData.refreshToken || authData.refresh_token || "",
+            createdAt: new Date().toISOString(),
+            expiresAt: computeTokenExpiry(newToken),
+            rawResponse: authData,
+          };
+          await kv.set("sige_api_token", JSON.stringify(newTokenData));
+          memClear("_sige_token");
+          _sigeReLoginCooldownUntil = 0;
+          return newToken;
+        }
+
+        // Transient error — retry with backoff
+        if (RELOGIN_RETRY_STATUSES.has(response.status) && attempt < RELOGIN_MAX_RETRIES) {
+          var backoff = 1500 * Math.pow(2, attempt) + Math.random() * 500;
+          console.warn("SIGE auto-relogin HTTP " + response.status + ", retry " + (attempt + 1) + "/" + RELOGIN_MAX_RETRIES + " (backoff " + Math.round(backoff) + "ms)");
+          await new Promise(function (r) { setTimeout(r, backoff); });
+          continue;
+        }
+
+        // Non-transient error or exhausted retries
+        console.error("SIGE auto-relogin failed HTTP " + response.status + " after " + (attempt + 1) + " attempt(s)");
+        _sigeReLoginCooldownUntil = Date.now() + _SIGE_RELOGIN_COOLDOWN_MS;
+        return null;
+      } catch (fetchErr: any) {
+        clearTimeout(reloginTimer);
+        if (fetchErr.name === "AbortError") {
+          console.warn("SIGE auto-relogin timeout (12s) on attempt " + (attempt + 1));
+        } else {
+          console.warn("SIGE auto-relogin fetch error on attempt " + (attempt + 1) + ": " + (fetchErr.message || fetchErr));
+        }
+        if (attempt < RELOGIN_MAX_RETRIES) {
+          var netBackoff = 2000 * Math.pow(2, attempt);
+          await new Promise(function (r) { setTimeout(r, netBackoff); });
+          continue;
+        }
+        _sigeReLoginCooldownUntil = Date.now() + _SIGE_RELOGIN_COOLDOWN_MS;
+        return null;
+      }
     }
-    const responseText = await response.text();
-    let authData: any;
-    try { authData = JSON.parse(responseText); } catch { return null; }
-    const newToken = authData.token || authData.access_token || authData.accessToken || "";
-    if (!newToken) return null;
-    const newTokenData = {
-      token: newToken,
-      refreshToken: authData.refreshToken || authData.refresh_token || "",
-      createdAt: new Date().toISOString(),
-      expiresAt: computeTokenExpiry(newToken),
-      rawResponse: authData,
-    };
-    await kv.set("sige_api_token", JSON.stringify(newTokenData));
-    memClear("_sige_token");
-    console.log(`SIGE auto-relogin: SUCCESS, new token stored, expires ${newTokenData.expiresAt}`);
-    return newToken;
+    _sigeReLoginCooldownUntil = Date.now() + _SIGE_RELOGIN_COOLDOWN_MS;
+    return null;
   } catch (e) {
-    console.log(`SIGE auto-relogin: exception`, e);
+    console.error("SIGE auto-relogin exception:", e);
+    _sigeReLoginCooldownUntil = Date.now() + _SIGE_RELOGIN_COOLDOWN_MS;
     return null;
   }
 }
@@ -8052,10 +8497,22 @@ async function getPriceConfigCached(): Promise<any> {
 // ─── Helper: make authenticated SIGE API call (with auto-retry on 401) ───
 async function sigeAuthFetch(method: string, path: string, body?: any): Promise<{ ok: boolean; status: number; data: any }> {
   const config = await getSigeConfig();
-  if (!config) throw new Error("Configuração SIGE não encontrada.");
+  if (!config) {
+    console.warn("sigeAuthFetch: SIGE config not found, returning soft error for " + method + " " + path);
+    return { ok: false, status: 503, data: { error: "Configuração SIGE não encontrada." } };
+  }
   let tokenData = await getSigeToken();
-  if (!tokenData) throw new Error("Token SIGE não encontrado. Conecte-se primeiro.");
-  if (!tokenData.token) throw new Error("Token SIGE vazio. Reconecte.");
+  if (!tokenData || !tokenData.token) {
+    // Try relogin before giving up — token may have expired while instance was recycled
+    console.warn("sigeAuthFetch: no SIGE token, attempting relogin for " + method + " " + path);
+    var emergencyToken = await sigeReLogin();
+    if (emergencyToken) {
+      tokenData = { token: emergencyToken };
+    } else {
+      console.warn("sigeAuthFetch: relogin failed, returning soft error for " + method + " " + path);
+      return { ok: false, status: 503, data: { error: "Token SIGE indisponível." } };
+    }
+  }
 
   // Proactive renewal: re-login 15 min BEFORE expiration (or if already expired)
   if (tokenData.expiresAt) {
@@ -8064,21 +8521,21 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
     const now = Date.now();
     if (now >= renewalThreshold) {
       const isExpired = now >= expiresAtMs;
-      console.log("SIGE proxy: token " + (isExpired ? "EXPIRED" : "expiring soon") + " (" + tokenData.expiresAt + "), proactive auto-relogin...");
+      console.warn("SIGE proxy: token " + (isExpired ? "EXPIRED" : "expiring soon") + ", proactive auto-relogin...");
       const newToken = await sigeReLogin();
       if (newToken) {
         tokenData = { ...tokenData, token: newToken };
         memClear("_sige_token"); // invalidate mem cache so next call picks up fresh token
-        console.log("SIGE proxy: proactive relogin SUCCESS, using fresh token");
+        // proactive relogin success
       } else {
-        console.log("SIGE proxy: proactive relogin failed, proceeding with current token");
+        console.warn("SIGE proxy: proactive relogin failed, proceeding with current token");
       }
     }
   }
 
-  var SIGE_CALL_TIMEOUT = 10000; // 10s per individual SIGE API call
+  var SIGE_CALL_TIMEOUT = 8000; // 8s per individual SIGE API call (reduced to fit 20s time budget)
   const url = config.baseUrl + path;
-  console.log("SIGE proxy: " + method + " " + url);
+  // SIGE proxy call
   const buildFetchOpts = (token: string) => {
     const fetchHeaders: any = { "Content-Type": "application/json", "Authorization": "Bearer " + token };
     const fetchOpts: any = { method, headers: fetchHeaders };
@@ -8098,22 +8555,24 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
   } catch (fetchErr: any) {
     clearTimeout(timer1);
     if (fetchErr.name === "AbortError") {
-      console.log("SIGE proxy: TIMEOUT (" + (SIGE_CALL_TIMEOUT / 1000) + "s) on " + method + " " + path);
+      console.warn("SIGE proxy: TIMEOUT (" + (SIGE_CALL_TIMEOUT / 1000) + "s) on " + method + " " + path);
       return { ok: false, status: 408, data: { error: "SIGE timeout (" + (SIGE_CALL_TIMEOUT / 1000) + "s) on " + path } };
     }
-    throw fetchErr;
+    // Network error (DNS, connection refused, etc) — return soft error instead of throwing
+    console.error("SIGE proxy: network error on " + method + " " + path + ": " + (fetchErr.message || fetchErr));
+    return { ok: false, status: 502, data: { error: "SIGE network error: " + (fetchErr.message || "connection failed") } };
   }
   clearTimeout(timer1);
   const responseText = await response.text();
-  console.log("SIGE proxy: " + method + " " + path + " => HTTP " + response.status + ", " + responseText.length + " bytes");
+  // SIGE proxy response received
 
   // Auto-retry on 401 (token expired/invalid)
   if (response.status === 401) {
-    console.log("SIGE proxy: got 401, attempting auto-relogin and retry...");
+    console.warn("SIGE proxy: got 401, attempting auto-relogin and retry...");
     memClear("_sige_token");
     const newToken = await sigeReLogin();
     if (newToken) {
-      console.log("SIGE proxy: retrying " + method + " " + path + " with new token");
+      // SIGE proxy retrying with new token
       var ac2 = new AbortController();
       var timer2 = setTimeout(function () { ac2.abort(); }, SIGE_CALL_TIMEOUT);
       try {
@@ -8122,20 +8581,21 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
         const retryResponse = await fetch(url, opts2);
         clearTimeout(timer2);
         const retryText = await retryResponse.text();
-        console.log("SIGE proxy (retry): " + method + " " + path + " => HTTP " + retryResponse.status + ", " + retryText.length + " bytes");
+        // SIGE proxy retry response received
         let retryData: any;
         try { retryData = JSON.parse(retryText); } catch { retryData = { rawText: retryText }; }
         return { ok: retryResponse.ok, status: retryResponse.status, data: retryData };
       } catch (retryErr: any) {
         clearTimeout(timer2);
         if (retryErr.name === "AbortError") {
-          console.log("SIGE proxy: TIMEOUT on 401 retry " + method + " " + path);
+          console.warn("SIGE proxy: TIMEOUT on 401 retry " + method + " " + path);
           return { ok: false, status: 408, data: { error: "SIGE timeout on retry " + path } };
         }
-        throw retryErr;
+        console.error("SIGE proxy: network error on 401 retry " + method + " " + path + ": " + (retryErr.message || retryErr));
+        return { ok: false, status: 502, data: { error: "SIGE network error on retry: " + (retryErr.message || "connection failed") } };
       }
     }
-    console.log("SIGE proxy: auto-relogin failed, returning original 401");
+    console.warn("SIGE proxy: auto-relogin failed, returning original 401");
   }
 
   let data: any;
@@ -8149,8 +8609,8 @@ async function sigePublicFetch(method: string, path: string, body?: any): Promis
   if (!rawConfig) throw new Error("Configuração SIGE não encontrada. Salve a URL base primeiro.");
   const config = typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig;
   if (!config.baseUrl) throw new Error("URL base da API SIGE não configurada.");
-  const url = `${config.baseUrl}${path}`;
-  console.log(`SIGE public proxy: ${method} ${url}`);
+  const url = config.baseUrl + path;
+  // SIGE public proxy call
   const fetchHeaders: any = { "Content-Type": "application/json" };
   const fetchOpts: any = { method, headers: fetchHeaders };
   if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
@@ -8165,14 +8625,14 @@ async function sigePublicFetch(method: string, path: string, body?: any): Promis
   } catch (pubErr: any) {
     clearTimeout(timerPub);
     if (pubErr.name === "AbortError") {
-      console.log("SIGE public proxy: TIMEOUT (10s) on " + method + " " + path);
+      console.warn("SIGE public proxy: TIMEOUT (10s) on " + method + " " + path);
       return { ok: false, status: 408, data: { error: "SIGE timeout (10s) on " + path } };
     }
     throw pubErr;
   }
   clearTimeout(timerPub);
   const responseText = await response.text();
-  console.log("SIGE public proxy: " + method + " " + path + " => HTTP " + response.status + ", " + responseText.length + " bytes");
+  // SIGE public proxy response received
   let data: any;
   try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
   return { ok: response.ok, status: response.status, data };
@@ -8212,13 +8672,13 @@ async function invalidateOrderBalanceCache(sigeOrderId: string) {
         }
         if (keysToDelete.length > 0) {
           await kv.mdel(keysToDelete);
-          console.log("[SIGE-CONFIRM] Invalidated " + keysToDelete.length + " balance cache entries for order " + sigeOrderId);
+          // Balance cache invalidated
         }
       }
     }
     await kv.del("stock_summary_cache");
   } catch (e: any) {
-    console.log("[SIGE-CONFIRM] Balance cache invalidation error (non-fatal): " + e.message);
+    console.warn("[SIGE-CONFIRM] Balance cache invalidation error (non-fatal): " + e.message);
   }
 }
 
@@ -8229,7 +8689,7 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
   }
 
   try {
-    console.log("[SIGE-CONFIRM] Confirming order " + sigeOrderId + " to trigger stock deduction...");
+    // Confirming SIGE order
 
     // 1. Fetch current order to see its situation
     var currentOrder: any = null;
@@ -8239,17 +8699,17 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
         var od = orderRes.data.dados || orderRes.data.data || orderRes.data;
         currentOrder = Array.isArray(od) ? od[0] : od;
         var currentSit = currentOrder.codSituacao || currentOrder.situacao || "unknown";
-        console.log("[SIGE-CONFIRM] Current order " + sigeOrderId + " situation: " + currentSit + ", keys: " + Object.keys(currentOrder).join(","));
+        // Current order situation fetched
         // If already confirmed/faturado, skip
         var sitStr = String(currentSit).toLowerCase();
         if (sitStr === "c" || sitStr === "confirmado" || sitStr === "f" || sitStr === "faturado" || sitStr === "2" || sitStr === "3") {
-          console.log("[SIGE-CONFIRM] Order " + sigeOrderId + " already confirmed/faturado (codSituacao=" + currentSit + "), skipping");
+          // Order already confirmed, skipping
           await invalidateOrderBalanceCache(sigeOrderId);
           return { ok: true, message: "Pedido já confirmado (codSituacao=" + currentSit + ")" };
         }
       }
     } catch (e: any) {
-      console.log("[SIGE-CONFIRM] Failed to fetch current order: " + e.message);
+      console.warn("[SIGE-CONFIRM] Failed to fetch current order: " + e.message);
     }
 
     // 2. Fetch available situations from GET /situation (cached 24h)
@@ -8270,11 +8730,11 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
           situations = extractSigeArr(sitResult.data);
           if (situations.length > 0) {
             await kv.set(sitCacheKey, JSON.stringify({ situations: situations, cachedAt: Date.now() }));
-            console.log("[SIGE-CONFIRM] Cached " + situations.length + " situation codes");
+            // Situations cached
           }
         }
       } catch (e: any) {
-        console.log("[SIGE-CONFIRM] Failed to fetch situations: " + e.message);
+        console.warn("[SIGE-CONFIRM] Failed to fetch situations: " + e.message);
       }
     }
 
@@ -8282,17 +8742,17 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
     var confirmCode: any = null;
     var confirmCodeFaturado: any = null;
     if (situations.length > 0) {
-      console.log("[SIGE-CONFIRM] Available situations: " + JSON.stringify(situations.slice(0, 15)));
+      // SIGE situations available
       for (var sit of situations) {
         var desc = String(sit.descricao || sit.description || sit.nome || sit.name || "").toLowerCase();
         var code = sit.codSituacao || sit.codigo || sit.id || sit.code;
         if (!confirmCode && (desc.includes("confirmad") || desc.includes("confirm"))) {
           confirmCode = code;
-          console.log("[SIGE-CONFIRM] Found Confirmado: code=" + code + ", desc=" + desc);
+          // Found Confirmado code
         }
         if (!confirmCodeFaturado && (desc.includes("faturad") || desc.includes("aprovad"))) {
           confirmCodeFaturado = code;
-          console.log("[SIGE-CONFIRM] Found Faturado/Aprovado: code=" + code + ", desc=" + desc);
+          // Found Faturado/Aprovado code
         }
       }
     }
@@ -8312,12 +8772,12 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
     // 5. Strategy A: PUT /order/{id} with codSituacao
     for (var tryCode of uniqueCodes) {
       try {
-        console.log("[SIGE-CONFIRM] Strategy A: PUT /order/" + sigeOrderId + " codSituacao=" + tryCode);
+        // Strategy A attempt
         var putResult = await sigeAuthFetch("PUT", "/order/" + sigeOrderId, { codSituacao: tryCode });
-        console.log("[SIGE-CONFIRM] PUT /order/" + sigeOrderId + " codSituacao=" + tryCode + " => HTTP " + putResult.status);
+        // Strategy A response
 
         if (putResult.ok) {
-          console.log("[SIGE-CONFIRM] SUCCESS: Order " + sigeOrderId + " confirmed with codSituacao=" + tryCode);
+          // Strategy A success
           await invalidateOrderBalanceCache(sigeOrderId);
           return {
             ok: true,
@@ -8326,19 +8786,19 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
           };
         }
       } catch (e: any) {
-        console.log("[SIGE-CONFIRM] Strategy A error codSituacao=" + tryCode + ": " + e.message);
+        console.warn("[SIGE-CONFIRM] Strategy A error codSituacao=" + tryCode + ": " + e.message);
       }
     }
 
     // 6. Strategy B: PUT /order/{id}/situation
     for (var tryCode2 of uniqueCodes) {
       try {
-        console.log("[SIGE-CONFIRM] Strategy B: PUT /order/" + sigeOrderId + "/situation codSituacao=" + tryCode2);
+        // Strategy B attempt
         var sitPutResult = await sigeAuthFetch("PUT", "/order/" + sigeOrderId + "/situation", { codSituacao: tryCode2 });
-        console.log("[SIGE-CONFIRM] PUT /order/" + sigeOrderId + "/situation => HTTP " + sitPutResult.status);
+        // Strategy B response
 
         if (sitPutResult.ok) {
-          console.log("[SIGE-CONFIRM] SUCCESS via /situation: Order " + sigeOrderId + " confirmed (codSituacao=" + tryCode2 + ")");
+          // Strategy B success
           await invalidateOrderBalanceCache(sigeOrderId);
           return {
             ok: true,
@@ -8347,46 +8807,46 @@ async function confirmSigeOrder(sigeOrderId: string): Promise<{ ok: boolean; mes
           };
         }
       } catch (e: any) {
-        console.log("[SIGE-CONFIRM] Strategy B error: " + e.message);
+        console.warn("[SIGE-CONFIRM] Strategy B error: " + e.message);
       }
     }
 
     // 7. Strategy C: POST /order/{id}/confirm
     try {
-      console.log("[SIGE-CONFIRM] Strategy C: POST /order/" + sigeOrderId + "/confirm");
+      // Strategy C attempt
       var confResult = await sigeAuthFetch("POST", "/order/" + sigeOrderId + "/confirm", {});
-      console.log("[SIGE-CONFIRM] POST /order/" + sigeOrderId + "/confirm => HTTP " + confResult.status);
+      // Strategy C response
       if (confResult.ok) {
-        console.log("[SIGE-CONFIRM] SUCCESS via POST /confirm");
+        // Strategy C success
         await invalidateOrderBalanceCache(sigeOrderId);
         return { ok: true, message: "Pedido " + sigeOrderId + " confirmado via POST /confirm", details: confResult.data };
       }
     } catch (e: any) {
-      console.log("[SIGE-CONFIRM] Strategy C error: " + e.message);
+      console.warn("[SIGE-CONFIRM] Strategy C error: " + e.message);
     }
 
     // 8. Strategy D: PATCH /order/{id} with codSituacao
     try {
       var patchCode = confirmCode ? String(confirmCode) : "C";
-      console.log("[SIGE-CONFIRM] Strategy D: PATCH /order/" + sigeOrderId + " codSituacao=" + patchCode);
+      // Strategy D attempt
       var patchResult = await sigeAuthFetch("PATCH", "/order/" + sigeOrderId, { codSituacao: patchCode });
       if (patchResult.ok) {
-        console.log("[SIGE-CONFIRM] SUCCESS via PATCH");
+        // Strategy D success
         await invalidateOrderBalanceCache(sigeOrderId);
         return { ok: true, message: "Pedido confirmado via PATCH (codSituacao=" + patchCode + ")" };
       }
     } catch (e: any) {
-      console.log("[SIGE-CONFIRM] Strategy D error: " + e.message);
+      console.warn("[SIGE-CONFIRM] Strategy D error: " + e.message);
     }
 
-    console.log("[SIGE-CONFIRM] WARNING: All confirmation strategies failed for order " + sigeOrderId);
+    console.warn("[SIGE-CONFIRM] All confirmation strategies failed for order " + sigeOrderId);
     return {
       ok: false,
       message: "Nenhuma estratégia de confirmação funcionou para o pedido " + sigeOrderId + ". Verifique a configuração do SIGE.",
       details: { triedCodes: uniqueCodes, situationsFound: situations.length, currentOrder: currentOrder ? { codSituacao: currentOrder.codSituacao } : null }
     };
   } catch (e: any) {
-    console.log("[SIGE-CONFIRM] Exception: " + e.message);
+    console.error("[SIGE-CONFIRM] Exception: " + e.message);
     return { ok: false, message: "Erro ao confirmar pedido: " + e.message };
   }
 }
@@ -8438,29 +8898,28 @@ app.post(BASE + "/sige/user/register", async (c) => {
       const existing = rawConfig ? (typeof rawConfig === "string" ? JSON.parse(rawConfig) : rawConfig) : {};
       await kv.set("sige_api_config", JSON.stringify({ ...existing, baseUrl: apiBaseUrl, updatedAt: new Date().toISOString() }));
       memClear("_sige_config");
-      console.log("SIGE config: baseUrl saved/updated via register endpoint");
+      // SIGE config baseUrl saved
     }
 
     // Call SIGE API directly (no JWT)
     const url = `${apiBaseUrl}/user/create`;
-    console.log(`SIGE register: POST ${url}`);
-    console.log(`SIGE register: body =>`, JSON.stringify({ name, email, password: "***" }));
+    // SIGE register call
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, password }),
     });
     const responseText = await response.text();
-    console.log(`SIGE register: POST /user/create => HTTP ${response.status}, body: ${responseText.substring(0, 500)}`);
+    // SIGE register response received
     let data: any;
     try { data = JSON.parse(responseText); } catch { data = { rawText: responseText }; }
     if (!response.ok) {
-      console.log("[SIGE] Register error HTTP " + response.status + ": " + (data?.message || data?.error || "unknown"));
+      console.error("[SIGE] Register error HTTP " + response.status);
       return c.json({ error: "Erro na comunicacao com o sistema." }, 502);
     }
     return c.json(data);
   } catch (e: any) {
-    console.log("SIGE user/register exception:", e);
+    console.error("SIGE user/register exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8468,7 +8927,7 @@ app.post(BASE + "/sige/user/register", async (c) => {
 // ── Helper: sanitized SIGE proxy error response (no raw sigeData) ──
 function _sigeProxyError(c: any, result: any) {
   var msg = (result.data && (result.data.message || result.data.error)) || "Erro na comunicacao com o sistema.";
-  console.log("[SIGE] Proxy error HTTP " + result.status + ": " + msg);
+  console.error("[SIGE] Proxy error HTTP " + result.status + ": " + msg);
   return c.json({ error: "Erro na comunicacao com o sistema." }, 502);
 }
 
@@ -8495,7 +8954,7 @@ app.post(BASE + "/sige/user/create", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE user/create exception:", e);
+    console.error("SIGE user/create exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8509,7 +8968,7 @@ app.get(BASE + "/sige/user/me", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE user/me exception:", e);
+    console.error("SIGE user/me exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8537,7 +8996,7 @@ app.patch(BASE + "/sige/user/reset/:id", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE user/reset exception:", e);
+    console.error("SIGE user/reset exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8553,12 +9012,12 @@ app.get(BASE + "/sige/category", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE category proxy: GET /category${queryString}`);
+    // SIGE category proxy
     const result = await sigeAuthFetch("GET", `/category${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /category exception:", e);
+    console.error("SIGE GET /category exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8585,7 +9044,7 @@ app.post(BASE + "/sige/category", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /category exception:", e);
+    console.error("SIGE POST /category exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8612,7 +9071,7 @@ app.put(BASE + "/sige/category/:id", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /category exception:", e);
+    console.error("SIGE PUT /category exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8628,7 +9087,7 @@ app.delete(BASE + "/sige/category/:id", async (c) => {
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE DELETE /category exception:", e);
+    console.error("SIGE DELETE /category exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8644,12 +9103,12 @@ app.get(BASE + "/sige/customer", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE customer proxy: GET /customer${queryString}`);
+    // SIGE customer proxy
     const result = await sigeAuthFetch("GET", `/customer${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /customer exception:", e);
+    console.error("SIGE GET /customer exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8663,12 +9122,12 @@ app.get(BASE + "/sige/customer/:id", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE customer proxy: GET /customer/${id}${queryString}`);
+    // SIGE customer/:id proxy
     const result = await sigeAuthFetch("GET", `/customer/${id}${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /customer/:id exception:", e);
+    console.error("SIGE GET /customer/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8693,12 +9152,12 @@ app.post(BASE + "/sige/customer", async (c) => {
     if (!custValid.ok) {
       return c.json({ error: custValid.errors[0] || "Dados invalidos." }, 400);
     }
-    console.log("SIGE customer proxy: POST /customer");
+    // SIGE customer create
     const result = await sigeAuthFetch("POST", "/customer", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /customer exception:", e);
+    console.error("SIGE POST /customer exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8724,12 +9183,12 @@ app.put(BASE + "/sige/customer/:id", async (c) => {
     if (!custUpValid.ok) {
       return c.json({ error: custUpValid.errors[0] || "Dados invalidos." }, 400);
     }
-    console.log("SIGE customer proxy: PUT /customer/" + id);
+    // SIGE customer update
     const result = await sigeAuthFetch("PUT", "/customer/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /customer/:id exception:", e);
+    console.error("SIGE PUT /customer/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8747,12 +9206,12 @@ app.get(BASE + "/sige/customer/:id/address", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE customer address proxy: GET /customer/${id}/address${queryString}`);
+    // SIGE customer address proxy
     const result = await sigeAuthFetch("GET", `/customer/${id}/address${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /customer/:id/address exception:", e);
+    console.error("SIGE GET /customer/:id/address exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8768,12 +9227,12 @@ app.post(BASE + "/sige/customer/:id/address", async (c) => {
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.tipoEndereco) return c.json({ error: "tipoEndereco é obrigatório." }, 400);
-    console.log("SIGE customer address proxy: POST /customer/" + id + "/address");
+    // SIGE customer address create
     const result = await sigeAuthFetch("POST", "/customer/" + id + "/address", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /customer/:id/address exception:", e);
+    console.error("SIGE POST /customer/:id/address exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8789,12 +9248,12 @@ app.put(BASE + "/sige/customer/:id/address", async (c) => {
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.tipoEndereco) return c.json({ error: "tipoEndereco é obrigatório." }, 400);
-    console.log("SIGE customer address proxy: PUT /customer/" + id + "/address");
+    // SIGE customer address update
     const result = await sigeAuthFetch("PUT", "/customer/" + id + "/address", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /customer/:id/address exception:", e);
+    console.error("SIGE PUT /customer/:id/address exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8810,12 +9269,12 @@ app.get(BASE + "/sige/customer/:id/complement", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
-    console.log(`SIGE customer complement proxy: GET /customer/${id}/complement`);
+    // SIGE customer complement proxy
     const result = await sigeAuthFetch("GET", `/customer/${id}/complement`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /customer/:id/complement exception:", e);
+    console.error("SIGE GET /customer/:id/complement exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8830,12 +9289,12 @@ app.post(BASE + "/sige/customer/:id/complement", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE customer complement proxy: POST /customer/" + id + "/complement");
+    // SIGE customer complement create
     const result = await sigeAuthFetch("POST", "/customer/" + id + "/complement", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /customer/:id/complement exception:", e);
+    console.error("SIGE POST /customer/:id/complement exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8850,12 +9309,12 @@ app.put(BASE + "/sige/customer/:id/complement", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE customer complement proxy: PUT /customer/" + id + "/complement");
+    // SIGE customer complement update
     const result = await sigeAuthFetch("PUT", "/customer/" + id + "/complement", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /customer/:id/complement exception:", e);
+    console.error("SIGE PUT /customer/:id/complement exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8873,12 +9332,12 @@ app.get(BASE + "/sige/customer/:id/contact", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE customer contact proxy: GET /customer/${id}/contact${queryString}`);
+    // SIGE customer contact proxy
     const result = await sigeAuthFetch("GET", `/customer/${id}/contact${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /customer/:id/contact exception:", e);
+    console.error("SIGE GET /customer/:id/contact exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8894,12 +9353,12 @@ app.post(BASE + "/sige/customer/:id/contact", async (c) => {
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     if (!body.nome) return c.json({ error: "nome é obrigatório no body." }, 400);
-    console.log("SIGE customer contact proxy: POST /customer/" + id + "/contact");
+    // SIGE customer contact create
     const result = await sigeAuthFetch("POST", "/customer/" + id + "/contact", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /customer/:id/contact exception:", e);
+    console.error("SIGE POST /customer/:id/contact exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8917,12 +9376,12 @@ app.put(BASE + "/sige/customer/:id/contact", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE customer contact proxy: PUT /customer/" + id + "/contact?nome=" + nome);
+    // SIGE customer contact update
     const result = await sigeAuthFetch("PUT", "/customer/" + id + "/contact?nome=" + encodeURIComponent(nome), body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /customer/:id/contact exception:", e);
+    console.error("SIGE PUT /customer/:id/contact exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8938,12 +9397,12 @@ app.get(BASE + "/sige/product", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE product proxy: GET /product${queryString}`);
+    // SIGE product proxy
     const result = await sigeAuthFetch("GET", `/product${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product exception:", e);
+    console.error("SIGE GET /product exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8961,12 +9420,12 @@ app.post(BASE + "/sige/product", async (c) => {
     if (JSON.stringify(body).length > 50000) {
       return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     }
-    console.log("SIGE product proxy: POST /product");
+    // SIGE product create
     const result = await sigeAuthFetch("POST", "/product", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /product exception:", e);
+    console.error("SIGE POST /product exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -8986,12 +9445,12 @@ app.put(BASE + "/sige/product/:id", async (c) => {
     if (JSON.stringify(body).length > 50000) {
       return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     }
-    console.log("SIGE product proxy: PUT /product/" + id);
+    // SIGE product update
     const result = await sigeAuthFetch("PUT", "/product/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /product/:id exception:", e);
+    console.error("SIGE PUT /product/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9009,28 +9468,25 @@ app.get(BASE + "/sige/product/:id/balance", async (c) => {
     const url = new URL(c.req.url);
     const queryString = url.search;
     const debug = url.searchParams.get("debug") === "1";
-    console.log(`SIGE product balance proxy: GET /product/${id}/balance${queryString}`);
+    // SIGE product balance proxy
     const result = await sigeAuthFetch("GET", `/product/${id}/balance${queryString}`);
     if (!result.ok) {
-      console.log(`SIGE balance error for ${id}: HTTP ${result.status}`, JSON.stringify(result.data).slice(0, 500));
+      console.error("SIGE balance error for product " + id + ": HTTP " + result.status);
       return _sigeProxyError(c, result);
     }
     const topKeys = result.data && typeof result.data === "object" ? Object.keys(result.data) : [];
-    console.log(`SIGE balance OK for ${id}: topKeys=[${topKeys.join(",")}]`);
     let itemKeys: string[] = [];
     if (result.data?.dados && Array.isArray(result.data.dados) && result.data.dados.length > 0) {
       itemKeys = Object.keys(result.data.dados[0]);
-      console.log(`SIGE balance ${id}: dados[0] keys=[${itemKeys.join(",")}], count=${result.data.dados.length}`);
     } else if (Array.isArray(result.data) && result.data.length > 0) {
       itemKeys = Object.keys(result.data[0]);
-      console.log(`SIGE balance ${id}: array[0] keys=[${itemKeys.join(",")}], count=${result.data.length}`);
     }
     if (debug) {
       return c.json({ _raw: result.data, _topKeys: topKeys, _itemKeys: itemKeys, ...result.data });
     }
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product/:id/balance exception:", e);
+    console.error("SIGE GET /product/:id/balance exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9047,12 +9503,12 @@ app.get(BASE + "/sige/product/:id/product-control-plan", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE product PCP proxy: GET /product/${id}/product-control-plan${queryString}`);
+    // SIGE product PCP proxy
     const result = await sigeAuthFetch("GET", `/product/${id}/product-control-plan${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product/:id/product-control-plan exception:", e);
+    console.error("SIGE GET /product/:id/product-control-plan exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9069,12 +9525,12 @@ app.get(BASE + "/sige/product/:id/promotion", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE product promotion proxy: GET /product/${id}/promotion${queryString}`);
+    // SIGE product promotion proxy
     const result = await sigeAuthFetch("GET", `/product/${id}/promotion${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product/:id/promotion exception:", e);
+    console.error("SIGE GET /product/:id/promotion exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9091,12 +9547,12 @@ app.get(BASE + "/sige/product/:id/reference", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE product reference proxy: GET /product/${id}/reference${queryString}`);
+    // SIGE product reference proxy
     const result = await sigeAuthFetch("GET", `/product/${id}/reference${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product/:id/reference exception:", e);
+    console.error("SIGE GET /product/:id/reference exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9110,12 +9566,12 @@ app.post(BASE + "/sige/product/:id/reference", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE product reference proxy: POST /product/" + id + "/reference");
+    // SIGE product reference create
     const result = await sigeAuthFetch("POST", "/product/" + id + "/reference", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /product/:id/reference exception:", e);
+    console.error("SIGE POST /product/:id/reference exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9129,12 +9585,12 @@ app.put(BASE + "/sige/product/:id/reference", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE product reference proxy: PUT /product/" + id + "/reference");
+    // SIGE product reference update
     const result = await sigeAuthFetch("PUT", "/product/" + id + "/reference", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /product/:id/reference exception:", e);
+    console.error("SIGE PUT /product/:id/reference exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9158,7 +9614,7 @@ app.get(BASE + "/sige/api-docs", async (c) => {
       size: (parsed.content || "").length,
     });
   } catch (e: any) {
-    console.log("SIGE api-docs GET exception:", e);
+    console.error("SIGE api-docs GET exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9189,10 +9645,10 @@ app.put(BASE + "/sige/api-docs", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     await kv.set("sige_api_docs", JSON.stringify(docData));
-    console.log(`SIGE api-docs saved: ${content.length} chars, ${sections.length} sections detected`);
+    // api-docs saved
     return c.json({ success: true, size: content.length, sections: sections.length, updatedAt: docData.updatedAt });
   } catch (e: any) {
-    console.log("SIGE api-docs PUT exception:", e);
+    console.error("SIGE api-docs PUT exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9204,7 +9660,7 @@ app.delete(BASE + "/sige/api-docs", async (c) => {
     await kv.del("sige_api_docs");
     return c.json({ success: true, message: "Documentação removida." });
   } catch (e: any) {
-    console.log("SIGE api-docs DELETE exception:", e);
+    console.error("SIGE api-docs DELETE exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9242,7 +9698,7 @@ app.post(BASE + "/sige/api-docs/search", async (c) => {
     }
     return c.json({ results, total: results.length, query });
   } catch (e: any) {
-    console.log("SIGE api-docs search exception:", e);
+    console.error("SIGE api-docs search exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9328,7 +9784,7 @@ app.get(BASE + "/sige/debug-ref/:codProduto", async (c) => {
 
     return c.json(debug);
   } catch (e: any) {
-    console.log("SIGE debug-ref exception:", e);
+    console.error("SIGE debug-ref exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9345,12 +9801,12 @@ app.get(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE technical-sheet proxy: GET /product/${id}/technical-sheet${queryString}`);
+    // SIGE technical-sheet proxy
     const result = await sigeAuthFetch("GET", `/product/${id}/technical-sheet${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /product/:id/technical-sheet exception:", e);
+    console.error("SIGE GET /product/:id/technical-sheet exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9364,12 +9820,12 @@ app.post(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE technical-sheet proxy: POST /product/" + id + "/technical-sheet");
+    // SIGE technical-sheet create
     const result = await sigeAuthFetch("POST", "/product/" + id + "/technical-sheet", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /product/:id/technical-sheet exception:", e);
+    console.error("SIGE POST /product/:id/technical-sheet exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9383,12 +9839,12 @@ app.put(BASE + "/sige/product/:id/technical-sheet", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE technical-sheet proxy: PUT /product/" + id + "/technical-sheet");
+    // SIGE technical-sheet update
     const result = await sigeAuthFetch("PUT", "/product/" + id + "/technical-sheet", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /product/:id/technical-sheet exception:", e);
+    console.error("SIGE PUT /product/:id/technical-sheet exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9404,12 +9860,12 @@ app.get(BASE + "/sige/list-price", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE list-price proxy: GET /list-price${queryString}`);
+    // SIGE list-price proxy
     const result = await sigeAuthFetch("GET", `/list-price${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /list-price exception:", e);
+    console.error("SIGE GET /list-price exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9421,12 +9877,12 @@ app.get(BASE + "/sige/list-price-items", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE list-price-items proxy: GET /list-price-items${queryString}`);
+    // SIGE list-price-items proxy
     const result = await sigeAuthFetch("GET", `/list-price-items${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /list-price-items exception:", e);
+    console.error("SIGE GET /list-price-items exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9441,12 +9897,12 @@ app.get(BASE + "/sige/order", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE order proxy: GET /order${queryString}`);
+    // SIGE order list proxy
     const result = await sigeAuthFetch("GET", `/order${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order exception:", e);
+    console.error("SIGE GET /order exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9457,12 +9913,12 @@ app.get(BASE + "/sige/order/:id", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
-    console.log(`SIGE order proxy: GET /order/${id}`);
+    // SIGE order detail proxy
     const result = await sigeAuthFetch("GET", `/order/${id}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order/:id exception:", e);
+    console.error("SIGE GET /order/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9479,12 +9935,12 @@ app.post(BASE + "/sige/order", async (c) => {
     if (JSON.stringify(body).length > 100000) {
       return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     }
-    console.log("SIGE order proxy: POST /order");
+    // SIGE order create
     const result = await sigeAuthFetch("POST", "/order", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /order exception:", e);
+    console.error("SIGE POST /order exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9499,12 +9955,12 @@ app.get(BASE + "/sige/order/:id/observation", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
-    console.log(`SIGE order observation proxy: GET /order/${id}/observation`);
+    // SIGE order observation proxy
     const result = await sigeAuthFetch("GET", `/order/${id}/observation`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order/:id/observation exception:", e);
+    console.error("SIGE GET /order/:id/observation exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9518,12 +9974,12 @@ app.post(BASE + "/sige/order/:id/observation", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE order observation proxy: POST /order/" + id + "/observation");
+    // SIGE order observation create
     const result = await sigeAuthFetch("POST", "/order/" + id + "/observation", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /order/:id/observation exception:", e);
+    console.error("SIGE POST /order/:id/observation exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9537,12 +9993,12 @@ app.put(BASE + "/sige/order/:id/observation", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE order observation proxy: PUT /order/" + id + "/observation");
+    // SIGE order observation update
     const result = await sigeAuthFetch("PUT", "/order/" + id + "/observation", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /order/:id/observation exception:", e);
+    console.error("SIGE PUT /order/:id/observation exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9557,12 +10013,12 @@ app.get(BASE + "/sige/order/:id/installment", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
-    console.log(`SIGE order installment proxy: GET /order/${id}/installment`);
+    // SIGE order installment proxy
     const result = await sigeAuthFetch("GET", `/order/${id}/installment`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order/:id/installment exception:", e);
+    console.error("SIGE GET /order/:id/installment exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9577,12 +10033,12 @@ app.get(BASE + "/sige/order-items/:id", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     const id = c.req.param("id");
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
-    console.log(`SIGE order-items proxy: GET /order-items/${id}`);
+    // SIGE order-items proxy
     const result = await sigeAuthFetch("GET", `/order-items/${id}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order-items/:id exception:", e);
+    console.error("SIGE GET /order-items/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9596,12 +10052,12 @@ app.post(BASE + "/sige/order-items/:id", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE order-items proxy: POST /order-items/" + id);
+    // SIGE order-items create
     const result = await sigeAuthFetch("POST", "/order-items/" + id, body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /order-items/:id exception:", e);
+    console.error("SIGE POST /order-items/:id exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9618,12 +10074,12 @@ app.get(BASE + "/sige/order-items/:id/text", async (c) => {
     if (!id || id.length > 100) return c.json({ error: "ID invalido." }, 400);
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE order-items text proxy: GET /order-items/${id}/text${queryString}`);
+    // SIGE order-items text proxy
     const result = await sigeAuthFetch("GET", `/order-items/${id}/text${queryString}`);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE GET /order-items/:id/text exception:", e);
+    console.error("SIGE GET /order-items/:id/text exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9637,12 +10093,12 @@ app.post(BASE + "/sige/order-items/:id/text", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE order-items text proxy: POST /order-items/" + id + "/text");
+    // SIGE order-items text create
     const result = await sigeAuthFetch("POST", "/order-items/" + id + "/text", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE POST /order-items/:id/text exception:", e);
+    console.error("SIGE POST /order-items/:id/text exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9656,12 +10112,12 @@ app.put(BASE + "/sige/order-items/:id/text", async (c) => {
     const body = await c.req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body deve ser um objeto JSON." }, 400);
     if (JSON.stringify(body).length > 10000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
-    console.log("SIGE order-items text proxy: PUT /order-items/" + id + "/text");
+    // SIGE order-items text update
     const result = await sigeAuthFetch("PUT", "/order-items/" + id + "/text", body);
     if (!result.ok) return _sigeProxyError(c, result);
     return c.json(result.data);
   } catch (e: any) {
-    console.log("SIGE PUT /order-items/:id/text exception:", e);
+    console.error("SIGE PUT /order-items/:id/text exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9688,16 +10144,16 @@ app.get(BASE + "/sige/dep/:endpoint{.+}", async (c) => {
     const sigePath = "/" + fullPath.substring(fullPath.indexOf(prefix) + prefix.length);
     const baseEndpoint = sigePath.split("/")[1]?.split("?")[0];
     if (!baseEndpoint || !ALLOWED_DEP_ENDPOINTS.has(baseEndpoint)) {
-      console.log("[sige/dep] Blocked endpoint: " + baseEndpoint);
+      console.warn("[sige/dep] Blocked endpoint: " + baseEndpoint);
       return c.json({ error: "Endpoint nao permitido." }, 400);
     }
     const url = new URL(c.req.url);
     const queryString = url.search;
-    console.log(`SIGE dep proxy: GET ${sigePath}${queryString}`);
+    // SIGE dep proxy
     const result = await sigeAuthFetch("GET", sigePath + queryString);
     if (!result.ok) {
       const sigeMsg = result.data?.message || result.data?.error || "";
-      console.log(`SIGE dep proxy: ${baseEndpoint} failed — SIGE HTTP ${result.status}, msg: ${sigeMsg}`);
+      console.error("SIGE dep proxy: " + baseEndpoint + " failed — HTTP " + result.status);
       return c.json({
         error: sigeMsg || `SIGE retornou HTTP ${result.status} para /${baseEndpoint}`,
         endpoint: sigePath,
@@ -9708,7 +10164,7 @@ app.get(BASE + "/sige/dep/:endpoint{.+}", async (c) => {
     }
     return c.json({ endpoint: sigePath, sigeStatus: result.status, ok: true, data: result.data });
   } catch (e: any) {
-    console.log("SIGE dep proxy exception:", e);
+    console.error("SIGE dep proxy exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -9736,7 +10192,7 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
     const debugMode = _debugAdminOk;
     const debugLog: string[] = [];
     const sigeResponses: any[] = [];
-    const dbg = (msg: string) => { debugLog.push(msg); console.log(msg); };
+    const dbg = (msg: string) => { debugLog.push(msg); };
 
     // Global deadline: stop trying strategies after 30s to avoid frontend 45s timeout
     var routeDeadline = Date.now() + 30000;
@@ -10044,7 +10500,7 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
     await kv.set(cacheKey, JSON.stringify(notFound));
     return c.json({ ...notFound, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
   } catch (e: any) {
-    console.log("[Saldo] Exception for SKU " + sku + ":", e);
+    console.error("[Saldo] Exception for SKU " + sku + ":", e);
     return c.json({ error: "Erro ao consultar saldo.", sku: sku, found: false, sige: false, quantidade: 0 });
   }
 });
@@ -10062,10 +10518,10 @@ app.delete(BASE + "/produtos/saldo/cache", async (c) => {
         cleared++;
       }
     }
-    console.log(`[Saldo] Cache cleared: ${cleared} entries by user ${userId}`);
+    // Saldo cache cleared
     return c.json({ cleared, message: `${cleared} entradas de cache removidas.` });
   } catch (e: any) {
-    console.log("[Saldo] Cache clear exception:", e);
+    console.error("[Saldo] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de saldo." }, 500);
   }
 });
@@ -10077,10 +10533,10 @@ app.delete(BASE + "/produtos/saldo/cache/:sku", async (c) => {
     if (!sku) return c.json({ error: "SKU invalido." }, 400);
     const cacheKey = "sige_balance_" + sku;
     await kv.del(cacheKey);
-    console.log("[Saldo] Cache cleared for SKU " + sku);
+    // Saldo cache cleared for single SKU
     return c.json({ cleared: true, sku: sku, message: "Cache para SKU " + sku + " removido." });
   } catch (e: any) {
-    console.log("[Saldo] Cache clear exception:", e);
+    console.error("[Saldo] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de saldo." }, 500);
   }
 });
@@ -10178,7 +10634,7 @@ app.post(BASE + "/produtos/saldos", async (c) => {
       }
     }
 
-    console.log("[Saldo bulk] cached=" + Object.keys(cacheMap).length + " needFetch=" + needFetch.length + (forceRefresh ? " FORCE" : ""));
+    // Saldo bulk: cached + needFetch counts tracked internally
 
     if (needFetch.length > 0) {
       // Helper: parse balance response — expanded field detection
@@ -10233,9 +10689,9 @@ app.post(BASE + "/produtos/saldos", async (c) => {
       // Collect KV writes to batch at the end
       const kvWritesBatch: Array<{ key: string; value: string }> = [];
 
-      // Global time budget: bail out before frontend timeout (40s max)
-      var TIME_BUDGET_MS = 38000;
-      var PER_SKU_BUDGET_MS = 12000;
+      // Global time budget: bail out before frontend fast-fail timeout (25s)
+      var TIME_BUDGET_MS = 20000;
+      var PER_SKU_BUDGET_MS = 8000;
       function timeBudgetRemaining(): number { return TIME_BUDGET_MS - (Date.now() - t0); }
       function isTimeBudgetExhausted(): boolean { return timeBudgetRemaining() < 2000; }
 
@@ -10247,6 +10703,11 @@ app.post(BASE + "/produtos/saldos", async (c) => {
         const mapInfo = sigeMapLookup[sku];
         if (mapInfo) {
           const balRes = await sigeAuthFetch("GET", "/product/" + encodeURIComponent(mapInfo.sigeId) + "/balance");
+          // Circuit breaker: if SIGE timed out (408), mark remaining SKUs as timed out
+          if (balRes.status === 408) {
+            var _cb0 = { sku: sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now(), timedOut: true, _sigeDown: true };
+            return { ..._cb0, cached: false };
+          }
           if (balRes.ok && balRes.data) {
             const { totalQtd, totalRes, totalDisp } = parseBal(balRes.data);
             const r = {
@@ -10263,6 +10724,11 @@ app.post(BASE + "/produtos/saldos", async (c) => {
         // Strategy 1: Direct balance with SKU as product ID
         if (skuTimedOut()) { var _to1 = { sku: sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now(), timedOut: true }; return { ..._to1, cached: false }; }
         const directRes = await sigeAuthFetch("GET", "/product/" + encodeURIComponent(sku) + "/balance");
+        // Circuit breaker: SIGE timeout
+        if (directRes.status === 408) {
+          var _cb1 = { sku: sku, found: false, sige: true, quantidade: 0, _cachedAt: Date.now(), timedOut: true, _sigeDown: true };
+          return { ..._cb1, cached: false };
+        }
         if (directRes.ok && directRes.data) {
           const { totalQtd, totalRes, totalDisp } = parseBal(directRes.data);
           const r = {
@@ -10357,8 +10823,8 @@ app.post(BASE + "/produtos/saldos", async (c) => {
         return { ...nf, cached: false };
       }
 
-      // Run with concurrent workers (max 5 — reduced to avoid overwhelming SIGE API)
-      const CONC_LIMIT = 5;
+      // Run with concurrent workers (max 3 — reduced to avoid overwhelming SIGE API)
+      const CONC_LIMIT = 3;
       let fetchIdx = 0;
       const fetchedResults: any[] = [];
 
@@ -10380,7 +10846,7 @@ app.post(BASE + "/produtos/saldos", async (c) => {
             const r = await fetchOneSku(needFetch[myIdx]);
             fetchedResults.push(r);
           } catch (ex: any) {
-            console.log("[Saldo bulk] Error for SKU " + needFetch[myIdx] + ": " + (ex.message || ex));
+            console.error("[Saldo bulk] Error for SKU " + needFetch[myIdx] + ": " + (ex.message || ex));
             fetchedResults.push({ sku: needFetch[myIdx], found: false, sige: true, quantidade: 0, error: ex.message });
           }
         }
@@ -10404,16 +10870,16 @@ app.post(BASE + "/produtos/saldos", async (c) => {
           batchKeys.push(entry.key);
           batchVals.push(entry.value);
         }
-        kv.mset(batchKeys, batchVals).catch(function(e) { console.log("[Saldo bulk] mset error:", e); });
+        kv.mset(batchKeys, batchVals).catch(function(e) { console.error("[Saldo bulk] mset error:", e); });
       }
     }
 
     const elapsed = Date.now() - t0;
     var timedOutCount = results.filter(function(r) { return r.timedOut; }).length;
-    console.log("[Saldo bulk] Processed " + results.length + " SKUs, found=" + results.filter(function(r) { return r.found; }).length + " cached=" + results.filter(function(r) { return r.cached; }).length + " timedOut=" + timedOutCount + " elapsed=" + elapsed + "ms");
+    // Saldo bulk processed
     return c.json({ results: results, total: results.length, partial: timedOutCount > 0 });
   } catch (e: any) {
-    console.log("[Saldo bulk] Exception:", e);
+    console.error("[Saldo bulk] Exception:", e);
     return c.json({ error: "Erro ao consultar saldo.", results: [], total: 0 });
   }
 });
@@ -10464,7 +10930,7 @@ app.get(BASE + "/produtos/stock-summary", async (c) => {
       .select("key, value")
       .like("key", "sige_balance_%");
     if (balErr) {
-      console.log("[StockSummary] Error fetching balance cache:", balErr.message);
+      console.error("[StockSummary] Error fetching balance cache:", balErr.message);
       return c.json({ error: "Erro ao consultar saldos de estoque." }, 500);
     }
 
@@ -10491,10 +10957,10 @@ app.get(BASE + "/produtos/stock-summary", async (c) => {
 
     const summary = { totalProducts, inStock, outOfStock, notFound, pending, totalCached: balanceMap.size, _cachedAt: Date.now() };
     await kv.set(SUMMARY_CACHE_KEY, JSON.stringify(summary));
-    console.log(`[StockSummary] total=${totalProducts}, inStock=${inStock}, outOfStock=${outOfStock}, notFound=${notFound}, pending=${pending}`);
+    // StockSummary computed
     return c.json({ ...summary, cached: false });
   } catch (e: any) {
-    console.log("[StockSummary] Exception:", e);
+    console.error("[StockSummary] Exception:", e);
     return c.json({ error: "Erro ao calcular resumo de estoque." }, 500);
   }
 });
@@ -10676,7 +11142,7 @@ app.post(BASE + "/produtos/stock-scan", async (c) => {
             await kv.set(`sige_balance_${sku}`, JSON.stringify(result));
             return result;
           } catch (ex: any) {
-            console.log(`[StockScan] Error for ${sku}:`, ex.message);
+            console.error("[StockScan] Error for " + sku + ":", ex.message);
             return { sku, found: false, sige: true, error: ex.message };
           }
         })
@@ -10686,10 +11152,10 @@ app.post(BASE + "/produtos/stock-scan", async (c) => {
 
     await kv.del("stock_summary_cache");
     const found = results.filter((r) => r.found).length;
-    console.log(`[StockScan] Scanned ${results.length}, found=${found}, remaining=${pendingSkus.length - toProcess.length}`);
+    // StockScan batch complete
     return c.json({ scanned: results.length, found, remaining: pendingSkus.length - toProcess.length, totalPending: pendingSkus.length, results });
   } catch (e: any) {
-    console.log("[StockScan] Exception:", e);
+    console.error("[StockScan] Exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -10713,7 +11179,7 @@ app.get(BASE + "/produtos/sige-map", async (c) => {
     }
     return c.json({ mappings, total: mappings.length });
   } catch (e: any) {
-    console.log("[SigeMap] GET exception:", e);
+    console.error("[SigeMap] GET exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -10744,10 +11210,10 @@ app.put(BASE + "/produtos/sige-map/:sku", async (c) => {
     };
     await kv.set(`sige_map_${sku}`, JSON.stringify(mapping));
     await kv.del(`sige_balance_${sku}`);
-    console.log(`[SigeMap] Manual mapping: ${sku} -> SIGE ${sigeId} by user ${userId}`);
+    // SigeMap manual mapping saved
     return c.json({ ok: true, sku, mapping });
   } catch (e: any) {
-    console.log("[SigeMap] PUT exception:", e);
+    console.error("[SigeMap] PUT exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -10763,7 +11229,7 @@ app.delete(BASE + "/produtos/sige-map/:sku", async (c) => {
     await kv.del(`sige_balance_${sku}`);
     return c.json({ ok: true, sku, message: `Mapeamento para ${sku} removido.` });
   } catch (e: any) {
-    console.log("[SigeMap] DELETE exception:", e);
+    console.error("[SigeMap] DELETE exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -10788,7 +11254,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
     if (!rawConfig) return c.json({ error: "SIGE não configurado." });
     const rawToken = await kv.get("sige_api_token");
     if (!rawToken) return c.json({ error: "SIGE não conectado." });
-    console.log(`[SigeSync] Starting. fetchBal=${fetchBal}, clear=${clearExisting}`);
+    // SigeSync starting
 
     // 1) Load local product SKUs
     const sUrl = Deno.env.get("SUPABASE_URL")!;
@@ -10804,7 +11270,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
       if (batch.length < 1000) break;
       dOff += 1000;
     }
-    console.log(`[SigeSync] ${localProds.length} local products`);
+    // SigeSync local products loaded
 
     // 2) Load ALL SIGE products
     const sigeProd: any[] = [];
@@ -10812,7 +11278,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
     while (true) {
       pg++;
       const res = await sigeAuthFetch("GET", `/product?limit=${pgSize}&offset=${sOff}`);
-      if (!res.ok) { console.log(`[SigeSync] SIGE fetch fail at offset ${sOff}`); break; }
+      if (!res.ok) { console.error("[SigeSync] SIGE fetch fail at offset " + sOff); break; }
       let items: any[] = [];
       const d = res.data;
       if (Array.isArray(d)) items = d;
@@ -10822,11 +11288,11 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
       else if (d?.content && Array.isArray(d.content)) items = d.content;
       if (items.length === 0) break;
       sigeProd.push(...items);
-      console.log(`[SigeSync] Page ${pg}: ${items.length} (total: ${sigeProd.length})`);
+      // SigeSync page loaded
       if (items.length < pgSize) break;
       sOff += pgSize;
     }
-    console.log(`[SigeSync] ${sigeProd.length} SIGE products loaded`);
+    // SigeSync SIGE products loaded
 
     // 3) Build SIGE lookups
     const sigeByCod = new Map<string, any>();
@@ -10848,7 +11314,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
       for (const lp of localProds) {
         try { await kv.del(`sige_map_${lp.sku}`); cleared++; } catch {}
       }
-      console.log(`[SigeSync] Cleared mappings for ${cleared} local SKUs`);
+      // SigeSync mappings cleared
     }
 
     // 5) Match
@@ -10886,7 +11352,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
         matchRes.push({ sku, matched: false, titulo: lp.titulo.substring(0, 60) });
       }
     }
-    console.log(`[SigeSync] Match: ${matched} matched, ${unmatched} unmatched, ${skipped} skipped`);
+    // SigeSync matching complete
 
     // 6) Fetch balances for matched
     let balFetched = 0;
@@ -10930,10 +11396,10 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
               }));
               balFetched++;
             }
-          } catch (ex: any) { console.log(`[SigeSync] Bal error ${m.sku}:`, ex.message); }
+          } catch (ex: any) { console.error("[SigeSync] Bal error " + m.sku + ":", ex.message); }
         }));
       }
-      console.log(`[SigeSync] Fetched ${balFetched} balances`);
+      // SigeSync balances fetched
     }
     await kv.del("stock_summary_cache");
     return c.json({
@@ -10942,7 +11408,7 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
       matchResults: matchRes.slice(0, 200), totalResults: matchRes.length,
     });
   } catch (e: any) {
-    console.log("[SigeSync] Exception:", e);
+    console.error("[SigeSync] Exception:", e);
     return c.json({ error: "Erro na sincronizacao SIGE." }, 500);
   }
 });
@@ -10963,7 +11429,7 @@ app.get(BASE + "/price-config", async (c) => {
     if (config.installmentsMinValue === undefined) config.installmentsMinValue = 0;
     return c.json(config);
   } catch (e: any) {
-    console.log("[PriceConfig] GET exception:", e);
+    console.error("[PriceConfig] GET exception:", e);
     return c.json({ error: "Erro ao buscar configuracao de precos." }, 500);
   }
 });
@@ -11001,10 +11467,10 @@ app.put(BASE + "/price-config", async (c) => {
     await kv.set("price_config", JSON.stringify(config));
     memClear("_price_config"); // invalidate in-memory cache
     invalidateHomepageCache();
-    console.log("[PriceConfig] Updated by " + userId + ": tier=" + config.tier + ", showPrice=" + config.showPrice + ", pixDiscount=" + config.pixDiscountEnabled + "/" + config.pixDiscountPercent + "%, installments=" + config.installmentsCount);
+    // PriceConfig updated
     return c.json(config);
   } catch (e: any) {
-    console.log("[PriceConfig] PUT exception:", e);
+    console.error("[PriceConfig] PUT exception:", e);
     return c.json({ error: "Erro ao salvar configuracao de preco." }, 500);
   }
 });
@@ -11029,10 +11495,10 @@ app.put(BASE + "/produtos/preco/:sku", async (c) => {
     // Also clear old key format and cache
     await kv.del("product_price_" + sku);
     await kv.del("sige_price_" + sku);
-    console.log("[Price] Custom price set for " + sku + ": R$" + customPrice.toFixed(2) + " by " + userId);
+    // Custom price set
     return c.json({ ok: true, sku, price: customPrice });
   } catch (e: any) {
-    console.log("[Price] PUT custom exception:", e);
+    console.error("[Price] PUT custom exception:", e);
     return c.json({ error: "Erro ao salvar preco customizado." }, 500);
   }
 });
@@ -11047,10 +11513,10 @@ app.delete(BASE + "/produtos/preco/:sku", async (c) => {
     await kv.del("price_custom_" + sku);
     await kv.del("product_price_" + sku);
     await kv.del("sige_price_" + sku);
-    console.log("[Price] Custom price removed for " + sku + " by " + userId);
+    // Custom price removed
     return c.json({ ok: true, sku, message: "Preço personalizado removido." });
   } catch (e: any) {
-    console.log("[Price] DELETE custom exception:", e);
+    console.error("[Price] DELETE custom exception:", e);
     return c.json({ error: "Erro ao remover preco customizado." }, 500);
   }
 });
@@ -11081,10 +11547,10 @@ app.delete(BASE + "/produtos/precos-cache", async (c) => {
     }
     // Also clear in-memory price config cache so tier changes take effect immediately
     memClear("_price_config");
-    console.log("[Price] Cache cleared by " + userId + ": " + totalDeleted + " entries removed");
+    // Price cache cleared
     return c.json({ ok: true, cleared: totalDeleted });
   } catch (e: any) {
-    console.log("[Price] Cache clear exception:", e);
+    console.error("[Price] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de precos." }, 500);
   }
 });
@@ -11106,7 +11572,7 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       if (customRaw) {
         const custom = typeof customRaw === "string" ? JSON.parse(customRaw) : customRaw;
         if (custom.price !== undefined && custom.price !== null) {
-          console.log("[Price] Custom price for " + sku + ": R$" + custom.price + " (key=" + prefix + ")");
+          // Custom price found for SKU
           return c.json({ sku, found: true, source: "custom", price: custom.price, v1: null, v2: null, v3: null, tier: "custom", showPrice, cached: false });
         }
       }
@@ -11193,13 +11659,13 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       if (mapEntry) {
         const map = typeof mapEntry === "string" ? JSON.parse(mapEntry) : mapEntry;
         if (map.sigeId) {
-          console.log("[Price] S0: mapping " + sku + " -> SIGE " + map.sigeId);
+          // S0: mapping found
           return { codProduto: map.sigeId, descricao: "" };
         }
       }
 
       // S1: Search by codProduto = SKU
-      console.log("[Price] S1: codProduto=" + sku);
+      // S1: direct codProduto
       const s1 = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(sku) + "&limit=1&offset=1");
       if (s1.ok && s1.data) {
         const prods = exArr(s1.data);
@@ -11211,7 +11677,7 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       // S2: Base part before dash
       if (sku.includes("-")) {
         const base = sku.split("-")[0];
-        console.log("[Price] S2: base=" + base);
+        // S2: base ref
         const s2 = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(base) + "&limit=1&offset=1");
         if (s2.ok && s2.data) {
           const prods = exArr(s2.data);
@@ -11224,7 +11690,7 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       // S3: Clean SKU (remove dashes, dots, spaces)
       const skuC = sku.replace(/[-.\s]/g, "");
       if (skuC !== sku && skuC !== sku.split("-")[0]) {
-        console.log("[Price] S3: cleaned=" + skuC);
+        // S3: cleaned ref
         const s3 = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(skuC) + "&limit=1&offset=1");
         if (s3.ok && s3.data) {
           const prods = exArr(s3.data);
@@ -11237,22 +11703,46 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       return null;
     }
 
-    console.log("[Price] Looking up product for SKU: " + sku);
-    const productInfo = await findProductId();
+    // Price lookup for SKU
+    var _sigeWasReachable = true;
+    var _origFindProductId = findProductId;
+    // Wrap findProductId to detect SIGE unreachable (all calls returned 5xx/408/502/503)
+    async function findProductIdSafe(): Promise<{ codProduto: string; descricao: string } | null> {
+      try {
+        return await _origFindProductId();
+      } catch (fpErr: any) {
+        _sigeWasReachable = false;
+        console.warn("[Price] findProductId failed for " + sku + ": " + (fpErr.message || fpErr));
+        return null;
+      }
+    }
+    const productInfo = await findProductIdSafe();
 
     if (!productInfo) {
-      console.log("[Price] " + sku + ": product not found in SIGE");
+      // If SIGE was unreachable, DON'T cache "not found" (it's a false negative).
+      // Instead, try returning stale cache or a soft error.
+      if (!_sigeWasReachable || Date.now() < _sigeReLoginCooldownUntil) {
+        if (cached) {
+          var _staleOnDown = typeof cached === "string" ? JSON.parse(cached) : cached;
+          if (_staleOnDown && _staleOnDown.found && _staleOnDown.price !== null) {
+            console.warn("[Price] SIGE unreachable, returning stale cache for " + sku);
+            return c.json({ ..._staleOnDown, showPrice, cached: true, _stale: true, _sigeDown: true });
+          }
+        }
+        return c.json({ sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice, _sigeDown: true });
+      }
+      // Product genuinely not found in SIGE — safe to cache
       const notFound = { sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice, _cachedAt: Date.now(), _priceListItems: 0, _detectedListCodes: [] as string[] };
       await kv.set(cacheKey, JSON.stringify(notFound));
       return c.json({ ...notFound, cached: false });
     }
 
     const { codProduto, descricao } = productInfo;
-    console.log("[Price] Product found: codProduto=" + codProduto + ", desc=" + descricao.slice(0, 60));
+    // Product found in SIGE
 
     // ─── Step 5: Fetch prices via /list-price-items ───
 
-    console.log("[Price] Fetching list-price-items for codProduto=" + codProduto);
+    // Fetching list-price-items
     const lpRes = await sigeAuthFetch("GET", "/list-price-items?codProduto=" + encodeURIComponent(codProduto) + "&limit=50&offset=1");
 
     let v1: number | null = null;
@@ -11266,12 +11756,11 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
 
     if (lpRes.ok && lpRes.data) {
       priceListItems = exArr(lpRes.data);
-      console.log("[Price] list-price-items for " + codProduto + ": " + priceListItems.length + " items");
+      // list-price-items received
 
       if (priceListItems.length > 0) {
         itemSampleKeys = Object.keys(priceListItems[0]);
-        console.log("[Price] Item sample keys: [" + itemSampleKeys.join(",") + "]");
-        console.log("[Price] Item sample: " + JSON.stringify(priceListItems[0]).slice(0, 500));
+        // Item sample inspected
 
         // Group by codLista and extract prices
         const byList = new Map<string, { item: any; price: number | null }>();
@@ -11288,20 +11777,20 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
         for (const [code, entry] of byList.entries()) {
           priceListDebug.push({ codLista: code, price: entry.price, descLista: entry.item.descLista || null });
         }
-        console.log("[Price] Detected lists: " + JSON.stringify(priceListDebug));
+        // Lists detected
 
         // Try configured mapping first
         if (listMapping.v1 && byList.has(listMapping.v1)) {
           v1 = byList.get(listMapping.v1)!.price;
-          console.log("[Price] Mapped v1 = list " + listMapping.v1 + " -> " + v1);
+          // v1 mapped
         }
         if (listMapping.v2 && byList.has(listMapping.v2)) {
           v2 = byList.get(listMapping.v2)!.price;
-          console.log("[Price] Mapped v2 = list " + listMapping.v2 + " -> " + v2);
+          // v2 mapped
         }
         if (listMapping.v3 && byList.has(listMapping.v3)) {
           v3 = byList.get(listMapping.v3)!.price;
-          console.log("[Price] Mapped v3 = list " + listMapping.v3 + " -> " + v3);
+          // v3 mapped
         }
 
         // Auto-detect: if no mapping configured or no prices found, assign first 3 lists to v1/v2/v3
@@ -11310,7 +11799,7 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
           if (codes.length >= 1) v1 = byList.get(codes[0])!.price;
           if (codes.length >= 2) v2 = byList.get(codes[1])!.price;
           if (codes.length >= 3) v3 = byList.get(codes[2])!.price;
-          console.log("[Price] Auto-mapped: lists=[" + codes.slice(0,3).join(",") + "] -> v1=" + v1 + ", v2=" + v2 + ", v3=" + v3);
+          // Auto-mapped price lists
         }
 
         // Base = first available
@@ -11320,7 +11809,25 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
         }
       }
     } else {
-      console.log("[Price] list-price-items for " + codProduto + ": HTTP " + lpRes.status + ", data: " + JSON.stringify(lpRes.data).slice(0, 300));
+      console.warn("[Price] list-price-items for codProduto " + codProduto + ": HTTP " + lpRes.status);
+      // On auth failure (401/403) or server error (5xx), try to return stale cached price
+      // so the catalog doesn't show "price unavailable" during transient SIGE outages.
+      if (cached) {
+        var staleParsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+        if (staleParsed && staleParsed.found && staleParsed.price !== null && staleParsed.price !== undefined) {
+          // Recompute with current tier
+          if (staleParsed.v1 !== undefined || staleParsed.v2 !== undefined || staleParsed.v3 !== undefined) {
+            var tStale: Record<string, number | null> = { v1: staleParsed.v1, v2: staleParsed.v2, v3: staleParsed.v3 };
+            var stalePrice = tStale[selectedTier] !== undefined && tStale[selectedTier] !== null
+              ? tStale[selectedTier]
+              : (staleParsed.base ?? staleParsed.v2 ?? staleParsed.v1 ?? staleParsed.v3);
+            staleParsed.price = stalePrice;
+            staleParsed.tier = selectedTier;
+          }
+          console.warn("[Price] Returning stale cache for " + sku + " due to SIGE HTTP " + lpRes.status);
+          return c.json({ ...staleParsed, showPrice, cached: true, _stale: true });
+        }
+      }
     }
 
     const tMap: Record<string, number | null> = { v1, v2, v3 };
@@ -11338,12 +11845,27 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       _listMapping: listMapping,
     };
 
-    console.log("[Price] " + sku + ": final -> found=" + found + ", v1=" + v1 + ", v2=" + v2 + ", v3=" + v3 + ", base=" + base + ", price=" + selectedPrice);
+    // Price final result computed
     await kv.set(cacheKey, JSON.stringify(result));
     return c.json({ ...result, cached: false });
   } catch (e: any) {
-    console.log("[Price] Exception for SKU " + sku + ":", e);
-    return c.json({ error: "Erro ao buscar preco.", sku: sku, found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
+    console.error("[Price] Exception for SKU " + (typeof sku === "string" ? sku : "?") + ":", e);
+    // Try returning stale cache on exception (SIGE down, network error, etc)
+    try {
+      var _skuSafe = typeof sku === "string" ? sku : "";
+      if (_skuSafe) {
+        var _staleKey = "sige_price_" + _skuSafe;
+        var _staleRaw = await kv.get(_staleKey);
+        if (_staleRaw) {
+          var _staleP = typeof _staleRaw === "string" ? JSON.parse(_staleRaw) : _staleRaw;
+          if (_staleP && _staleP.found && _staleP.price !== null) {
+            console.warn("[Price] Returning stale cache for " + _skuSafe + " after exception");
+            return c.json({ ..._staleP, showPrice: true, cached: true, _stale: true, _error: String(e.message || e) });
+          }
+        }
+      }
+    } catch (_ignore) { /* stale cache lookup failed, return generic error */ }
+    return c.json({ error: "Erro ao buscar preco.", sku: typeof sku === "string" ? sku : "", found: false, price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true });
   }
 });
 
@@ -11370,7 +11892,7 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
       return c.json({ error: "Máximo 50 SKUs por requisição.", results: [], config: null });
     }
 
-    console.log("[PriceBulk] Fetching prices for " + skus.length + " SKUs");
+    // PriceBulk fetching
 
     // 0. Load global price config once (in-memory cached)
     const cfg = await getPriceConfigCached();
@@ -11489,7 +12011,7 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
       }
     }
 
-    console.log("[PriceBulk] custom=" + Object.keys(customPriceMap).length + " cached=" + Object.keys(cacheMap).length + " needFetch=" + needFetch.length);
+    // PriceBulk cache stats computed
 
     // 4. Fetch remaining from SIGE in parallel (max 10 concurrent)
     if (needFetch.length > 0) {
@@ -11577,8 +12099,23 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
             }
 
             if (!codProduto) {
-              const notFound = { sku: sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice: showPrice, _cachedAt: Date.now() };
-              kvWritesBatch.push({ key: "sige_price_" + sku, value: JSON.stringify(notFound) });
+              // If SIGE is in cooldown (unreachable), don't cache false negative
+              var _sigeDown = Date.now() < _sigeReLoginCooldownUntil;
+              var notFound: any = { sku: sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice: showPrice, _cachedAt: Date.now() };
+              if (_sigeDown) {
+                notFound._sigeDown = true;
+                // Try stale cache instead of caching false negative
+                var _staleBulk = kvBulkMap["sige_price_" + sku];
+                if (_staleBulk) {
+                  if (typeof _staleBulk === "object" && _staleBulk !== null && (_staleBulk as any).value !== undefined) _staleBulk = (_staleBulk as any).value;
+                  var _staleBulkP = typeof _staleBulk === "string" ? JSON.parse(_staleBulk) : _staleBulk;
+                  if (_staleBulkP && _staleBulkP.found && _staleBulkP.price !== null) {
+                    return { ..._staleBulkP, showPrice: showPrice, cached: true, _stale: true, _sigeDown: true };
+                  }
+                }
+              } else {
+                kvWritesBatch.push({ key: "sige_price_" + sku, value: JSON.stringify(notFound) });
+              }
               return notFound;
             }
 
@@ -11618,6 +12155,24 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
                   pbase = extractPriceBP(priceListItems[0]);
                 }
               }
+            } else {
+              // SIGE list-price-items failed — try returning stale cache for this SKU
+              console.warn("[PriceBulk] list-price-items HTTP " + lpRes.status + " for " + sku);
+              var staleCacheKey = "sige_price_" + sku;
+              var staleRaw = kvBulkMap[staleCacheKey];
+              if (staleRaw) {
+                if (typeof staleRaw === "object" && staleRaw !== null && (staleRaw as any).value !== undefined) staleRaw = (staleRaw as any).value;
+                var staleParsed = typeof staleRaw === "string" ? JSON.parse(staleRaw) : staleRaw;
+                if (staleParsed && staleParsed.found && staleParsed.price !== null) {
+                  // Recompute with current tier
+                  if (staleParsed.v1 !== undefined || staleParsed.v2 !== undefined || staleParsed.v3 !== undefined) {
+                    var tStaleB: Record<string, number | null> = { v1: staleParsed.v1, v2: staleParsed.v2, v3: staleParsed.v3 };
+                    staleParsed.price = tStaleB[selectedTier] ?? staleParsed.base ?? staleParsed.v2 ?? staleParsed.v1 ?? staleParsed.v3;
+                    staleParsed.tier = selectedTier;
+                  }
+                  return { ...staleParsed, showPrice: showPrice, cached: true, _stale: true };
+                }
+              }
             }
 
             const tMapBP: Record<string, number | null> = { v1: pv1, v2: pv2, v3: pv3 };
@@ -11633,13 +12188,13 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
             kvWritesBatch.push({ key: "sige_price_" + sku, value: JSON.stringify(result) });
             return result;
           } catch (err: any) {
-            console.log("[PriceBulk] Error for " + sku + ": " + (err.message || err));
+            console.error("[PriceBulk] Error for " + sku + ": " + (err.message || err));
             return { sku: sku, found: false, source: "sige", price: null, v1: null, v2: null, v3: null, tier: selectedTier, showPrice: showPrice, error: "Erro ao buscar preco" };
           }
         }
 
-        // Run with concurrency limit of 10
-        const CONC_LIMIT = 10;
+        // Run with concurrency limit of 5 (reduced from 10 to avoid SIGE overload)
+        const CONC_LIMIT = 5;
         let fetchIdx = 0;
         const fetchedResults: any[] = [];
 
@@ -11670,17 +12225,19 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
             batchKeys.push(entry.key);
             batchVals.push(entry.value);
           }
-          kv.mset(batchKeys, batchVals).catch(function(e) { console.log("[PriceBulk] mset error:", e); });
+          kv.mset(batchKeys, batchVals).catch(function(e) { console.error("[PriceBulk] mset error:", e); });
         }
       }
     }
 
     const elapsed = Date.now() - t0;
-    console.log("[PriceBulk] Done. total=" + results.length + " elapsed=" + elapsed + "ms");
+    // PriceBulk done
     return c.json({ results: results, config: configOut });
   } catch (e: any) {
-    console.log("[PriceBulk] Exception:", e);
-    return c.json({ error: "Erro ao buscar precos.", results: [], config: null }, 500);
+    console.error("[PriceBulk] Exception:", e);
+    // Return 200 with empty results instead of 500 — display-only endpoint.
+    // 500 causes _requestFastFail to throw → frontend shows no prices at all.
+    return c.json({ error: "Erro ao buscar precos.", results: [], config: null, _exception: true });
   }
 });
 
@@ -11714,10 +12271,10 @@ app.get(BASE + "/produtos/custom-prices", async (c) => {
     }
 
     customs.sort((a: any, b: any) => a.sku.localeCompare(b.sku));
-    console.log("[Price] Custom prices list: " + customs.length + " items");
+    // Custom prices list loaded
     return c.json({ customs, total: customs.length });
   } catch (e: any) {
-    console.log("[Price] Custom prices list exception:", e);
+    console.error("[Price] Custom prices list exception:", e);
     return c.json({ error: "Erro ao listar precos customizados." }, 500);
   }
 });
@@ -11747,10 +12304,10 @@ app.delete(BASE + "/price-cache", async (c) => {
       if (batchKeys.length < 1000) break;
     }
     memClear("_price_config");
-    console.log("[Price] Cache cleared via /price-cache: " + totalDeleted + " entries by " + userId);
+    // Price cache cleared via /price-cache
     return c.json({ cleared: totalDeleted, message: totalDeleted + " caches de preço removidos." });
   } catch (e: any) {
-    console.log("[Price] Cache clear exception:", e);
+    console.error("[Price] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de precos." }, 500);
   }
 });
@@ -11895,7 +12452,7 @@ app.get(BASE + "/paghiper/config", async (c) => {
       updatedAt: config.updatedAt || null,
     });
   } catch (e: any) {
-    console.log("[PagHiper] Config get error:", e);
+    console.error("[PagHiper] Config get error:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -11925,10 +12482,10 @@ app.put(BASE + "/paghiper/config", async (c) => {
       updatedAt: Date.now(),
     }));
 
-    console.log(`[PagHiper] Config saved by user ${userId}`);
+    // PagHiper config saved
     return c.json({ success: true, configured: true });
   } catch (e: any) {
-    console.log("[PagHiper] Config save error:", e);
+    console.error("[PagHiper] Config save error:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -11940,10 +12497,10 @@ app.delete(BASE + "/paghiper/config", async (c) => {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
     await kv.del("paghiper_config");
-    console.log(`[PagHiper] Config deleted by user ${userId}`);
+    // PagHiper config deleted
     return c.json({ success: true, configured: false });
   } catch (e: any) {
-    console.log("[PagHiper] Config delete error:", e);
+    console.error("[PagHiper] Config delete error:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -11987,16 +12544,16 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
     // SECURITY: Validate prices server-side (allow up to 55% discount for PIX + coupons)
     try {
       var pixPriceCheck = await _validatePaymentPrices(items, 55);
-      console.log("[PagHiper-PIX] Price validation: verified=" + pixPriceCheck.verifiedCount + "/" + pixPriceCheck.totalItems + " clientTotal=" + pixPriceCheck.clientTotalCents + " expectedTotal=" + pixPriceCheck.expectedTotalCents + " flagged=" + pixPriceCheck.flaggedItems.length);
+      // PagHiper-PIX price validation completed
       if (!pixPriceCheck.ok) {
-        console.log("[PagHiper-PIX] PRICE TAMPERING BLOCKED for order " + order_id + " by user " + pixUserId + ": " + pixPriceCheck.flaggedItems.join(", "));
+        console.warn("[PagHiper-PIX] PRICE TAMPERING BLOCKED for order " + order_id);
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (pixPriceCheck.flaggedItems.length > 0) {
-        console.log("[PagHiper-PIX] PRICE WARNING for order " + order_id + ": " + pixPriceCheck.flaggedItems.join(", "));
+        console.warn("[PagHiper-PIX] PRICE WARNING for order " + order_id);
       }
     } catch (pvErr) {
-      console.log("[PagHiper-PIX] Price validation error (non-blocking): " + pvErr);
+      console.error("[PagHiper-PIX] Price validation error (non-blocking): " + pvErr);
     }
 
     const payload: any = {
@@ -12019,7 +12576,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
     };
 
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-    console.log("[PagHiper] PIX create for order " + order_id + (discount_cents ? " | discount_cents=" + discount_cents : ""));
+    // PagHiper PIX create for order
 
     const res = await fetch(`${PAGHIPER_PIX_URL}/create/`, {
       method: "POST",
@@ -12028,7 +12585,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] PIX create response:`, JSON.stringify(data));
+    // PagHiper PIX create response received
 
     if (!res.ok || data?.pix_create_request?.result === "reject") {
       const msg = data?.pix_create_request?.response_message || data?.message || `HTTP ${res.status}`;
@@ -12068,7 +12625,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
       raw: data,
     });
   } catch (e: any) {
-    console.log("[PagHiper] PIX create exception:", e);
+    console.error("[PagHiper] PIX create exception:", e);
     return c.json({ error: "Erro ao criar cobranca PIX." }, 500);
   }
 });
@@ -12099,7 +12656,7 @@ app.post(BASE + "/paghiper/pix/status", async (c) => {
     });
 
     const data = await res.json();
-    console.log("[PagHiper] PIX status for " + transaction_id + ":", JSON.stringify(data));
+    // PagHiper PIX status received
 
     const statusData = data?.status_request;
     const status = statusData?.status || "unknown";
@@ -12124,7 +12681,7 @@ app.post(BASE + "/paghiper/pix/status", async (c) => {
       raw: data,
     });
   } catch (e: any) {
-    console.log("[PagHiper] PIX status exception:", e);
+    console.error("[PagHiper] PIX status exception:", e);
     return c.json({ error: "Erro ao consultar status do PIX." }, 500);
   }
 });
@@ -12159,7 +12716,7 @@ app.post(BASE + "/paghiper/pix/cancel", async (c) => {
     });
 
     const data = await res.json();
-    console.log("[PagHiper] PIX cancel for " + transaction_id + ":", JSON.stringify(data));
+    // PagHiper PIX cancel response received
 
     const existing = await kv.get(`paghiper_tx_${transaction_id}`);
     if (existing) {
@@ -12172,7 +12729,7 @@ app.post(BASE + "/paghiper/pix/cancel", async (c) => {
 
     return c.json({ success: true, transaction_id, data });
   } catch (e: any) {
-    console.log("[PagHiper] PIX cancel exception:", e);
+    console.error("[PagHiper] PIX cancel exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -12230,16 +12787,16 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
     // SECURITY: Validate prices server-side (allow up to 45% discount for coupons — no PIX discount on boleto)
     try {
       var boletoPriceCheck = await _validatePaymentPrices(items, 45);
-      console.log("[PagHiper-Boleto] Price validation: verified=" + boletoPriceCheck.verifiedCount + "/" + boletoPriceCheck.totalItems + " clientTotal=" + boletoPriceCheck.clientTotalCents + " expectedTotal=" + boletoPriceCheck.expectedTotalCents + " flagged=" + boletoPriceCheck.flaggedItems.length);
+      // PagHiper-Boleto price validation completed
       if (!boletoPriceCheck.ok) {
-        console.log("[PagHiper-Boleto] PRICE TAMPERING BLOCKED for order " + order_id + " by user " + boletoUserId + ": " + boletoPriceCheck.flaggedItems.join(", "));
+        console.warn("[PagHiper-Boleto] PRICE TAMPERING BLOCKED for order " + order_id);
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (boletoPriceCheck.flaggedItems.length > 0) {
-        console.log("[PagHiper-Boleto] PRICE WARNING for order " + order_id + ": " + boletoPriceCheck.flaggedItems.join(", "));
+        console.warn("[PagHiper-Boleto] PRICE WARNING for order " + order_id);
       }
     } catch (pvErr2) {
-      console.log("[PagHiper-Boleto] Price validation error (non-blocking): " + pvErr2);
+      console.error("[PagHiper-Boleto] Price validation error (non-blocking): " + pvErr2);
     }
 
     const payload: any = {
@@ -12272,7 +12829,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
     };
 
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-    console.log("[PagHiper] Boleto create for order " + order_id + (discount_cents ? " | discount_cents=" + discount_cents : ""));
+    // PagHiper Boleto create for order
 
     const res = await fetch(`${PAGHIPER_BOLETO_URL}/create/`, {
       method: "POST",
@@ -12281,7 +12838,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] Boleto create response:`, JSON.stringify(data));
+    // PagHiper Boleto create response received
 
     if (!res.ok || data?.create_request?.result === "reject") {
       const msg = data?.create_request?.response_message || data?.message || `HTTP ${res.status}`;
@@ -12323,7 +12880,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
       raw: data,
     });
   } catch (e: any) {
-    console.log("[PagHiper] Boleto create exception:", e);
+    console.error("[PagHiper] Boleto create exception:", e);
     return c.json({ error: "Erro ao criar boleto." }, 500);
   }
 });
@@ -12354,7 +12911,7 @@ app.post(BASE + "/paghiper/boleto/status", async (c) => {
     });
 
     const data = await res.json();
-    console.log("[PagHiper] Boleto status for " + transaction_id + ":", JSON.stringify(data));
+    // PagHiper Boleto status received
 
     const statusData = data?.status_request;
     const status = statusData?.status || "unknown";
@@ -12379,7 +12936,7 @@ app.post(BASE + "/paghiper/boleto/status", async (c) => {
       raw: data,
     });
   } catch (e: any) {
-    console.log("[PagHiper] Boleto status exception:", e);
+    console.error("[PagHiper] Boleto status exception:", e);
     return c.json({ error: "Erro ao consultar status do boleto." }, 500);
   }
 });
@@ -12412,7 +12969,7 @@ app.post(BASE + "/paghiper/boleto/cancel", async (c) => {
     });
 
     const data = await res.json();
-    console.log(`[PagHiper] Boleto cancel for ${transaction_id}:`, JSON.stringify(data));
+    // PagHiper Boleto cancel response received
 
     const existing = await kv.get(`paghiper_tx_${transaction_id}`);
     if (existing) {
@@ -12425,7 +12982,7 @@ app.post(BASE + "/paghiper/boleto/cancel", async (c) => {
 
     return c.json({ success: true, transaction_id, data });
   } catch (e: any) {
-    console.log("[PagHiper] Boleto cancel exception:", e);
+    console.error("[PagHiper] Boleto cancel exception:", e);
     return c.json({ error: "Erro ao cancelar boleto." }, 500);
   }
 });
@@ -12450,24 +13007,24 @@ app.post(BASE + "/paghiper/notification", async (c) => {
     if (JSON.stringify(body).length > 10000) return c.json({ received: true, warning: "payload too large" });
     const { notification_id, idTransacao, transaction_id: txId, apiKey: notifApiKey } = body;
     const transactionId = idTransacao || txId;
-    console.log("[PagHiper] Notification received: notification_id=" + notification_id + ", transactionId=" + transactionId);
+    // PagHiper notification received
 
     if (!transactionId) {
-      console.log("[PagHiper] Notification missing transactionId, body:", JSON.stringify(body));
+      console.warn("[PagHiper] Notification missing transactionId");
       return c.json({ received: true, warning: "missing transactionId" });
     }
 
     // Verify credentials and validate apiKey from notification matches ours
     const creds = await getPagHiperCredentials();
     if (!creds) {
-      console.log("[PagHiper] Notification: no credentials configured");
+      console.warn("[PagHiper] Notification: no credentials configured");
       return c.json({ received: true, warning: "no credentials" });
     }
 
     // PagHiper includes apiKey in webhook payload — verify it matches our configured key
     // SECURITY: require apiKey presence (not just mismatch) to prevent bypass via omission
     if (!notifApiKey || notifApiKey !== creds.apiKey) {
-      console.log("[PagHiper] Notification: apiKey missing or mismatch, rejecting.");
+      console.warn("[PagHiper] Notification: apiKey mismatch, rejecting");
       return c.json({ received: false, error: "invalid apiKey" }, 403);
     }
 
@@ -12494,7 +13051,7 @@ app.post(BASE + "/paghiper/notification", async (c) => {
     const statusData = data?.status_request;
     const status = statusData?.status || "unknown";
 
-    console.log("[PagHiper] Notification: tx=" + transactionId + " type=" + txType + " status=" + status);
+    // PagHiper notification processed
 
     if (existing) {
       const tx = typeof existing === "string" ? JSON.parse(existing) : existing;
@@ -12530,15 +13087,15 @@ app.post(BASE + "/paghiper/notification", async (c) => {
                 pnOrder.emailSent = true;
                 var pnKey = "user_order:" + (pnOrder.createdBy || "") + ":" + (pnOrder.localOrderId || "");
                 await kv.set(pnKey, JSON.stringify(pnOrder));
-                console.log("[PagHiper] Notification: updated order " + pnOrder.localOrderId + " to paid");
+                // PagHiper notification: order updated to paid
                 // Send payment approved email (fire-and-forget)
                 _sendPaymentApprovedEmail(pnOrder).catch(function(pe2) {
-                  console.log("[PagHiper] Payment email error (non-fatal): " + pe2);
+                  console.error("[PagHiper] Payment email error (non-fatal): " + pe2);
                 });
                 // Confirm SIGE order to trigger stock deduction
                 if (pnOrder.sigeOrderId) {
                   confirmSigeOrder(String(pnOrder.sigeOrderId)).catch(function(ce3) {
-                    console.log("[PagHiper] SIGE confirm error (non-fatal): " + (ce3.message || ce3));
+                    console.error("[PagHiper] SIGE confirm error (non-fatal): " + (ce3.message || ce3));
                   });
                 }
                 break;
@@ -12547,13 +13104,13 @@ app.post(BASE + "/paghiper/notification", async (c) => {
           }
         }
       } catch (pnEx) {
-        console.log("[PagHiper] Notification order update error (non-fatal): " + pnEx);
+        console.error("[PagHiper] Notification order update error (non-fatal): " + pnEx);
       }
     }
 
     return c.json({ received: true, status });
   } catch (e: any) {
-    console.log("[PagHiper] Notification exception:", e);
+    console.error("[PagHiper] Notification exception:", e);
     return c.json({ received: true }, 500);
   }
 });
@@ -12581,7 +13138,7 @@ app.get(BASE + "/paghiper/transactions", async (c) => {
     transactions.sort((a: any, b: any) => (b.created_at || 0) - (a.created_at || 0));
     return c.json({ transactions, total: transactions.length });
   } catch (e: any) {
-    console.log("[PagHiper] Transactions list error:", e);
+    console.error("[PagHiper] Transactions list error:", e);
     return c.json({ error: "Erro ao listar transacoes PagHiper." }, 500);
   }
 });
@@ -12596,7 +13153,7 @@ app.get(BASE + "/paghiper/transaction/:id", async (c) => {
     const tx = typeof raw === "string" ? JSON.parse(raw) : raw;
     return c.json(tx);
   } catch (e: any) {
-    console.log("[PagHiper] Transaction get error:", e);
+    console.error("[PagHiper] Transaction get error:", e);
     return c.json({ error: "Erro ao buscar transação." }, 500);
   }
 });
@@ -12612,19 +13169,25 @@ app.get(BASE + "/paghiper/transaction/:id", async (c) => {
 function buildSigeCustomerPayload(profile: any): any {
   if (!profile) return { tipoCadastro: "C", nomeCadastro: "Cliente Site" };
   const cpfClean = (profile.cpf || "").replace(/\D/g, "");
+  const cnpjClean = (profile.cnpj || "").replace(/\D/g, "");
   const phoneClean = (profile.phone || "").replace(/\D/g, "");
   const cepClean = (profile.cep || "").replace(/\D/g, "");
-  const isCnpj = cpfClean.length === 14;
+  const isPJ = profile.personType === "pj" || cnpjClean.length === 14;
 
   const payload: any = {
     tipoCadastro: "C",
-    nomeCadastro: (profile.name || profile.email || "Cliente Site").substring(0, 100),
-    apelido: ((profile.name || "").split(" ")[0] || "").substring(0, 50),
-    tipoFJ: isCnpj ? "J" : "F",
-    observacao: `Cliente sincronizado do site. ID Supabase: ${profile.id || "?"}`,
+    nomeCadastro: (isPJ && profile.razaoSocial ? profile.razaoSocial : (profile.name || profile.email || "Cliente Site")).substring(0, 100),
+    apelido: (isPJ && profile.razaoSocial ? (profile.razaoSocial.split(" ")[0] || "") : ((profile.name || "").split(" ")[0] || "")).substring(0, 50),
+    tipoFJ: isPJ ? "J" : "F",
+    observacao: "Cliente sincronizado do site. ID Supabase: " + (profile.id || "?"),
   };
 
-  if (cpfClean) payload.cpfCgc = cpfClean;
+  if (isPJ && cnpjClean) {
+    payload.cpfCgc = cnpjClean;
+    if (profile.inscricaoEstadual) payload.inscricaoEstadual = profile.inscricaoEstadual;
+  } else if (cpfClean) {
+    payload.cpfCgc = cpfClean;
+  }
   if (profile.email) payload.email = profile.email;
   if (profile.state) payload.uf = profile.state;
 
@@ -12661,7 +13224,7 @@ async function findSigeCustomerByCpf(cpf: string): Promise<{ found: boolean; sig
     }
     return { found: false };
   } catch (e) {
-    console.log("findSigeCustomerByCpf exception:", e);
+    console.error("findSigeCustomerByCpf exception:", e);
     return { found: false };
   }
 }
@@ -12705,7 +13268,7 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
 
     // SECURITY: prevent IDOR — user can only sync their own account
     if (siteUserId !== userId) {
-      console.log("SIGE sync-customer IDOR blocked: auth=" + userId + " body=" + siteUserId);
+      console.warn("SIGE sync-customer IDOR blocked");
       return c.json({ error: "Acesso negado." }, 403);
     }
 
@@ -12713,7 +13276,7 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
     const existingMap = await kv.get(`sige_customer_map:${siteUserId}`);
     if (existingMap) {
       const mapped = typeof existingMap === "string" ? JSON.parse(existingMap) : existingMap;
-      console.log("SIGE sync-customer: user " + siteUserId + " already mapped to SIGE customer " + mapped.sigeCustomerId);
+      // Already mapped
       return c.json({ alreadySynced: true, mapping: _sanitizeMappingForUser(mapped) });
     }
 
@@ -12725,10 +13288,10 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
 
     // Step 1: If CPF exists, search SIGE for existing customer to avoid duplicate
     if (cpfClean) {
-      console.log(`SIGE sync-customer: searching SIGE by CPF ${cpfClean}...`);
+      // SIGE sync-customer: searching by CPF
       const existing = await findSigeCustomerByCpf(cpfClean);
       if (existing.found && existing.sigeCustomerId) {
-        console.log("SIGE sync-customer: FOUND existing SIGE customer " + existing.sigeCustomerId + " for CPF " + cpfClean + ", linking without creating");
+        // Found existing SIGE customer, linking
         const mapping = await saveSigeCustomerMapping(siteUserId, existing.sigeCustomerId, existing.customerData, profile);
         return c.json({ synced: true, linkedExisting: true, mapping: _sanitizeMappingForUser(mapping) });
       }
@@ -12736,7 +13299,7 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
 
     // Step 2: Create new customer in SIGE
     const sigePayload = buildSigeCustomerPayload(profile);
-    console.log("SIGE sync-customer: creating customer in SIGE:", JSON.stringify(sigePayload));
+    // Creating customer in SIGE
 
     const result = await sigeAuthFetch("POST", "/customer", sigePayload);
     if (!result.ok) {
@@ -12744,11 +13307,11 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
 
       // If SIGE says CPF already exists, try to find and link
       if (errMsg.toLowerCase().includes("cpf") || errMsg.toLowerCase().includes("cnpj") || errMsg.toLowerCase().includes("cadastro")) {
-        console.log(`SIGE sync-customer: creation rejected (${errMsg}), attempting to find and link...`);
+        // SIGE sync-customer: creation rejected, attempting find and link
         if (cpfClean) {
           const fallback = await findSigeCustomerByCpf(cpfClean);
           if (fallback.found && fallback.sigeCustomerId) {
-            console.log("SIGE sync-customer: fallback FOUND customer " + fallback.sigeCustomerId + ", linking");
+            // Fallback found, linking
             const mapping = await saveSigeCustomerMapping(siteUserId, fallback.sigeCustomerId, fallback.customerData, profile);
             return c.json({ synced: true, linkedExisting: true, mapping: _sanitizeMappingForUser(mapping) });
           }
@@ -12763,18 +13326,18 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
               const match = list.find((c: any) => c.email === profile.email || c.cpfCgc === cpfClean);
               if (match) {
                 const matchId = String(match.codCadastro || match.id || match.codigo);
-                console.log("SIGE sync-customer: found by name/email search: " + matchId);
+                // Found by name/email search
                 const mapping = await saveSigeCustomerMapping(siteUserId, matchId, match, profile);
                 return c.json({ synced: true, linkedExisting: true, mapping: _sanitizeMappingForUser(mapping) });
               }
             }
           } catch (searchErr) {
-            console.log("SIGE sync-customer: name search fallback failed:", searchErr);
+            console.error("SIGE sync-customer: name search fallback failed:", searchErr);
           }
         }
       }
 
-      console.log("SIGE sync-customer: SIGE error:", result.status, JSON.stringify(result.data));
+      console.error("SIGE sync-customer: SIGE error HTTP " + result.status);
       return _sigeProxyError(c, result);
     }
 
@@ -12786,10 +13349,10 @@ app.post(BASE + "/sige/sync-customer", async (c) => {
 
     const mapping = await saveSigeCustomerMapping(siteUserId, sigeCustomerId ? String(sigeCustomerId) : null, dados, profile);
 
-    console.log("SIGE sync-customer: SUCCESS, site user " + siteUserId + " -> SIGE customer " + sigeCustomerId);
+    // sync-customer success
     return c.json({ synced: true, mapping: _sanitizeMappingForUser(mapping) });
   } catch (e: any) {
-    console.log("SIGE sync-customer exception:", e);
+    console.error("SIGE sync-customer exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -12852,10 +13415,10 @@ app.get(BASE + "/sige/sync-customer/status", async (c) => {
       return db - da;
     });
 
-    console.log(`SIGE sync-customer status: ${clients.length} clients, ${mappingsMap.size} synced`);
+    // SIGE sync-customer status loaded
     return c.json({ clients, total: clients.length, synced: mappingsMap.size });
   } catch (e: any) {
-    console.log("SIGE sync-customer status exception:", e);
+    console.error("SIGE sync-customer status exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -12877,10 +13440,10 @@ app.delete(BASE + "/sige/sync-customer/:siteUserId", async (c) => {
     }
 
     await kv.del(`sige_customer_map:${siteUserId}`);
-    console.log(`SIGE sync-customer: removed mapping for site user ${siteUserId}`);
+    // SIGE sync-customer: mapping removed
     return c.json({ removed: true });
   } catch (e: any) {
-    console.log("SIGE sync-customer delete exception:", e);
+    console.error("SIGE sync-customer delete exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -12894,15 +13457,15 @@ app.get(BASE + "/sige/my-mapping", async (c) => {
     const existingMap = await kv.get(`sige_customer_map:${userId}`);
     if (existingMap) {
       const mapped = typeof existingMap === "string" ? JSON.parse(existingMap) : existingMap;
-      console.log("SIGE my-mapping: user " + userId + " -> SIGE customer " + mapped.sigeCustomerId);
+      // my-mapping found
       // SECURITY: strip sigeResponse to avoid exposing raw SIGE data to end users
       return c.json({ found: true, sigeCustomerId: mapped.sigeCustomerId, syncedAt: mapped.syncedAt || null });
     }
 
-    console.log(`SIGE my-mapping: user ${userId} has no SIGE mapping`);
+    // SIGE my-mapping: no mapping found
     return c.json({ found: false, sigeCustomerId: null });
   } catch (e: any) {
-    console.log("SIGE my-mapping exception:", e);
+    console.error("SIGE my-mapping exception:", e);
     return c.json({ error: "Erro ao buscar mapeamento." }, 500);
   }
 });
@@ -13003,11 +13566,11 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       var mapRaw = await kv.get("sige_customer_map:" + userId);
       var userMap = mapRaw ? (typeof mapRaw === "string" ? JSON.parse(mapRaw) : mapRaw) : null;
       if (!userMap || String(userMap.sigeCustomerId) !== String(codCliente)) {
-        console.log("[create-sale] IDOR blocked: userId=" + userId + " sent codCliente=" + codCliente + " but mapped=" + (userMap ? userMap.sigeCustomerId : "none"));
+        console.warn("[create-sale] IDOR blocked: codCliente mismatch");
         return c.json({ error: "codCliente não pertence ao usuário autenticado." }, 403);
       }
     } catch (mapErr) {
-      console.log("[create-sale] SIGE mapping lookup error:", mapErr);
+      console.error("[create-sale] SIGE mapping lookup error:", mapErr);
       return c.json({ error: "Erro ao verificar mapeamento SIGE." }, 500);
     }
 
@@ -13086,7 +13649,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
         skuBasePart = sku.substring(0, lastHyphen);
         skuSuffix = sku.substring(lastHyphen + 1);
         debug.skuSplit = { basePart: skuBasePart, suffix: skuSuffix };
-        console.log(`SIGE create-sale: [REF-RESOLVE] SKU contains hyphen: base="${skuBasePart}", suffix="${skuSuffix}"`);
+        // REF-RESOLVE: SKU contains hyphen
       }
 
       // Try the reference endpoint with multiple ID candidates
@@ -13097,10 +13660,10 @@ app.post(BASE + "/sige/create-sale", async (c) => {
           const codRefParam = (skuSuffix && (pid === sku || pid === skuBasePart))
             ? `?codRef=${encodeURIComponent(skuSuffix)}` : "";
           const refPath = `/product/${encodeURIComponent(pid)}/reference${codRefParam}`;
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 2 (PRIMARY): GET ${refPath}`);
+          // REF-RESOLVE: Strategy 2 primary
           const refResult = await sigeAuthFetch("GET", refPath);
           const rawStr = JSON.stringify(refResult.data).substring(0, 500);
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 2 response for ${pid}: HTTP ${refResult.status}, data=${rawStr}`);
+          // REF-RESOLVE: Strategy 2 response received
 
           if (refResult.ok && refResult.data) {
             const refs = extractRefsArr(refResult.data);
@@ -13127,7 +13690,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
               if (activeRef?.codRef !== undefined && activeRef?.codRef !== null) {
                 const resolvedCodRef = String(activeRef.codRef);
                 const resolvedCodProduto = String(activeRef.codProduto || pid);
-                console.log(`SIGE create-sale: [REF-RESOLVE] SUCCESS for ${sku}: codProduto="${resolvedCodProduto}", codRef="${resolvedCodRef}" via GET /product/${pid}/reference`);
+                // REF-RESOLVE: SUCCESS via GET product reference
                 return { codProduto: resolvedCodProduto, codRef: resolvedCodRef, _debug: debug };
               }
             }
@@ -13141,7 +13704,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
             });
           }
         } catch (e: any) {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 2 error for ${pid}:`, e.message);
+          console.error("[create-sale] REF-RESOLVE Strategy 2 error:", e.message);
           debug.strategies.push({ name: `product_ref_direct_${pid}`, error: e.message });
         }
       }
@@ -13151,16 +13714,16 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       const codProdutosToTry = [...new Set([sigeCodProduto, sku, ...(skuBasePart ? [skuBasePart] : [])])];
       for (const cprod of codProdutosToTry) {
         try {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 3: Searching GET /product?codProduto=${cprod}`);
+          // REF-RESOLVE: Strategy 3 searching
           const prodSearchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(cprod)}&limit=1&offset=1`);
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 3 response for ${cprod}: HTTP ${prodSearchRes.status}, data=${JSON.stringify(prodSearchRes.data).substring(0, 500)}`);
+          // REF-RESOLVE: Strategy 3 response received
           if (prodSearchRes.ok && prodSearchRes.data) {
             const prods = extractProdsForRef(prodSearchRes.data);
             if (prods.length > 0) {
               const prod = prods[0];
               const numericId = prod.id || prod.codProduto;
               const actualCodProduto = String(prod.codProduto || cprod);
-              console.log(`SIGE create-sale: [REF-RESOLVE] Found product ${cprod} -> id=${numericId}, codProduto=${actualCodProduto}, keys=${Object.keys(prod).join(",")}`);
+              // REF-RESOLVE: Found product in strategy 3
               debug.strategies.push({
                 name: `product_search_${cprod}`,
                 found: true,
@@ -13171,7 +13734,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
 
               // If we found product via base part, suffix IS the codRef
               if (skuBasePart && cprod === skuBasePart && skuSuffix) {
-                console.log(`SIGE create-sale: [REF-RESOLVE] SUCCESS for ${sku}: SKU split => codProduto="${actualCodProduto}", codRef="${skuSuffix}"`);
+                // REF-RESOLVE: SUCCESS via SKU split
                 debug.strategies.push({
                   name: "sku_hyphen_split",
                   result: "used",
@@ -13184,7 +13747,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
               // Try /product/{numericId}/reference if we haven't tried this ID yet
               if (numericId && !idsForRefLookup.includes(String(numericId))) {
                 try {
-                  console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 3b: GET /product/${numericId}/reference`);
+                  // REF-RESOLVE: Strategy 3b ref lookup
                   const refResult = await sigeAuthFetch("GET", `/product/${encodeURIComponent(numericId)}/reference`);
                   const refs = extractRefsArr(refResult.data);
                   debug.strategies.push({
@@ -13205,12 +13768,12 @@ app.post(BASE + "/sige/create-sale", async (c) => {
                     }
                     if (activeRef?.codRef !== undefined && activeRef?.codRef !== null) {
                       const resolvedCodRef = String(activeRef.codRef);
-                      console.log(`SIGE create-sale: [REF-RESOLVE] SUCCESS for ${sku}: codProduto="${actualCodProduto}", codRef="${resolvedCodRef}" via product search + ref lookup`);
+                      // REF-RESOLVE: SUCCESS via product search + ref lookup
                       return { codProduto: actualCodProduto, codRef: resolvedCodRef, _debug: debug };
                     }
                   }
                 } catch (e: any) {
-                  console.log(`SIGE create-sale: [REF-RESOLVE] Ref lookup by ID error:`, e.message);
+                  console.error("[create-sale] REF-RESOLVE ref lookup by ID error:", e.message);
                   debug.strategies.push({ name: `product_ref_by_id_${numericId}`, error: e.message });
                 }
               }
@@ -13221,7 +13784,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
             debug.strategies.push({ name: `product_search_${cprod}`, found: false, status: prodSearchRes.status, ok: false });
           }
         } catch (e: any) {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Product search error for ${cprod}:`, e.message);
+          console.error("[create-sale] REF-RESOLVE product search error:", e.message);
           debug.strategies.push({ name: `product_search_${cprod}`, error: e.message });
         }
       }
@@ -13231,7 +13794,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       const codProdutosToTryRef = [...new Set([sigeCodProduto, sku, ...(skuBasePart ? [skuBasePart] : [])])];
       for (const cprod of codProdutosToTryRef) {
         try {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Strategy 4: GET /reference?codProduto=${cprod}`);
+          // REF-RESOLVE: Strategy 4 global ref
           const refResult = await sigeAuthFetch("GET", `/reference?codProduto=${encodeURIComponent(cprod)}`);
           if (refResult.ok && refResult.data) {
             const allRefs = extractRefsArr(refResult.data);
@@ -13252,17 +13815,17 @@ app.post(BASE + "/sige/create-sale", async (c) => {
               const activeRef = matchingRefs.find((r: any) => r.status === "A") || matchingRefs[0];
               if (activeRef?.codRef !== undefined && activeRef?.codRef !== null) {
                 const resolvedCodRef = String(activeRef.codRef);
-                console.log(`SIGE create-sale: [REF-RESOLVE] SUCCESS for ${sku}: codRef="${resolvedCodRef}" via filtered global /reference`);
+                // REF-RESOLVE: SUCCESS via filtered global reference
                 return { codProduto: sigeCodProduto, codRef: resolvedCodRef, _debug: debug };
               }
             } else if (allRefs.length > 0) {
-              console.log(`SIGE create-sale: [REF-RESOLVE] Global ref returned ${allRefs.length} refs but NONE match codProduto=${cprod}`);
+              // REF-RESOLVE: Global ref returned no match
             }
           } else {
             debug.strategies.push({ name: `global_ref_filtered_${cprod}`, status: refResult.status, ok: false });
           }
         } catch (e: any) {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Global ref error for ${cprod}:`, e.message);
+          console.error("[create-sale] REF-RESOLVE global ref error:", e.message);
           debug.strategies.push({ name: `global_ref_filtered_${cprod}`, error: e.message });
         }
       }
@@ -13271,7 +13834,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       if (sku !== sigeCodProduto && sku.toLowerCase().startsWith(sigeCodProduto.toLowerCase())) {
         const rest = sku.substring(sigeCodProduto.length).replace(/^[-_.\s]/, "");
         if (rest) {
-          console.log(`SIGE create-sale: [REF-RESOLVE] Inferred codRef from SKU split: "${rest}"`);
+          // REF-RESOLVE: Inferred codRef from SKU split
           debug.strategies.push({ name: "sku_split", codRef: rest });
           return { codProduto: sigeCodProduto, codRef: rest, _debug: debug };
         }
@@ -13281,7 +13844,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       //     This is the last "educated guess" before the fallback "0".
       //     E.g. "103716-347" → codProduto="103716", codRef="347"
       if (skuBasePart && skuSuffix) {
-        console.log(`SIGE create-sale: [REF-RESOLVE] Using hyphen-split fallback: codProduto="${skuBasePart}", codRef="${skuSuffix}"`);
+        // REF-RESOLVE: Using hyphen-split fallback
         debug.strategies.push({
           name: "sku_hyphen_split_fallback",
           codProduto: skuBasePart,
@@ -13292,13 +13855,13 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       }
 
       // 6. Last resort: use "0" (the diagnostic showed most SIGE products use codRef="0")
-      console.log(`SIGE create-sale: [REF-RESOLVE] WARNING - All strategies failed for ${sku}, using "0" as fallback`);
+      console.warn("[create-sale] REF-RESOLVE: All strategies failed, using 0 as fallback");
       debug.strategies.push({ name: "fallback_0" });
       return { codProduto: sigeCodProduto, codRef: "0", _debug: debug };
     }
 
     // Resolve all product references in parallel
-    console.log(`SIGE create-sale: Resolving codRef for ${items.length} items...`);
+    // SIGE create-sale: resolving codRef
     const resolvedRefs = await Promise.all(
       items.map((item: any) => resolveProductRef(
         String(item.codProduto || ""),
@@ -13334,7 +13897,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
         for (const k of priceFields) {
           const v = src[k];
           if (v !== undefined && v !== null && Number(v) > 0) {
-            console.log(`SIGE create-sale: [PRICE] Found price field ${k}=${v} for ${sku}`);
+            // PRICE: found price field
             return Number(v);
           }
         }
@@ -13348,7 +13911,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
           if (customRaw) {
             const custom = typeof customRaw === "string" ? JSON.parse(customRaw) : customRaw;
             if (custom.price !== undefined && custom.price !== null && Number(custom.price) > 0) {
-              console.log(`SIGE create-sale: [PRICE] Custom price for ${sku}: R$${custom.price}`);
+              // PRICE: custom price found
               return Number(custom.price);
             }
           }
@@ -13359,7 +13922,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
         if (cachedRaw) {
           const cached = typeof cachedRaw === "string" ? JSON.parse(cachedRaw) : cachedRaw;
           if (cached.price && Number(cached.price) > 0) {
-            console.log(`SIGE create-sale: [PRICE] Cached SIGE price for ${sku}: R$${cached.price}`);
+            // PRICE: cached SIGE price found
             return Number(cached.price);
           }
         }
@@ -13372,34 +13935,34 @@ app.post(BASE + "/sige/create-sale", async (c) => {
 
         for (const searchSku of skusToTry) {
           try {
-            console.log(`SIGE create-sale: [PRICE] Direct: GET /product/${searchSku}`);
+            // PRICE: direct product lookup
             const directRes = await sigeAuthFetch("GET", `/product/${encodeURIComponent(searchSku)}`);
-            console.log(`SIGE create-sale: [PRICE] Direct /product/${searchSku}: HTTP ${directRes.status}, data=${JSON.stringify(directRes.data).substring(0, 300)}`);
+            // PRICE: direct product response received
             if (directRes.ok && directRes.data) {
               const directPrice = extractPriceFromProduct(directRes.data);
               if (directPrice) {
-                console.log(`SIGE create-sale: [PRICE] Direct product price for ${sku} (via ${searchSku}): R$${directPrice}`);
+                // PRICE: direct product price resolved
                 return directPrice;
               }
             }
           } catch (e: any) {
-            console.log(`SIGE create-sale: [PRICE] Direct product error for ${searchSku}:`, e.message);
+            console.error("[create-sale] PRICE direct product error:", e.message);
           }
         }
 
         // 4. SIGE product SEARCH endpoint (query param approach)
         for (const searchSku of skusToTry) {
           try {
-            console.log(`SIGE create-sale: [PRICE] Search: GET /product?codProduto=${searchSku}`);
+            // PRICE: product search
             const searchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(searchSku)}&limit=1&offset=1`);
-            console.log(`SIGE create-sale: [PRICE] Search /product?codProduto=${searchSku}: HTTP ${searchRes.status}, data=${JSON.stringify(searchRes.data).substring(0, 300)}`);
+            // PRICE: search response received
             if (searchRes.ok && searchRes.data) {
               const prods = extractProdsShared(searchRes.data);
               if (prods.length > 0) {
                 const prod = prods[0];
                 const price = extractPriceFromProduct(prod);
                 if (price) {
-                  console.log(`SIGE create-sale: [PRICE] Product search price for ${sku} (via ${searchSku}): R$${price}`);
+                  // PRICE: product search price resolved
                   return price;
                 }
                 // If found but no inline price, try by numeric ID
@@ -13410,7 +13973,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
                     if (idRes.ok) {
                       const idPrice = extractPriceFromProduct(idRes.data);
                       if (idPrice) {
-                        console.log(`SIGE create-sale: [PRICE] Product by numericId ${numId} price for ${sku}: R$${idPrice}`);
+                        // PRICE: product by numericId price resolved
                         return idPrice;
                       }
                     }
@@ -13419,7 +13982,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
               }
             }
           } catch (e: any) {
-            console.log(`SIGE create-sale: [PRICE] Search error for ${searchSku}:`, e.message);
+            console.error("[create-sale] PRICE search error:", e.message);
           }
         }
 
@@ -13432,7 +13995,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
               for (const lpItem of lpItems) {
                 const v = lpItem?.vlrTabela || lpItem?.valorTabela || lpItem?.vlrVenda || lpItem?.preco || lpItem?.valor;
                 if (v && Number(v) > 0) {
-                  console.log(`SIGE create-sale: [PRICE] list-price-items price for ${sku} (via ${searchSku}): R$${v}`);
+                  // PRICE: list-price-items price resolved
                   return Number(v);
                 }
               }
@@ -13440,7 +14003,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
           } catch { /* ignore */ }
         }
       } catch (e: any) {
-        console.log(`SIGE create-sale: [PRICE] Error resolving price for ${sku}:`, e.message);
+        console.error("[create-sale] PRICE resolve error:", e.message);
       }
       return null;
     }
@@ -13475,13 +14038,13 @@ app.post(BASE + "/sige/create-sale", async (c) => {
         const fetchedPrice = await resolveItemPrice(skuToResolve);
         if (fetchedPrice && fetchedPrice > 0) {
           price = fetchedPrice;
-          console.log(`SIGE create-sale: [PRICE] Auto-resolved price for ${skuToResolve}: R$${price.toFixed(2)}`);
+          // PRICE: auto-resolved
         } else if (resolved.codProduto !== String(item.codProduto || "")) {
           // Fallback: try with original codProduto from cart (full SKU like "012561-227")
           const fallbackPrice = await resolveItemPrice(String(item.codProduto || item.sku || ""));
           if (fallbackPrice && fallbackPrice > 0) {
             price = fallbackPrice;
-            console.log(`SIGE create-sale: [PRICE] Fallback price for ${item.codProduto}: R$${price.toFixed(2)}`);
+            // PRICE: fallback price used
           }
         }
       }
@@ -13546,11 +14109,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       }
     }
 
-    console.log("SIGE create-sale: STEP 1 - Creating order WITH items (NO observacao)");
-    console.log("SIGE create-sale: codCliFor:", typeof orderPayload.codCliFor, orderPayload.codCliFor);
-    console.log("SIGE create-sale: items count:", sigeItems.length, "first:", JSON.stringify(sigeItems[0]));
-    console.log("SIGE create-sale: Full payload keys:", Object.keys(orderPayload).join(", "));
-    console.log("SIGE create-sale: Full payload:", JSON.stringify(orderPayload));
+    // SIGE create-sale: Step 1 - order with items
     // Validate all items have REQUIRED fields before sending
     const itemIssues: string[] = [];
     for (let ii = 0; ii < sigeItems.length; ii++) {
@@ -13562,19 +14121,19 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       if (!si.qtdeUnd || si.qtdeUnd <= 0) itemIssues.push(`item[${ii}]: qtdeUnd=${si.qtdeUnd} inválido`);
     }
     if (itemIssues.length > 0) {
-      console.log("SIGE create-sale: ITEM WARNINGS:", itemIssues.join(" | "));
+      console.warn("SIGE create-sale: ITEM WARNINGS: " + itemIssues.join(" | "));
     }
-    console.log("SIGE create-sale: Observation (step 2):", obsPayload ? JSON.stringify(obsPayload) : "none");
+    // Step 2 observation prepared
 
     // Send order+items directly — flat JSON only (NOT "dados" wrapper!).
     // Diagnostic confirmed: flat JSON → "items -> codRef"; "dados" wrapper → "codCliFor,codTipoMv,items"
     // So flat JSON is the only format the API reads correctly.
     const orderResult = await sigeAuthFetch("POST", "/order", orderPayload);
-    console.log("SIGE create-sale: Step1 =>", orderResult.status, JSON.stringify(orderResult.data));
+    // Step1 result received
     steps.push({ step: "create_order_with_items", ok: orderResult.ok, status: orderResult.status, data: orderResult.data });
 
     if (!orderResult.ok) {
-      console.log("[SIGE create-sale] Step 1 failed. steps=" + JSON.stringify(steps) + " payload=" + JSON.stringify(orderPayload));
+      console.error("[SIGE create-sale] Step 1 failed. steps=" + JSON.stringify(steps));
       return c.json({
         error: "Erro ao criar pedido no SIGE. Tente novamente ou entre em contato.",
         sigeStatus: orderResult.status,
@@ -13590,7 +14149,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
     if (!orderId) {
       var dataKeys = orderData ? Object.keys(orderData) : [];
       var dadosKeys = orderDados ? (typeof orderDados === "object" ? Object.keys(orderDados) : []) : [];
-      console.log("SIGE create-sale: Could not extract orderId. orderData keys=" + JSON.stringify(dataKeys) + " orderDados keys=" + JSON.stringify(dadosKeys) + " full=" + JSON.stringify(orderData));
+      console.error("SIGE create-sale: Could not extract orderId from response");
       const saleRef = {
         orderId: "unknown", codCliente, itemCount: items.length,
         createdBy: userId, createdAt: new Date().toISOString(), steps,
@@ -13605,25 +14164,25 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       });
     }
 
-    console.log(`SIGE create-sale: STEP 1 DONE - Order ${orderId} created with ${sigeItems.length} items`);
+    // SIGE create-sale: Step 1 done
 
     // ════════════════════════════════════════════════════════════════
     // STEP 2: Add observation via POST /order/{orderId}/observation
     // ════════════════════════════════════════════════════════════════
     if (obsPayload) {
-      console.log(`SIGE create-sale: STEP 2 - Adding observation to order ${orderId}`);
+      // SIGE create-sale: Step 2 adding observation
       const obsResult = await sigeAuthFetch("POST", `/order/${orderId}/observation`, obsPayload);
-      console.log("SIGE create-sale: Step2 =>", obsResult.status, JSON.stringify(obsResult.data));
+      // Step2 observation result received
       steps.push({ step: "add_observation", ok: obsResult.ok, status: obsResult.status, data: obsResult.data });
       if (!obsResult.ok) {
-        console.log(`SIGE create-sale: WARNING - Observation failed (non-fatal), continuing...`);
+        console.warn("[create-sale] Observation failed (non-fatal), continuing");
       }
     }
 
     // ════════════════════════════════════════════════════════════════
     // STEP 3: Fetch complete order + items for confirmation
     // ════════════════════════════════════════════════════════════════
-    console.log(`SIGE create-sale: STEP 3 - Confirming order ${orderId}`);
+    // SIGE create-sale: Step 3 confirming order
     const finalOrder = await sigeAuthFetch("GET", `/order/${orderId}`);
     steps.push({ step: "fetch_order_confirm", ok: finalOrder.ok, status: finalOrder.status });
 
@@ -13652,14 +14211,14 @@ app.post(BASE + "/sige/create-sale", async (c) => {
     };
     await kv.set(`sige_sale:${orderId}`, JSON.stringify(saleRef));
 
-    console.log(`SIGE create-sale: COMPLETE - order ${orderId}, ${items.length} items, total R$${totalValue.toFixed(2)}`);
+    // SIGE create-sale: complete
     // SECURITY: do not expose raw SIGE data, steps or sentPayload to end users
     return c.json({
       success: true,
       orderId,
     });
   } catch (e: any) {
-    console.log("SIGE create-sale exception:", e);
+    console.error("SIGE create-sale exception:", e);
     return c.json({ error: "Erro interno ao criar pedido." }, 500);
   }
 });
@@ -13684,7 +14243,7 @@ app.get(BASE + "/sige/sales", async (c) => {
     });
     return c.json({ sales, total: sales.length });
   } catch (e: any) {
-    console.log("SIGE sales list exception:", e);
+    console.error("SIGE sales list exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -13720,7 +14279,7 @@ app.post(BASE + "/user/save-order", async (c) => {
     const { localOrderId: rawLocalOrderId, sigeOrderId, items, total, paymentMethod, transactionId, observacao, shippingAddress, shippingOption } = body;
     // SECURITY: Sanitize localOrderId — strip dangerous chars, limit length
     var localOrderId = String(rawLocalOrderId || "").replace(/[^a-zA-Z0-9_\-]/g, "").substring(0, 80);
-    console.log("[save-order] shippingOption received: " + JSON.stringify(shippingOption || null));
+    // save-order: shippingOption received
 
     if (!localOrderId) return c.json({ error: "localOrderId obrigatório." }, 400);
 
@@ -13735,15 +14294,15 @@ app.post(BASE + "/user/save-order", async (c) => {
           // Verify the charge belongs to this user and was approved
           if (parsedCharge.userId === userId && parsedCharge.isApproved) {
             initialStatus = "paid";
-            console.log("[save-order] SafraPay charge " + claimedChargeId + " verified for user " + userId);
+            // save-order: SafraPay charge verified
           } else {
-            console.log("[save-order] SafraPay charge " + claimedChargeId + " NOT approved or wrong user. userId=" + userId + " chargeUserId=" + parsedCharge.userId + " approved=" + parsedCharge.isApproved);
+            console.warn("[save-order] SafraPay charge NOT approved or wrong user");
           }
         } else {
-          console.log("[save-order] SafraPay charge " + claimedChargeId + " NOT FOUND in KV. Keeping awaiting_payment.");
+          console.warn("[save-order] SafraPay charge NOT FOUND in KV, keeping awaiting_payment");
         }
       } else {
-        console.log("[save-order] paymentMethod=cartao_credito but no safrapayChargeId. Keeping awaiting_payment.");
+        console.warn("[save-order] paymentMethod=cartao_credito but no safrapayChargeId");
       }
     }
 
@@ -13801,23 +14360,23 @@ app.post(BASE + "/user/save-order", async (c) => {
 
     const kvKey = `user_order:${userId}:${localOrderId}`;
     await kv.set(kvKey, JSON.stringify(orderRecord));
-    console.log(`User save-order: saved ${kvKey} for user ${userId}, ${orderRecord.itemCount} items, total R$${orderRecord.total}, status=${initialStatus}`);
+    // save-order: saved successfully
 
     // Fire-and-forget: send order confirmation email + admin notification
     _sendOrderConfirmationEmail(orderRecord).catch(function(emailErr) {
-      console.log("[save-order] Order confirmation email error (non-fatal): " + emailErr);
+      console.error("[save-order] Order confirmation email error (non-fatal): " + emailErr);
     });
     _getUserEmailById(userId).then(function(uEmail) {
       if (uEmail) {
         _sendAdminNewOrderNotification(orderRecord, uEmail).catch(function(adminErr) {
-          console.log("[save-order] Admin notification email error (non-fatal): " + adminErr);
+          console.error("[save-order] Admin notification email error (non-fatal): " + adminErr);
         });
       }
     }).catch(function() {});
 
     return c.json({ success: true, orderId: localOrderId });
   } catch (e: any) {
-    console.log("User save-order exception:", e);
+    console.error("[save-order] Exception:", e);
     return c.json({ error: "Erro ao salvar pedido." }, 500);
   }
 });
@@ -13848,7 +14407,7 @@ app.post(BASE + "/user/update-order-status", async (c) => {
     // credit card flow (save-order sets initialStatus="paid" synchronously).
     var BLOCKED_USER_STATUSES = ["paid", "completed", "shipped", "delivered"];
     if (status && BLOCKED_USER_STATUSES.indexOf(status) !== -1) {
-      console.log("[update-order-status] BLOCKED: user " + userId + " tried to set status '" + status + "' on " + localOrderId);
+      console.warn("[update-order-status] BLOCKED: unauthorized status change attempt");
       return c.json({ error: "Status nao permitido via endpoint de usuario." }, 403);
     }
 
@@ -13866,9 +14425,9 @@ app.post(BASE + "/user/update-order-status", async (c) => {
       try {
         var sigeConfirm = await confirmSigeOrder(String(order.sigeOrderId));
         order.sigeConfirmResult = { ok: sigeConfirm.ok, message: sigeConfirm.message };
-        console.log("User update-order-status: SIGE confirm for " + order.sigeOrderId + " => ok=" + sigeConfirm.ok + " msg=" + sigeConfirm.message);
+        // update-order-status: SIGE confirm done
       } catch (confirmErr: any) {
-        console.log("User update-order-status: SIGE confirm error (non-fatal): " + confirmErr.message);
+        console.error("[update-order-status] SIGE confirm error (non-fatal): " + confirmErr.message);
       }
     }
 
@@ -13888,15 +14447,15 @@ app.post(BASE + "/user/update-order-status", async (c) => {
           }
         }
       } catch (wce) {
-        console.log("[Warranty] Certificate email error (non-fatal): " + wce);
+        console.error("[Warranty] Certificate email error (non-fatal): " + wce);
       }
     }
 
     await kv.set(kvKey, JSON.stringify(order));
-    console.log("User update-order-status: " + kvKey + " -> " + status);
+    // update-order-status: done
     return c.json({ success: true });
   } catch (e: any) {
-    console.log("User update-order-status exception:", e);
+    console.error("[update-order-status] Exception:", e);
     return c.json({ error: "Erro ao atualizar status do pedido." }, 500);
   }
 });
@@ -14003,16 +14562,16 @@ app.get(BASE + "/user/my-orders", async (c) => {
                 if (!rec.emailSent) {
                   rec.emailSent = true;
                   _sendPaymentApprovedEmail(rec).catch(function(arEmailErr) {
-                    console.log("Auto-reconciliation: payment email error (non-fatal): " + arEmailErr);
+                    console.error("[Auto-reconciliation] payment email error (non-fatal): " + arEmailErr);
                   });
                 }
                 await kv.set(kvKey, JSON.stringify(rec));
-                console.log("Auto-reconciliation: " + kvKey + " -> paid (PagHiper confirmed)");
+                // Auto-reconciliation: order marked paid
               }
               // Confirm SIGE order to trigger stock deduction
               if (order.sigeOrderId) {
                 confirmSigeOrder(String(order.sigeOrderId)).catch(function(ce: any) {
-                  console.log("Auto-reconciliation: SIGE confirm error (non-fatal): " + (ce.message || ce));
+                  console.error("[Auto-reconciliation] SIGE confirm error (non-fatal): " + (ce.message || ce));
                 });
               }
             } else if (phStatus === "canceled" || phStatus === "refunded") {
@@ -14024,11 +14583,11 @@ app.get(BASE + "/user/my-orders", async (c) => {
                 rec.status = "cancelled";
                 rec.updatedAt = new Date().toISOString();
                 await kv.set(kvKey, JSON.stringify(rec));
-                console.log(`Auto-reconciliation: ${kvKey} -> cancelled (PagHiper: ${phStatus})`);
+                // Auto-reconciliation: order cancelled
               }
             }
           } catch (e) {
-            console.log(`Auto-reconciliation error for ${order.transactionId}:`, e);
+            console.error("[Auto-reconciliation] error:", e);
           }
         }));
       }
@@ -14042,7 +14601,7 @@ app.get(BASE + "/user/my-orders", async (c) => {
     });
     return c.json({ orders: myOrders, total: myOrders.length });
   } catch (e: any) {
-    console.log("User my-orders exception:", e);
+    console.error("[my-orders] Exception:", e);
     return c.json({ error: "Erro ao buscar seus pedidos." }, 500);
   }
 });
@@ -14143,14 +14702,14 @@ app.get(BASE + "/user/order-tracking/:localOrderId", async function (c) {
           signal: AbortSignal.timeout(30000),
         });
         var trackText = await trackRes.text();
-        console.log("[SisFrete-WT] User tracking: GET /rastreio => HTTP " + trackRes.status + " length=" + trackText.length);
+        // SisFrete-WT: tracking response received
         if (trackRes.ok) {
           try { allEvents = JSON.parse(trackText); } catch (pe) { allEvents = []; }
           if (!Array.isArray(allEvents)) allEvents = [];
           await kv.set(cacheKey, JSON.stringify({ fetchedAt: new Date().toISOString(), events: allEvents }));
         }
       } catch (fetchErr) {
-        console.log("[SisFrete-WT] User tracking: fetch error: " + fetchErr);
+        console.error("[SisFrete-WT] User tracking fetch error: " + fetchErr);
       }
     }
 
@@ -14185,7 +14744,7 @@ app.get(BASE + "/user/order-tracking/:localOrderId", async function (c) {
       numeroDoPedido: matchedNumeroPedido,
     });
   } catch (e: any) {
-    console.log("[SisFrete-WT] User order-tracking error: " + e);
+    console.error("[SisFrete-WT] User order-tracking error: " + e);
     return c.json({ error: "Erro ao consultar rastreio." }, 500);
   }
 });
@@ -14325,7 +14884,7 @@ app.get(BASE + "/admin/orders", async (c) => {
 
     return c.json({ orders: orders, total: orders.length });
   } catch (e: any) {
-    console.log("Admin orders exception:", e);
+    console.error("[Admin orders] Exception:", e);
     return c.json({ error: "Erro ao buscar pedidos." }, 500);
   }
 });
@@ -14367,18 +14926,18 @@ app.post(BASE + "/admin/update-order-status", async (c) => {
       try {
         var adminConfirm = await confirmSigeOrder(String(order.sigeOrderId));
         order.sigeConfirmResult = { ok: adminConfirm.ok, message: adminConfirm.message };
-        console.log("Admin update-order-status: SIGE confirm for " + order.sigeOrderId + " => ok=" + adminConfirm.ok + " msg=" + adminConfirm.message);
+        // Admin update-order-status: SIGE confirm done
       } catch (confirmErr: any) {
-        console.log("Admin update-order-status: SIGE confirm error (non-fatal): " + confirmErr.message);
+        console.error("[Admin update-order-status] SIGE confirm error (non-fatal): " + confirmErr.message);
       }
     }
 
     await kv.set(kvKey, JSON.stringify(order));
-    console.log("Admin update-order-status: " + kvKey + " -> " + newStatus);
+    // Admin update-order-status: done
 
     return c.json({ success: true });
   } catch (e: any) {
-    console.log("Admin update-order-status exception:", e);
+    console.error("[Admin update-order-status] Exception:", e);
     return c.json({ error: "Erro ao atualizar status do pedido." }, 500);
   }
 });
@@ -14435,7 +14994,7 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
       return c.json({ error: "Mapeamento SIGE do usuário não tem sigeCustomerId." }, 400);
     }
 
-    console.log("Admin retry-sige-registration: order " + localOrderId + " user " + targetUserId + " sigeCustomer " + codCliente);
+    // Admin retry-sige-registration: starting
 
     // 3. Build SIGE items from stored order items using SKU split strategy
     var orderItems = order.items || [];
@@ -14465,7 +15024,7 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
         if (resolvedCodRef !== "0") {
           refPath = refPath + "?codRef=" + encodeURIComponent(resolvedCodRef);
         }
-        console.log("Admin retry-sige: resolving ref for " + sku + " via GET " + refPath);
+        // retry-sige: resolving ref
         var refResult = await sigeAuthFetch("GET", refPath);
         if (refResult.ok && refResult.data) {
           var refData = refResult.data;
@@ -14506,12 +15065,12 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
               resolvedCodRef = String(matchedRef.codRef);
               if (matchedRef.codProduto) resolvedCodProduto = String(matchedRef.codProduto);
               refResolved = true;
-              console.log("Admin retry-sige: ref resolved for " + sku + " -> codProduto=" + resolvedCodProduto + " codRef=" + resolvedCodRef);
+              // retry-sige: ref resolved
             }
           }
         }
       } catch (refErr: any) {
-        console.log("Admin retry-sige: ref resolution error for " + sku + ": " + (refErr.message || String(refErr)));
+        console.error("[retry-sige] ref resolution error: " + (refErr.message || String(refErr)));
       }
 
       var sigeItem: any = {
@@ -14532,11 +15091,11 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
       items: sigeItems,
     };
 
-    console.log("Admin retry-sige: POST /order payload: " + JSON.stringify(orderPayload));
+    // retry-sige: POST /order
 
     // 5. Create order in SIGE
     var orderResult = await sigeAuthFetch("POST", "/order", orderPayload);
-    console.log("Admin retry-sige: POST /order => HTTP " + orderResult.status + " data=" + JSON.stringify(orderResult.data).substring(0, 500));
+    // retry-sige: POST /order response received
 
     if (!orderResult.ok) {
       var sigeErrMsg = (orderResult.data && (orderResult.data.message || orderResult.data.error)) || ("HTTP " + orderResult.status);
@@ -14560,7 +15119,7 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
     }
 
     if (!newSigeOrderId) {
-      console.log("Admin retry-sige: Order created but could not extract ID: " + JSON.stringify(orderData));
+      console.error("[retry-sige] Order created but could not extract ID");
       return c.json({
         success: false,
         error: "Pedido criado no SIGE mas não foi possível extrair o ID.",
@@ -14569,7 +15128,7 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
       }, 500);
     }
 
-    console.log("Admin retry-sige: SUCCESS - SIGE order " + newSigeOrderId + " created for local order " + localOrderId);
+    // retry-sige: SUCCESS
 
     // 7. Update order in KV with the new sigeOrderId
     order.sigeOrderId = String(newSigeOrderId);
@@ -14600,9 +15159,9 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
           ? { observacao: order.observacao }
           : order.observacao;
         var obsResult = await sigeAuthFetch("POST", "/order/" + String(newSigeOrderId) + "/observation", obsPayload);
-        console.log("Admin retry-sige: observation for " + newSigeOrderId + " => HTTP " + obsResult.status);
+        // retry-sige: observation done
       } catch (obsErr: any) {
-        console.log("Admin retry-sige: observation error (non-fatal): " + (obsErr.message || String(obsErr)));
+        console.error("[retry-sige] observation error (non-fatal): " + (obsErr.message || String(obsErr)));
       }
     }
 
@@ -14614,7 +15173,7 @@ app.post(BASE + "/admin/retry-sige-registration", async function (c) {
     });
   } catch (e: any) {
     var errMsg = e.message || String(e);
-    console.log("Admin retry-sige-registration exception: " + errMsg);
+    console.error("[retry-sige] Exception: " + errMsg);
     return c.json({ error: errMsg || "Erro interno ao tentar registrar no SIGE." }, 500);
   }
 });
@@ -14639,11 +15198,11 @@ app.post(BASE + "/sige/confirm-order", async (c) => {
     var sigeOrderId = body.sigeOrderId || body.orderId;
     if (!sigeOrderId) return c.json({ error: "sigeOrderId é obrigatório." }, 400);
 
-    console.log("Manual SIGE confirm requested by " + userId + " for order " + sigeOrderId);
+    // Manual SIGE confirm requested
     var result = await confirmSigeOrder(String(sigeOrderId));
     return c.json(result);
   } catch (e: any) {
-    console.log("SIGE confirm-order exception:", e);
+    console.error("SIGE confirm-order exception:", e);
     return c.json({ error: "Erro ao confirmar pedido no SIGE." }, 500);
   }
 });
@@ -14678,7 +15237,7 @@ app.get(BASE + "/sige/situations", async (c) => {
       hint: "Use codSituacao no POST /sige/confirm-order para confirmar um pedido e dar baixa no estoque."
     });
   } catch (e: any) {
-    console.log("SIGE situations exception:", e);
+    console.error("SIGE situations exception:", e);
     return c.json({ error: "Erro ao buscar situacoes SIGE." }, 500);
   }
 });
@@ -14724,8 +15283,8 @@ app.post(BASE + "/sige/debug-create-order", async (c) => {
 
     async function diagFetch(label: string, url: string, opts: any): Promise<any> {
       const startMs = Date.now();
-      console.log(`SIGE debug [${label}]: ${opts.method} ${url}`);
-      if (opts.body) console.log(`SIGE debug [${label}]: body:`, String(opts.body).substring(0, 500));
+      // SIGE debug request
+      // SIGE debug body omitted
       try {
         const response = await fetch(url, opts);
         const elapsed = Date.now() - startMs;
@@ -14742,14 +15301,14 @@ app.post(BASE + "/sige/debug-create-order", async (c) => {
           respHeaders, data: respData,
           redirected: response.redirected, finalUrl: response.url, elapsed,
         };
-        console.log(`SIGE debug [${label}]: => HTTP ${response.status}, redirected=${response.redirected}, finalUrl=${response.url}, ${elapsed}ms`);
-        console.log(`SIGE debug [${label}]: resp headers:`, JSON.stringify(respHeaders));
-        console.log(`SIGE debug [${label}]: resp body:`, responseText.substring(0, 500));
+        // SIGE debug response
+        // SIGE debug resp headers
+        // SIGE debug resp body
         attempts.push(result);
         return result;
       } catch (err: any) {
         const result = { label, url, error: err.message || String(err), elapsed: Date.now() - startMs };
-        console.log(`SIGE debug [${label}]: ERROR:`, err);
+        console.error("[SIGE debug] ERROR:", err);
         attempts.push(result);
         return result;
       }
@@ -14838,10 +15397,10 @@ app.post(BASE + "/sige/debug-create-order", async (c) => {
       msg: a.data?.message || a.data?.error || a.error || null,
     }));
 
-    console.log("SIGE debug summary:", JSON.stringify(summary));
+    // SIGE debug summary ready
     return c.json({ summary, attempts, baseUrl, testPayload: payload });
   } catch (e: any) {
-    console.log("SIGE debug exception:", e);
+    console.error("SIGE debug exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -14869,11 +15428,11 @@ app.get(BASE + "/sige/order-types", async (c) => {
     if (descricao) params.push(`descricao=${encodeURIComponent(descricao)}`);
     if (params.length > 0) queryString = "?" + params.join("&");
 
-    console.log(`SIGE type-moviment: GET /type-moviment${queryString}`);
+    // SIGE type-moviment request
     const result = await sigeAuthFetch("GET", `/type-moviment${queryString}`);
 
     if (!result.ok) {
-      console.log(`SIGE type-moviment: HTTP ${result.status}`, JSON.stringify(result.data).substring(0, 500));
+      // SIGE type-moviment response
       return _sigeProxyError(c, result);
     }
 
@@ -14889,7 +15448,7 @@ app.get(BASE + "/sige/order-types", async (c) => {
       _raw: t,
     }));
 
-    console.log(`SIGE type-moviment: found ${summary.length} types:`, JSON.stringify(summary.map((s: any) => `${s.codTipoMv} - ${s.descricao}`)));
+    // SIGE type-moviment found
 
     return c.json({
       message: `Encontrados ${summary.length} tipo(s) de movimento.`,
@@ -14897,7 +15456,7 @@ app.get(BASE + "/sige/order-types", async (c) => {
       rawResponse: rawData,
     });
   } catch (e: any) {
-    console.log("SIGE type-moviment exception:", e);
+    console.error("SIGE type-moviment exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -14933,7 +15492,7 @@ app.post(BASE + "/sige/test-order-tipomv", async (c) => {
     const results: any[] = [];
     for (const mv of valuesToTest) {
       const payload = { codCliFor: Number(codCliFor), codTipoMv: String(mv), items: testItems };
-      console.log(`SIGE test-tipomv: trying codTipoMv="${mv}"...`);
+      // SIGE test-tipomv trying
       const result = await sigeAuthFetch("POST", "/order", payload);
       const entry = {
         codTipoMv: mv,
@@ -14943,10 +15502,10 @@ app.post(BASE + "/sige/test-order-tipomv", async (c) => {
         data: result.data,
       };
       results.push(entry);
-      console.log(`SIGE test-tipomv [${mv}]: HTTP ${result.status} => ${entry.message}`);
+      // SIGE test-tipomv result
 
       if (result.ok) {
-        console.log(`SIGE test-tipomv: SUCCESS with codTipoMv="${mv}"!`);
+        // SIGE test-tipomv: SUCCESS
         return c.json({
           message: `SUCESSO! codTipoMv="${mv}" funciona!`,
           workingValue: mv,
@@ -14970,7 +15529,7 @@ app.post(BASE + "/sige/test-order-tipomv", async (c) => {
       allResults: results,
     });
   } catch (e: any) {
-    console.log("SIGE test-tipomv exception:", e);
+    console.error("SIGE test-tipomv exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -15120,7 +15679,7 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
     let productSearchResult: any = null;
     let numericProductId: any = null;
     try {
-      console.log(`[Diagnose] Searching product: GET /product?codProduto=${testSku}`);
+      // Diagnose: searching product
       const prodSearchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(testSku)}&limit=5&offset=1`);
       const prods = exArr(prodSearchRes.data);
 
@@ -15184,7 +15743,7 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
       skuSuffix = testSku.substring(lastHyphen + 1);
 
       try {
-        console.log(`[Diagnose] SKU-SPLIT: Trying base part GET /product?codProduto=${skuBasePart}`);
+        // Diagnose: SKU-SPLIT trying base part
         const baseSearchRes = await sigeAuthFetch("GET", `/product?codProduto=${encodeURIComponent(skuBasePart)}&limit=5&offset=1`);
         const baseProds = exArr(baseSearchRes.data);
 
@@ -15236,7 +15795,7 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
         const codRefParam = (skuSuffix && (refId === testSku || refId === skuBasePart))
           ? `?codRef=${encodeURIComponent(skuSuffix)}` : "";
         const refPath = `/product/${encodeURIComponent(refId)}/reference${codRefParam}`;
-        console.log(`[Diagnose] Testing: GET ${refPath}`);
+        // Diagnose: testing ref path
         const refResult = await sigeAuthFetch("GET", refPath);
         const refs = exArr(refResult.data);
         const rawStr = JSON.stringify(refResult.data).substring(0, 500);
@@ -15289,7 +15848,7 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
 
     // ── STEP 4c: Global /reference?codProduto=XXX ──
     try {
-      console.log(`[Diagnose] Testing global: GET /reference?codProduto=${testSku}`);
+      // Diagnose: testing global reference
       const globalRef = await sigeAuthFetch("GET", `/reference?codProduto=${encodeURIComponent(testSku)}&limit=10&offset=1`);
       const allRefs = exArr(globalRef.data);
       const matching = allRefs.filter((r: any) => {
@@ -15685,10 +16244,10 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
       topFixes,
     };
 
-    console.log(`[Diagnose] Complete: ${report.summary.ok.length} ok, ${report.summary.warnings.length} warn, ${report.summary.issues.length} fail`);
+    // Diagnose: complete
     return c.json(report);
   } catch (e: any) {
-    console.log("SIGE diagnose-order exception:", e);
+    console.error("SIGE diagnose-order exception:", e);
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -15750,7 +16309,7 @@ app.get(BASE + "/mercadopago/config", async (c) => {
       updatedAt: parsed.updatedAt || null,
     });
   } catch (e: any) {
-    console.log("[MercadoPago] Config get error:", e);
+    console.error("[MercadoPago] Config get error:", e);
     return c.json({ error: "Erro ao buscar configuracao MercadoPago." }, 500);
   }
 });
@@ -15764,7 +16323,7 @@ app.get(BASE + "/mercadopago/enabled", async (c) => {
     var isEnabled = !!parsed.accessToken;
     return c.json({ enabled: isEnabled, sandbox: !!parsed.sandbox });
   } catch (e: any) {
-    console.log("[MercadoPago] Enabled check error:", e);
+    console.error("[MercadoPago] Enabled check error:", e);
     return c.json({ enabled: false, sandbox: false });
   }
 });
@@ -15797,10 +16356,10 @@ app.put(BASE + "/mercadopago/config", async (c) => {
       updatedAt: Date.now(),
     }));
 
-    console.log("[MercadoPago] Config saved by user " + userId);
+    // MercadoPago: config saved
     return c.json({ success: true, configured: true });
   } catch (e: any) {
-    console.log("[MercadoPago] Config save error:", e);
+    console.error("[MercadoPago] Config save error:", e);
     return c.json({ error: "Erro ao salvar configuracao MercadoPago." }, 500);
   }
 });
@@ -15812,10 +16371,10 @@ app.delete(BASE + "/mercadopago/config", async (c) => {
     if (!userId) return c.json({ error: "Não autorizado" }, 401);
 
     await kv.del("mercadopago_config");
-    console.log("[MercadoPago] Config deleted by user " + userId);
+    // MercadoPago: config deleted
     return c.json({ success: true, configured: false });
   } catch (e: any) {
-    console.log("[MercadoPago] Config delete error:", e);
+    console.error("[MercadoPago] Config delete error:", e);
     return c.json({ error: "Erro ao remover configuracao MercadoPago." }, 500);
   }
 });
@@ -15831,7 +16390,7 @@ app.post(BASE + "/mercadopago/test", async (c) => {
 
     const result = await mpApiFetch("/users/me", creds.accessToken);
     if (!result.ok) {
-      console.log("[MercadoPago] test connection error:", result.status, result.text?.slice(0, 300));
+      console.error("[MercadoPago] test connection error: HTTP " + result.status);
       return c.json({
         success: false,
         error: "Falha na autenticacao com Mercado Pago.",
@@ -15849,7 +16408,7 @@ app.post(BASE + "/mercadopago/test", async (c) => {
       },
     });
   } catch (e: any) {
-    console.log("[MercadoPago] Test error:", e);
+    console.error("[MercadoPago] Test error:", e);
     return c.json({ error: "Erro ao testar MercadoPago." }, 500);
   }
 });
@@ -15891,16 +16450,16 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
         return { item_id: it.item_id || it.id || "", sku: it.item_id || it.id || "", price_cents: it.price_cents || Math.round((it.unit_price || 0) * 100), quantity: it.quantity || 1 };
       });
       var mpPriceCheck = await _validatePaymentPrices(mpItemsForValidation, 45);
-      console.log("[MercadoPago] Price validation: verified=" + mpPriceCheck.verifiedCount + "/" + mpPriceCheck.totalItems + " clientTotal=" + mpPriceCheck.clientTotalCents + " expectedTotal=" + mpPriceCheck.expectedTotalCents + " flagged=" + mpPriceCheck.flaggedItems.length);
+      // MercadoPago: price validation done
       if (!mpPriceCheck.ok) {
-        console.log("[MercadoPago] PRICE TAMPERING BLOCKED for order " + (order_id || "unknown") + " by user " + mpUserId + ": " + mpPriceCheck.flaggedItems.join(", "));
+        console.warn("[MercadoPago] PRICE TAMPERING BLOCKED");
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (mpPriceCheck.flaggedItems.length > 0) {
-        console.log("[MercadoPago] PRICE WARNING for order " + (order_id || "unknown") + ": " + mpPriceCheck.flaggedItems.join(", "));
+        console.warn("[MercadoPago] PRICE WARNING: flagged items detected");
       }
     } catch (pvErr3) {
-      console.log("[MercadoPago] Price validation error (non-blocking): " + pvErr3);
+      console.error("[MercadoPago] Price validation error (non-blocking): " + pvErr3);
     }
 
     const mpItems = items.map((it: any) => ({
@@ -15967,7 +16526,7 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
     });
 
     if (!result.ok) {
-      console.log("[MercadoPago] Create preference error:", result.status, result.text?.slice(0, 500));
+      console.error("[MercadoPago] Create preference error: HTTP " + result.status);
       return c.json({
         success: false,
         error: "Erro ao criar preferencia de pagamento.",
@@ -15996,7 +16555,7 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
       externalReference: preference.external_reference,
     });
   } catch (e: any) {
-    console.log("[MercadoPago] Create preference error:", e);
+    console.error("[MercadoPago] Create preference exception:", e);
     return c.json({ error: "Erro ao criar preferência de pagamento." }, 500);
   }
 });
@@ -16018,7 +16577,7 @@ app.post(BASE + "/mercadopago/payment-status", async (c) => {
 
     const result = await mpApiFetch("/v1/payments/" + payment_id, creds.accessToken);
     if (!result.ok) {
-      console.log("[MercadoPago] payment-status error:", result.status, result.text?.slice(0, 300));
+      console.error("[MercadoPago] payment-status error: HTTP " + result.status);
       return c.json({
         error: "Erro ao consultar pagamento.",
       }, 400);
@@ -16039,7 +16598,7 @@ app.post(BASE + "/mercadopago/payment-status", async (c) => {
       payer: pay.payer,
     });
   } catch (e: any) {
-    console.log("[MercadoPago] Payment status error:", e);
+    console.error("[MercadoPago] Payment status exception:", e);
     return c.json({ error: "Erro ao consultar status do pagamento." }, 500);
   }
 });
@@ -16075,7 +16634,7 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
     const result = await mpApiFetch(searchPath, creds.accessToken);
 
     if (!result.ok) {
-      console.log("[MercadoPago] search-payments error:", result.status, result.text?.slice(0, 300));
+      console.error("[MercadoPago] search-payments error: HTTP " + result.status);
       return c.json({
         error: "Erro ao buscar pagamentos.",
       }, 400);
@@ -16104,7 +16663,7 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
       offset: result.json?.paging?.offset || 0,
     });
   } catch (e: any) {
-    console.log("[MercadoPago] Search payments error:", e);
+    console.error("[MercadoPago] Search payments exception:", e);
     return c.json({ error: "Erro ao buscar pagamentos." }, 500);
   }
 });
@@ -16116,14 +16675,14 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
     // Input validation for MP webhook payload
     if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
     if (JSON.stringify(body).length > 50000) return c.json({ received: true, warning: "payload too large" });
-    console.log("[MercadoPago] Webhook received:", JSON.stringify(body).slice(0, 1000));
+    // MercadoPago: webhook received
 
     // HMAC signature verification — REQUIRED when webhook secret is configured
     // SECURITY: Reject ALL webhooks if no secret configured (prevents unauthenticated webhook injection)
     var mpCreds = await getMPCredentials();
     var webhookSecret = mpCreds ? (mpCreds as any).webhookSecret : null;
     if (!webhookSecret) {
-      console.log("[MercadoPago] Webhook REJECTED: webhookSecret not configured — cannot verify authenticity");
+      console.warn("[MercadoPago] Webhook REJECTED: webhookSecret not configured");
       return c.json({ received: false, error: "Webhook auth not configured" }, 403);
     }
     if (webhookSecret) {
@@ -16148,16 +16707,16 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
           var sigBytes = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(manifest));
           var computed = Array.from(new Uint8Array(sigBytes)).map(function(b) { return b.toString(16).padStart(2, "0"); }).join("");
           if (computed !== v1Part) {
-            console.log("[MercadoPago] Webhook HMAC mismatch! Expected: " + v1Part.substring(0, 10) + "... Got: " + computed.substring(0, 10) + "...");
+            console.warn("[MercadoPago] Webhook HMAC mismatch!");
             return c.json({ error: "Invalid signature" }, 401);
           }
-          console.log("[MercadoPago] Webhook HMAC verified OK");
+          // MercadoPago: webhook HMAC verified
         } catch (hmacErr) {
-          console.log("[MercadoPago] HMAC verification error (rejecting): " + hmacErr);
+          console.error("[MercadoPago] HMAC verification error (rejecting): " + hmacErr);
           return c.json({ error: "HMAC verification failed" }, 401);
         }
       } else {
-        console.log("[MercadoPago] Webhook missing ts/v1 in x-signature — rejecting (secret is configured)");
+        console.warn("[MercadoPago] Webhook missing ts/v1 in x-signature — rejecting");
         return c.json({ error: "Missing HMAC signature" }, 401);
       }
     }
@@ -16169,7 +16728,7 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
         var payResult = await mpApiFetch("/v1/payments/" + paymentId, creds.accessToken);
         if (payResult.ok && payResult.json) {
           var p = payResult.json;
-          console.log("[MercadoPago] Webhook payment " + paymentId + " status=" + p.status + " ref=" + p.external_reference);
+          // MercadoPago: webhook payment processed
 
           var payKey = "mp_payment:" + paymentId;
           await kv.set(payKey, JSON.stringify({
@@ -16201,15 +16760,15 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
                   var matchedOrderId = orderData.orderId || orderData.localOrderId;
                   var orderKvKey = "user_order:" + (orderData.userId || orderData.createdBy) + ":" + matchedOrderId;
                   await kv.set(orderKvKey, JSON.stringify(orderData));
-                  console.log("[MercadoPago] Order " + matchedOrderId + " marked as paid via webhook");
+                  // MercadoPago: order marked as paid via webhook
                   // Send payment approved email (fire-and-forget)
                   _sendPaymentApprovedEmail(orderData).catch(function(mpEmailErr) {
-                    console.log("[MercadoPago] Payment email error (non-fatal): " + mpEmailErr);
+                    console.error("[MercadoPago] Payment email error (non-fatal): " + mpEmailErr);
                   });
                   // Confirm SIGE order to trigger stock deduction
                   if (orderData.sigeOrderId) {
                     confirmSigeOrder(String(orderData.sigeOrderId)).catch(function(ce: any) {
-                      console.log("[MercadoPago] SIGE confirm error (non-fatal): " + (ce.message || ce));
+                      console.error("[MercadoPago] SIGE confirm error (non-fatal): " + (ce.message || ce));
                     });
                   }
                   break;
@@ -16223,7 +16782,7 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
 
     return c.json({ received: true });
   } catch (e: any) {
-    console.log("[MercadoPago] Webhook error:", e);
+    console.error("[MercadoPago] Webhook exception:", e);
     return c.json({ received: true });
   }
 });
@@ -16253,7 +16812,7 @@ app.get(BASE + "/mercadopago/transactions", async (c) => {
 
     return c.json({ transactions: txList });
   } catch (e: any) {
-    console.log("[MercadoPago] List transactions error:", e);
+    console.error("[MercadoPago] List transactions exception:", e);
     return c.json({ error: "Erro ao listar transacoes." }, 500);
   }
 });
@@ -16292,10 +16851,10 @@ app.post(BASE + "/admin/audit-log", async (c) => {
       createdAt: new Date(ts).toISOString()
     };
     await kv.set("admin_audit:" + logId, entry);
-    console.log("[AuditLog] Saved:", entry.action, entry.email);
+    // AuditLog: saved
     return c.json({ ok: true, entry: entry });
   } catch (e: any) {
-    console.log("[AuditLog] Save error:", e);
+    console.error("[AuditLog] Save error:", e);
     return c.json({ error: "Erro ao salvar log." }, 500);
   }
 });
@@ -16320,7 +16879,7 @@ app.get(BASE + "/admin/audit-logs", async (c) => {
     });
     return c.json({ logs: logs, total: logs.length });
   } catch (e: any) {
-    console.log("[AuditLog] List error:", e);
+    console.error("[AuditLog] List error:", e);
     return c.json({ error: "Erro ao listar logs." }, 500);
   }
 });
@@ -16335,10 +16894,10 @@ app.delete(BASE + "/admin/audit-log/:id", async (c) => {
     var logId = (c.req.param("id") || "").substring(0, 100);
     if (!logId) return c.json({ error: "ID invalido." }, 400);
     await kv.del("admin_audit:" + logId);
-    console.log("[AuditLog] Deleted:", logId);
+    // AuditLog: deleted
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("[AuditLog] Delete error:", e);
+    console.error("[AuditLog] Delete error:", e);
     return c.json({ error: "Erro ao deletar log." }, 500);
   }
 });
@@ -16362,10 +16921,10 @@ app.post(BASE + "/admin/audit-logs/clear", async (c) => {
     if (keys.length > 0) {
       await kv.mdel(keys);
     }
-    console.log("[AuditLog] Cleared all:", keys.length, "entries");
+    // AuditLog: cleared all
     return c.json({ cleared: true, count: keys.length });
   } catch (e: any) {
-    console.log("[AuditLog] Clear error:", e);
+    console.error("[AuditLog] Clear error:", e);
     return c.json({ error: "Erro ao limpar logs." }, 500);
   }
 });
@@ -16386,7 +16945,7 @@ app.get(BASE + "/promo/active", async (c) => {
     if (!promo.products || promo.products.length === 0) return c.json({ promo: null });
     return c.json({ promo });
   } catch (e: any) {
-    console.log("[SuperPromo] GET active error:", e);
+    console.error("[SuperPromo] GET active error:", e);
     return c.json({ promo: null });
   }
 });
@@ -16401,7 +16960,7 @@ app.get(BASE + "/admin/promo", async (c) => {
     const promo = typeof raw === "string" ? JSON.parse(raw) : raw;
     return c.json({ promo });
   } catch (e: any) {
-    console.log("[SuperPromo] GET admin error:", e);
+    console.error("[SuperPromo] GET admin error:", e);
     return c.json({ error: "Erro ao carregar promo." }, 500);
   }
 });
@@ -16445,10 +17004,10 @@ app.post(BASE + "/admin/promo", async (c) => {
     };
     await kv.set("super_promo", JSON.stringify(promo));
     invalidateHomepageCache();
-    console.log("[SuperPromo] Saved by " + userId + ": " + promo.title + ", enabled=" + promo.enabled + ", products=" + promo.products.length);
+    // SuperPromo: saved
     return c.json({ promo });
   } catch (e: any) {
-    console.log("[SuperPromo] POST error:", e);
+    console.error("[SuperPromo] POST error:", e);
     return c.json({ error: "Erro ao salvar promo." }, 500);
   }
 });
@@ -16459,10 +17018,10 @@ app.delete(BASE + "/admin/promo", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     await kv.del("super_promo");
-    console.log("[SuperPromo] Deleted by " + userId);
+    // SuperPromo: deleted
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("[SuperPromo] DELETE error:", e);
+    console.error("[SuperPromo] DELETE error:", e);
     return c.json({ error: "Erro ao deletar promo." }, 500);
   }
 });
@@ -16502,7 +17061,7 @@ app.get(BASE + "/homepage-categories", async (c) => {
 
     return c.json({ categories: cards });
   } catch (e: any) {
-    console.log("[homepage-categories] Error:", e);
+    console.error("[homepage-categories] Error:", e);
     return c.json({ error: "Erro ao buscar categorias da homepage." }, 500);
   }
 });
@@ -16546,7 +17105,7 @@ app.post(BASE + "/admin/homepage-categories", async (c) => {
       .upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
 
     if (uploadResult.error) {
-      console.log("Homepage category upload error:", uploadResult.error.message);
+      console.error("[homepage-categories] Upload error:", uploadResult.error.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
 
@@ -16570,11 +17129,11 @@ app.post(BASE + "/admin/homepage-categories", async (c) => {
     };
 
     await kv.set("hpcat:" + cardId, JSON.stringify(card));
-    console.log("Homepage category created: " + cardId + " slug=" + categorySlug);
+    // homepage-categories: created
 
     return c.json({ created: true, card: card });
   } catch (e: any) {
-    console.log("Error creating homepage category:", e);
+    console.error("[homepage-categories] Create error:", e);
     return c.json({ error: "Erro ao criar categoria da homepage." }, 500);
   }
 });
@@ -16635,7 +17194,7 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
           .upload(newFilename, fArrayBuffer, { contentType: file.type, upsert: true });
 
         if (fUploadResult.error) {
-          console.log("Homepage card upload error:", fUploadResult.error.message);
+          console.error("[homepage-categories] Update upload error:", fUploadResult.error.message);
           return c.json({ error: "Erro no upload do arquivo." }, 500);
         }
 
@@ -16665,11 +17224,11 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
 
     card.updatedAt = new Date().toISOString();
     await kv.set("hpcat:" + cardId, JSON.stringify(card));
-    console.log("Homepage category updated: " + cardId);
+    // homepage-categories: updated
 
     return c.json({ updated: true, card: card });
   } catch (e: any) {
-    console.log("Error updating homepage category:", e);
+    console.error("[homepage-categories] Update error:", e);
     return c.json({ error: "Erro ao atualizar categoria da homepage." }, 500);
   }
 });
@@ -16693,11 +17252,11 @@ app.delete(BASE + "/admin/homepage-categories/:id", async (c) => {
     }
 
     await kv.del("hpcat:" + cardId);
-    console.log("Homepage category deleted: " + cardId);
+    // homepage-categories: deleted
 
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("Error deleting homepage category:", e);
+    console.error("[homepage-categories] Delete error:", e);
     return c.json({ error: "Erro ao deletar categoria da homepage." }, 500);
   }
 });
@@ -16729,7 +17288,7 @@ app.get(BASE + "/admin/mid-banners", async (c) => {
     }
     return c.json({ banners: results });
   } catch (e: any) {
-    console.log("[admin/mid-banners GET] Error:", e);
+    console.error("[admin/mid-banners GET] Error:", e);
     return c.json({ error: "Erro ao buscar mid-banners." }, 500);
   }
 });
@@ -16763,7 +17322,7 @@ app.put(BASE + "/admin/mid-banners/:slot", async (c) => {
           upsert: true,
         });
       if (uploadRes.error) {
-        console.log("SEO image upload error:", uploadRes.error.message);
+        console.error("[admin/mid-banners PUT] Upload error:", uploadRes.error.message);
         return c.json({ error: "Erro no upload da imagem." }, 500);
       }
       // Remove old file if different
@@ -16783,11 +17342,11 @@ app.put(BASE + "/admin/mid-banners/:slot", async (c) => {
 
     await kv.set(kvKey, current);
 
-    console.log("[admin/mid-banners PUT] Saved slot=" + slot + " filename=" + String(current.filename) + " imageUrl=" + String(current.imageUrl) + " active=" + String(current.active));
+    // admin/mid-banners: saved
 
     return c.json({ banner: current });
   } catch (e: any) {
-    console.log("[admin/mid-banners PUT] Error:", e);
+    console.error("[admin/mid-banners PUT] Error:", e);
     return c.json({ error: "Erro ao salvar mid-banner." }, 500);
   }
 });
@@ -16812,7 +17371,7 @@ app.delete(BASE + "/admin/mid-banners/:slot", async (c) => {
 
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("[admin/mid-banners DELETE] Error:", e);
+    console.error("[admin/mid-banners DELETE] Error:", e);
     return c.json({ error: "Erro ao deletar mid-banner." }, 500);
   }
 });
@@ -16842,7 +17401,7 @@ app.get(BASE + "/admin/footer-badges", async (c) => {
     }
     return c.json({ badges: items });
   } catch (e: any) {
-    console.log("[admin/footer-badges GET] Error:", e);
+    console.error("[admin/footer-badges GET] Error:", e);
     return c.json({ error: "Erro ao buscar footer badges." }, 500);
   }
 });
@@ -16879,7 +17438,7 @@ app.put(BASE + "/admin/footer-badges/:key", async (c) => {
         upsert: true,
       });
       if (uploadRes.error) {
-        console.log("[admin/footer-badges PUT] Upload error:", uploadRes.error);
+        console.error("[admin/footer-badges PUT] Upload error:", uploadRes.error);
         return c.json({ error: "Erro no upload do badge." }, 500);
       }
       current.filename = storagePath;
@@ -16899,10 +17458,10 @@ app.put(BASE + "/admin/footer-badges/:key", async (c) => {
     current.updatedAt = Date.now();
 
     await kv.set(kvKey, JSON.stringify(current));
-    console.log("[admin/footer-badges PUT] Saved key=" + badgeKey + " category=" + category);
+    // admin/footer-badges: saved
     return c.json({ badge: current });
   } catch (e: any) {
-    console.log("[admin/footer-badges PUT] Error:", e);
+    console.error("[admin/footer-badges PUT] Error:", e);
     return c.json({ error: "Erro ao salvar footer badge." }, 500);
   }
 });
@@ -16923,10 +17482,10 @@ app.delete(BASE + "/admin/footer-badges/:key", async (c) => {
       }
     }
     await kv.del(kvKey);
-    console.log("[admin/footer-badges DELETE] Deleted key=" + badgeKey);
+    // admin/footer-badges: deleted
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("[admin/footer-badges DELETE] Error:", e);
+    console.error("[admin/footer-badges DELETE] Error:", e);
     return c.json({ error: "Erro ao deletar footer badge." }, 500);
   }
 });
@@ -17145,15 +17704,15 @@ app.get(BASE + "/homepage-init", async (c) => {
           if (mbData && mbData.active !== false) {
             mbData.slot = mbi + 1;
             midBanners.push(mbData);
-            console.log("[homepage-init] midBanner slot=" + (mbi + 1) + " filename=" + String(mbData.filename) + " active=" + String(mbData.active));
+            // homepage-init: midBanner parsed
           }
         } catch (mbErr) {
-          console.log("[homepage-init] midBanner parse error slot=" + (mbi + 1) + ": " + String(mbErr));
+          console.error("[homepage-init] midBanner parse error slot=" + (mbi + 1) + ": " + String(mbErr));
         }
       }
     }
 
-    console.log("[homepage-init] banners=" + bannersList.length + " hpcatRaws=" + hpcatRaws.length + " hpcatCards=" + hpcatCards.length + " midBanners=" + midBanners.length);
+    // homepage-init: data loaded
 
     // Generate signed URLs for banners, homepage categories AND mid-page banners in parallel
     var allSignedPromises = bannersList.map(function(banner: any) {
@@ -17218,7 +17777,7 @@ app.get(BASE + "/homepage-init", async (c) => {
       if (!mItem.imageUrl && mItem.filename) {
         mItem.imageUrl = midSupaUrl + "/storage/v1/object/public/" + ASSETS_BUCKET + "/" + mItem.filename;
       }
-      console.log("[homepage-init] midBanner slot=" + mItem.slot + " imageUrl=" + String(mItem.imageUrl));
+      // homepage-init: midBanner with imageUrl
     }
 
     await Promise.allSettled(allSignedPromises);
@@ -17284,7 +17843,7 @@ app.get(BASE + "/homepage-init", async (c) => {
 
     return c.json(_responseObj);
   } catch (e: any) {
-    console.log("[homepage-init] Error:", e);
+    console.error("[homepage-init] Error:", e);
     return c.json({ error: "Erro ao carregar dados iniciais." }, 500);
   }
 });
@@ -17301,7 +17860,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
     var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     var supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
-    console.log("[produto-detail-init] Loading all data for SKU: " + sku);
+    // produto-detail-init: loading
     var startMs = Date.now();
 
     // Run all 7 lookups in parallel with Promise.allSettled for fault isolation
@@ -17397,7 +17956,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
           }
           return { averageRating: rCount > 0 ? Math.round((rTotal / rCount) * 10) / 10 : 0, totalReviews: rCount };
         } catch (e) {
-          console.log("[produto-detail-init] Review summary error: " + String(e));
+          console.error("[produto-detail-init] Review summary error: " + String(e));
           return { averageRating: 0, totalReviews: 0 };
         }
       })(),
@@ -17414,7 +17973,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
 
     var elapsed = Date.now() - startMs;
     var _revCount = reviewSummary ? reviewSummary.totalReviews : 0;
-    console.log("[produto-detail-init] SKU=" + sku + " completed in " + elapsed + "ms | product=" + (product.data ? product.data.length : 0) + " imgs=" + (images.total || 0) + " price=" + String(price ? price.found : "null") + " balance=" + String(balance ? balance.found : "null") + " reviews=" + String(_revCount));
+    // produto-detail-init: completed
 
     return c.json({
       product: product,
@@ -17427,7 +17986,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
       _elapsed: elapsed,
     });
   } catch (e: any) {
-    console.log("[produto-detail-init] Exception:", e);
+    console.error("[produto-detail-init] Exception:", e);
     return c.json({ error: "Erro interno ao buscar detalhes do produto." }, 500);
   }
 });
@@ -17456,7 +18015,7 @@ app.get(BASE + "/og/produto/:sku", async (c) => {
 
     var productUrl = siteUrl + "/produto/" + encodeURIComponent(sku);
 
-    console.log("[og/produto] Generating OG page for SKU: " + sku);
+    // og/produto: generating
 
     // Fetch product + images + price in parallel (lightweight — only what we need for meta tags)
     var results = await Promise.allSettled([
@@ -17590,7 +18149,7 @@ app.get(BASE + "/og/produto/:sku", async (c) => {
       },
     });
   } catch (e) {
-    console.log("[og/produto] Exception:", e);
+    console.error("[og/produto] Exception:", e);
     // On error, just redirect to the SPA
     var fallbackUrl = (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/produto/" + encodeURIComponent(sku || "");
     return Response.redirect(fallbackUrl, 302);
@@ -17628,7 +18187,7 @@ app.get(BASE + "/admin/email-marketing/subscribers", async (c) => {
     subs.sort(function (a: any, b: any) { return (b.createdAt || 0) - (a.createdAt || 0); });
     return c.json({ subscribers: subs, total: subs.length });
   } catch (e: any) {
-    console.log("[EmailMarketing] List subscribers error:", e);
+    console.error("[EmailMarketing] List subscribers error:", e);
     return c.json({ error: "Erro ao listar assinantes." }, 500);
   }
 });
@@ -17654,10 +18213,10 @@ app.post(BASE + "/admin/email-marketing/subscribers", async (c) => {
     var now = Date.now();
     var sub = { id: id, email: email, name: name, tags: tags, active: true, createdAt: now, updatedAt: now };
     await kv.set("emkt_sub:" + id, JSON.stringify(sub));
-    console.log("[EmailMarketing] Subscriber added: " + email);
+    // EmailMarketing: subscriber added
     return c.json({ ok: true, subscriber: sub });
   } catch (e: any) {
-    console.log("[EmailMarketing] Add subscriber error:", e);
+    console.error("[EmailMarketing] Add subscriber error:", e);
     return c.json({ error: "Erro ao adicionar assinante." }, 500);
   }
 });
@@ -17688,10 +18247,10 @@ app.post(BASE + "/admin/email-marketing/subscribers/import", async (c) => {
       await kv.set("emkt_sub:" + id, JSON.stringify(sub));
       imported++;
     }
-    console.log("[EmailMarketing] Import: " + imported + " imported, " + skipped + " skipped");
+    // EmailMarketing: import completed
     return c.json({ ok: true, imported: imported, skipped: skipped, total: list.length });
   } catch (e: any) {
-    console.log("[EmailMarketing] Import error:", e);
+    console.error("[EmailMarketing] Import error:", e);
     return c.json({ error: "Erro ao importar." }, 500);
   }
 });
@@ -17719,7 +18278,7 @@ app.put(BASE + "/admin/email-marketing/subscribers/:id", async (c) => {
     await kv.set("emkt_sub:" + id, JSON.stringify(existing));
     return c.json({ ok: true, subscriber: existing });
   } catch (e: any) {
-    console.log("[EmailMarketing] Update subscriber error:", e);
+    console.error("[EmailMarketing] Update subscriber error:", e);
     return c.json({ error: "Erro ao atualizar." }, 500);
   }
 });
@@ -17730,10 +18289,10 @@ app.delete(BASE + "/admin/email-marketing/subscribers/:id", async (c) => {
     var id = (c.req.param("id") || "").substring(0, 100);
     if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_sub:" + id);
-    console.log("[EmailMarketing] Subscriber deleted: " + id);
+    // EmailMarketing: subscriber deleted
     return c.json({ ok: true, deleted: id });
   } catch (e: any) {
-    console.log("[EmailMarketing] Delete subscriber error:", e);
+    console.error("[EmailMarketing] Delete subscriber error:", e);
     return c.json({ error: "Erro ao deletar." }, 500);
   }
 });
@@ -17754,7 +18313,7 @@ app.get(BASE + "/admin/email-marketing/templates", async (c) => {
     tpls.sort(function (a: any, b: any) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
     return c.json({ templates: tpls });
   } catch (e: any) {
-    console.log("[EmailMarketing] List templates error:", e);
+    console.error("[EmailMarketing] List templates error:", e);
     return c.json({ error: "Erro ao listar templates." }, 500);
   }
 });
@@ -17783,10 +18342,10 @@ app.post(BASE + "/admin/email-marketing/templates", async (c) => {
       updatedAt: now
     };
     await kv.set("emkt_tpl:" + id, JSON.stringify(tpl));
-    console.log("[EmailMarketing] Template created: " + id + " name=" + name);
+    // EmailMarketing: template created
     return c.json({ ok: true, template: tpl });
   } catch (e: any) {
-    console.log("[EmailMarketing] Create template error:", e);
+    console.error("[EmailMarketing] Create template error:", e);
     return c.json({ error: "Erro ao criar template." }, 500);
   }
 });
@@ -17814,7 +18373,7 @@ app.put(BASE + "/admin/email-marketing/templates/:id", async (c) => {
     await kv.set("emkt_tpl:" + id, JSON.stringify(existing));
     return c.json({ ok: true, template: existing });
   } catch (e: any) {
-    console.log("[EmailMarketing] Update template error:", e);
+    console.error("[EmailMarketing] Update template error:", e);
     return c.json({ error: "Erro ao atualizar template." }, 500);
   }
 });
@@ -17825,10 +18384,10 @@ app.delete(BASE + "/admin/email-marketing/templates/:id", async (c) => {
     var id = (c.req.param("id") || "").substring(0, 100);
     if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_tpl:" + id);
-    console.log("[EmailMarketing] Template deleted: " + id);
+    // EmailMarketing: template deleted
     return c.json({ ok: true, deleted: id });
   } catch (e: any) {
-    console.log("[EmailMarketing] Delete template error:", e);
+    console.error("[EmailMarketing] Delete template error:", e);
     return c.json({ error: "Erro ao deletar template." }, 500);
   }
 });
@@ -17849,7 +18408,7 @@ app.get(BASE + "/admin/email-marketing/campaigns", async (c) => {
     cmps.sort(function (a: any, b: any) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
     return c.json({ campaigns: cmps });
   } catch (e: any) {
-    console.log("[EmailMarketing] List campaigns error:", e);
+    console.error("[EmailMarketing] List campaigns error:", e);
     return c.json({ error: "Erro ao listar campanhas." }, 500);
   }
 });
@@ -17892,10 +18451,10 @@ app.post(BASE + "/admin/email-marketing/campaigns", async (c) => {
       updatedAt: now
     };
     await kv.set("emkt_cmp:" + id, JSON.stringify(cmp));
-    console.log("[EmailMarketing] Campaign created: " + id + " name=" + name);
+    // EmailMarketing: campaign created
     return c.json({ ok: true, campaign: cmp });
   } catch (e: any) {
-    console.log("[EmailMarketing] Create campaign error:", e);
+    console.error("[EmailMarketing] Create campaign error:", e);
     return c.json({ error: "Erro ao criar campanha." }, 500);
   }
 });
@@ -17934,7 +18493,7 @@ app.put(BASE + "/admin/email-marketing/campaigns/:id", async (c) => {
     await kv.set("emkt_cmp:" + id, JSON.stringify(existing));
     return c.json({ ok: true, campaign: existing });
   } catch (e: any) {
-    console.log("[EmailMarketing] Update campaign error:", e);
+    console.error("[EmailMarketing] Update campaign error:", e);
     return c.json({ error: "Erro ao atualizar campanha." }, 500);
   }
 });
@@ -17945,10 +18504,10 @@ app.delete(BASE + "/admin/email-marketing/campaigns/:id", async (c) => {
     var id = (c.req.param("id") || "").substring(0, 100);
     if (!id) return c.json({ error: "ID invalido." }, 400);
     await kv.del("emkt_cmp:" + id);
-    console.log("[EmailMarketing] Campaign deleted: " + id);
+    // EmailMarketing: campaign deleted
     return c.json({ ok: true, deleted: id });
   } catch (e: any) {
-    console.log("[EmailMarketing] Delete campaign error:", e);
+    console.error("[EmailMarketing] Delete campaign error:", e);
     return c.json({ error: "Erro ao deletar campanha." }, 500);
   }
 });
@@ -18166,7 +18725,7 @@ async function _getUserEmailById(userId: string): Promise<string | null> {
       return result.data.user.email;
     }
   } catch (ue) {
-    console.log("[Email] _getUserEmailById error: " + ue);
+    console.error("[Email] _getUserEmailById error: " + ue);
   }
   return null;
 }
@@ -18176,7 +18735,7 @@ async function _sendOrderConfirmationEmail(order: any) {
   try {
     var smtpCfg = await _getSmtpConfig();
     if (!smtpCfg) {
-      console.log("[Email] Order confirmation: SMTP not configured, skipping.");
+      console.warn("[Email] Order confirmation: SMTP not configured, skipping.");
       return;
     }
     var userEmail = order.userEmail || null;
@@ -18184,23 +18743,23 @@ async function _sendOrderConfirmationEmail(order: any) {
       userEmail = await _getUserEmailById(order.createdBy);
     }
     if (!userEmail) {
-      console.log("[Email] Order confirmation: no user email found, skipping.");
+      console.warn("[Email] Order confirmation: no user email found, skipping.");
       return;
     }
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
     var orderId = order.localOrderId || order.sigeOrderId || "N/A";
-    console.log("[Email] Sending order confirmation to " + userEmail + " for order #" + orderId);
+    // Email: sending order confirmation
     await _sendSmtpEmail(smtpCfg, {
       from: from,
       to: userEmail,
       subject: "Pedido #" + orderId + " recebido - Carretao Auto Pecas",
       html: _buildOrderConfirmationHtml(order),
     });
-    console.log("[Email] Order confirmation sent successfully to " + userEmail);
+    // Email: order confirmation sent
   } catch (err) {
-    console.log("[Email] Order confirmation error (non-fatal): " + err);
+    console.error("[Email] Order confirmation error (non-fatal): " + err);
   }
 }
 
@@ -18209,7 +18768,7 @@ async function _sendPaymentApprovedEmail(order: any) {
   try {
     var smtpCfg = await _getSmtpConfig();
     if (!smtpCfg) {
-      console.log("[Email] Payment approved: SMTP not configured, skipping.");
+      console.warn("[Email] Payment approved: SMTP not configured, skipping.");
       return;
     }
     var userEmail = order.userEmail || null;
@@ -18217,23 +18776,23 @@ async function _sendPaymentApprovedEmail(order: any) {
       userEmail = await _getUserEmailById(order.createdBy);
     }
     if (!userEmail) {
-      console.log("[Email] Payment approved: no user email found, skipping.");
+      console.warn("[Email] Payment approved: no user email found, skipping.");
       return;
     }
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
     var orderId = order.localOrderId || order.sigeOrderId || "N/A";
-    console.log("[Email] Sending payment approved to " + userEmail + " for order #" + orderId);
+    // Email: sending payment approved
     await _sendSmtpEmail(smtpCfg, {
       from: from,
       to: userEmail,
       subject: "Pagamento confirmado - Pedido #" + orderId + " - Carretao Auto Pecas",
       html: _buildPaymentApprovedHtml(order),
     });
-    console.log("[Email] Payment approved sent successfully to " + userEmail);
+    // Email: payment approved sent
   } catch (err) {
-    console.log("[Email] Payment approved error (non-fatal): " + err);
+    console.error("[Email] Payment approved error (non-fatal): " + err);
   }
 }
 
@@ -18242,12 +18801,12 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
   try {
     var smtpCfg = await _getSmtpConfig();
     if (!smtpCfg) {
-      console.log("[Email] Admin notification: SMTP not configured, skipping.");
+      console.warn("[Email] Admin notification: SMTP not configured, skipping.");
       return;
     }
     var adminEmails = await _getAdminWhitelist();
     if (!adminEmails || adminEmails.length === 0) {
-      console.log("[Email] Admin notification: no admin emails found, skipping.");
+      console.warn("[Email] Admin notification: no admin emails found, skipping.");
       return;
     }
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
@@ -18259,7 +18818,7 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
 
     for (var ak = 0; ak < adminEmails.length; ak++) {
       try {
-        console.log("[Email] Sending admin notification to " + adminEmails[ak] + " for order #" + orderId);
+        // Email: sending admin notification
         await _sendSmtpEmail(smtpCfg, {
           from: from,
           to: adminEmails[ak],
@@ -18267,13 +18826,13 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
           html: html,
           replyTo: userEmail,
         });
-        console.log("[Email] Admin notification sent to " + adminEmails[ak]);
+        // Email: admin notification sent
       } catch (ae) {
-        console.log("[Email] Admin notification to " + adminEmails[ak] + " failed: " + ae);
+        console.error("[Email] Admin notification failed: " + ae);
       }
     }
   } catch (err) {
-    console.log("[Email] Admin notification error (non-fatal): " + err);
+    console.error("[Email] Admin notification error (non-fatal): " + err);
   }
 }
 
@@ -18308,10 +18867,9 @@ app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
       greetingTimeout: 10000,
     });
     await transport.verify();
-    console.log("[EmailMarketing] SMTP connection test OK: " + host + ":" + port);
     return c.json({ ok: true, message: "Conexão SMTP bem-sucedida!" });
   } catch (e: any) {
-    console.log("[EmailMarketing] SMTP connection test failed:", e);
+    console.error("[EmailMarketing] SMTP connection test failed:", e);
     return c.json({ error: "Falha na conexao SMTP." }, 400);
   }
 });
@@ -18361,10 +18919,9 @@ app.post(BASE + "/admin/email-marketing/campaigns/:id/test", async (c) => {
       replyTo: cmp.replyTo || smtpCfg.defaultReplyTo || undefined,
     });
 
-    console.log("[EmailMarketing] Test email sent to " + testEmail + " campaignId=" + id + " messageId=" + (info.messageId || ""));
     return c.json({ ok: true, testEmail: testEmail, messageId: info.messageId || null });
   } catch (e: any) {
-    console.log("[EmailMarketing] Test send error:", e);
+    console.error("[EmailMarketing] Test send error:", e);
     return c.json({ error: "Erro ao enviar teste." }, 500);
   }
 });
@@ -18492,10 +19049,9 @@ app.post(BASE + "/admin/email-marketing/campaigns/:id/send", async (c) => {
     };
     await kv.set("emkt_log:" + logId, JSON.stringify(logEntry));
 
-    console.log("[EmailMarketing] Campaign sent via SMTP: id=" + id + " sent=" + totalSent + " failed=" + totalFailed + " total=" + subs.length);
     return c.json({ ok: true, totalSent: totalSent, totalFailed: totalFailed, totalRecipients: subs.length, errors: errors.slice(0, 10) });
   } catch (e: any) {
-    console.log("[EmailMarketing] Send campaign error:", e);
+    console.error("[EmailMarketing] Send campaign error:", e);
     // Try to reset status to draft on failure
     try {
       var rawR = await kv.get("emkt_cmp:" + id);
@@ -18540,10 +19096,9 @@ app.post(BASE + "/admin/email-marketing/campaigns/:id/duplicate", async (c) => {
       updatedAt: now
     };
     await kv.set("emkt_cmp:" + newId, JSON.stringify(dup));
-    console.log("[EmailMarketing] Campaign duplicated: " + id + " -> " + newId);
     return c.json({ ok: true, campaign: dup });
   } catch (e: any) {
-    console.log("[EmailMarketing] Duplicate campaign error:", e);
+    console.error("[EmailMarketing] Duplicate campaign error:", e);
     return c.json({ error: "Erro ao duplicar." }, 500);
   }
 });
@@ -18564,7 +19119,7 @@ app.get(BASE + "/admin/email-marketing/send-logs", async (c) => {
     logs.sort(function (a: any, b: any) { return (b.sentAt || 0) - (a.sentAt || 0); });
     return c.json({ logs: logs });
   } catch (e: any) {
-    console.log("[EmailMarketing] List logs error:", e);
+    console.error("[EmailMarketing] List logs error:", e);
     return c.json({ error: "Erro ao listar historico." }, 500);
   }
 });
@@ -18577,7 +19132,7 @@ app.delete(BASE + "/admin/email-marketing/send-logs/:id", async (c) => {
     await kv.del("emkt_log:" + id);
     return c.json({ ok: true, deleted: id });
   } catch (e: any) {
-    console.log("[EmailMarketing] Delete log error:", e);
+    console.error("[EmailMarketing] Delete log error:", e);
     return c.json({ error: "Erro ao deletar log." }, 500);
   }
 });
@@ -18602,7 +19157,7 @@ app.get(BASE + "/admin/email-marketing/config", async (c) => {
       defaultReplyTo: config.defaultReplyTo || ""
     });
   } catch (e: any) {
-    console.log("[EmailMarketing] Get config error:", e);
+    console.error("[EmailMarketing] Get config error:", e);
     return c.json({ error: "Erro ao buscar config." }, 500);
   }
 });
@@ -18645,7 +19200,6 @@ app.put(BASE + "/admin/email-marketing/config", async (c) => {
     config.updatedAt = Date.now();
     await kv.set("emkt_config", JSON.stringify(config));
 
-    console.log("[EmailMarketing] Config updated: host=" + (config.smtpHost || "none") + " port=" + (config.smtpPort || "none"));
     return c.json({ ok: true, config: {
       smtpHost: config.smtpHost || "",
       smtpPort: config.smtpPort || 587,
@@ -18657,7 +19211,7 @@ app.put(BASE + "/admin/email-marketing/config", async (c) => {
       defaultReplyTo: config.defaultReplyTo || "",
     }});
   } catch (e: any) {
-    console.log("[EmailMarketing] Update config error:", e);
+    console.error("[EmailMarketing] Update config error:", e);
     return c.json({ error: "Erro ao salvar config." }, 500);
   }
 });
@@ -18697,7 +19251,7 @@ app.get(BASE + "/robots.txt", async (c) => {
       },
     });
   } catch (e) {
-    console.log("[robots.txt] Error:", e);
+    console.error("[robots.txt] Error:", e);
     return new Response("User-agent: *\nAllow: /\n", {
       status: 200,
       headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" },
@@ -18771,7 +19325,7 @@ app.get(BASE + "/sitemap.xml", async (c) => {
         }
       }
     } catch (_e) {
-      console.log("[sitemap] Error fetching products:", _e);
+      console.error("[sitemap] Error fetching products:", _e);
     }
 
     // Build XML
@@ -18810,8 +19364,6 @@ app.get(BASE + "/sitemap.xml", async (c) => {
 
     xml += "</urlset>\n";
 
-    console.log("[sitemap.xml] Generated: " + staticPages.length + " static + " + categorySlugs.length + " categories + " + productSkus.length + " products");
-
     return new Response(xml, {
       status: 200,
       headers: {
@@ -18821,7 +19373,7 @@ app.get(BASE + "/sitemap.xml", async (c) => {
       },
     });
   } catch (e) {
-    console.log("[sitemap.xml] Error:", e);
+    console.error("[sitemap.xml] Error:", e);
     return new Response("<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"></urlset>", {
       status: 200,
       headers: { "Content-Type": "application/xml; charset=utf-8", "Access-Control-Allow-Origin": "*" },
@@ -18860,7 +19412,7 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
           }
           return { paid: paidCount, awaiting: awaitingCount, total: paidCount + awaitingCount };
         } catch (e) {
-          console.log("[pending-counts] orders error: " + String(e));
+          console.error("[pending-counts] orders error: " + String(e));
           return { paid: 0, awaiting: 0, total: 0 };
         }
       })(),
@@ -18873,7 +19425,7 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
           var parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
           return Array.isArray(parsed) ? parsed.length : 0;
         } catch (e) {
-          console.log("[pending-counts] reviews error: " + String(e));
+          console.error("[pending-counts] reviews error: " + String(e));
           return 0;
         }
       })(),
@@ -18897,7 +19449,7 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
           }
           return pendingCount;
         } catch (e) {
-          console.log("[pending-counts] lgpd error: " + String(e));
+          console.error("[pending-counts] lgpd error: " + String(e));
           return 0;
         }
       })(),
@@ -18913,7 +19465,7 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
           }
           return pCount;
         } catch (e) {
-          console.log("[pending-counts] affiliates error: " + String(e));
+          console.error("[pending-counts] affiliates error: " + String(e));
           return 0;
         }
       })(),
@@ -18925,8 +19477,6 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
     var affiliateCount = results[3] && results[3].status === "fulfilled" ? results[3].value : 0;
 
     var elapsed = Date.now() - startMs;
-    console.log("[pending-counts] orders=" + (orderCounts as any).total + " reviews=" + reviewCount + " lgpd=" + lgpdCount + " affiliates=" + affiliateCount + " (" + elapsed + "ms)");
-
     return c.json({
       orders: orderCounts,
       reviews: reviewCount,
@@ -18934,7 +19484,7 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
       affiliates: affiliateCount,
     });
   } catch (e: any) {
-    console.log("[pending-counts] Exception: " + String(e));
+    console.error("[pending-counts] Exception: " + String(e));
     return c.json({ error: "Erro interno do servidor." }, 500);
   }
 });
@@ -19010,7 +19560,7 @@ app.get(BASE + "/admin/dashboard-stats", async (c: any) => {
         }
       }
     } catch (pe) {
-      console.log("[dashboard] product count error: " + pe);
+      console.error("[dashboard] product count error: " + pe);
     }
 
     // 3. Client count from Supabase auth
@@ -19019,7 +19569,7 @@ app.get(BASE + "/admin/dashboard-stats", async (c: any) => {
       var profileEntries = await kv.getByPrefix("user_profile:");
       clientCount = profileEntries.length;
     } catch (ce) {
-      console.log("[dashboard] client count error: " + ce);
+      console.error("[dashboard] client count error: " + ce);
     }
 
     // 4. Coupon count
@@ -19058,7 +19608,7 @@ app.get(BASE + "/admin/dashboard-stats", async (c: any) => {
       chartData: chartData,
     });
   } catch (e) {
-    console.log("[admin/dashboard-stats] Error: " + e);
+    console.error("[admin/dashboard-stats] Error: " + e);
     return c.json({ error: "Erro ao buscar estatisticas do dashboard." }, 500);
   }
 });
@@ -19082,7 +19632,7 @@ app.get(BASE + "/admin/coupons", async (c: any) => {
     coupons.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     return c.json({ coupons: coupons });
   } catch (e) {
-    console.log("[admin/coupons] List error: " + e);
+    console.error("[admin/coupons] List error: " + e);
     return c.json({ error: "Erro ao listar cupons." }, 500);
   }
 });
@@ -19126,10 +19676,10 @@ app.post(BASE + "/admin/coupons", async (c: any) => {
       updatedAt: Date.now(),
     };
     await kv.set("coupon:" + code, JSON.stringify(coupon));
-    console.log("[admin/coupons] Created coupon: " + code);
+    // admin/coupons: created
     return c.json({ ok: true, coupon: coupon });
   } catch (e) {
-    console.log("[admin/coupons] Create error: " + e);
+    console.error("[admin/coupons] Create error: " + e);
     return c.json({ error: "Erro ao criar cupom." }, 500);
   }
 });
@@ -19141,7 +19691,7 @@ app.put(BASE + "/admin/coupons/:code", async (c: any) => {
     if (!code) return c.json({ error: "Codigo invalido." }, 400);
     var existing = await kv.get("coupon:" + code);
     if (!existing) {
-      console.log("[coupons] Coupon not found: " + code);
+      // coupons: not found
       return c.json({ error: "Cupom nao encontrado." }, 404);
     }
     var current = typeof existing === "string" ? JSON.parse(existing) : existing;
@@ -19166,10 +19716,10 @@ app.put(BASE + "/admin/coupons/:code", async (c: any) => {
     if (body.expiresAt !== undefined) current.expiresAt = body.expiresAt ? String(body.expiresAt) : null;
     current.updatedAt = Date.now();
     await kv.set("coupon:" + code, JSON.stringify(current));
-    console.log("[admin/coupons] Updated coupon: " + code);
+    // admin/coupons: updated
     return c.json({ ok: true, coupon: current });
   } catch (e) {
-    console.log("[admin/coupons] Update error: " + e);
+    console.error("[admin/coupons] Update error: " + e);
     return c.json({ error: "Erro ao atualizar cupom." }, 500);
   }
 });
@@ -19180,10 +19730,10 @@ app.delete(BASE + "/admin/coupons/:code", async (c: any) => {
     var code = String(c.req.param("code") || "").toUpperCase().trim().substring(0, 50);
     if (!code) return c.json({ error: "Codigo invalido." }, 400);
     await kv.del("coupon:" + code);
-    console.log("[admin/coupons] Deleted coupon: " + code);
+    // admin/coupons: deleted
     return c.json({ ok: true, deleted: code });
   } catch (e) {
-    console.log("[admin/coupons] Delete error: " + e);
+    console.error("[admin/coupons] Delete error: " + e);
     return c.json({ error: "Erro ao excluir cupom." }, 500);
   }
 });
@@ -19248,7 +19798,7 @@ app.post(BASE + "/coupons/validate", async (c: any) => {
       description: coupon.description || "",
     });
   } catch (e) {
-    console.log("[coupons/validate] Error: " + e);
+    console.error("[coupons/validate] Error: " + e);
     return c.json({ valid: false, error: "Erro ao validar cupom" }, 500);
   }
 });
@@ -19294,10 +19844,10 @@ app.post(BASE + "/coupons/use", async (c: any) => {
     coupon.usedCount = (coupon.usedCount || 0) + 1;
     coupon.updatedAt = Date.now();
     await kv.set("coupon:" + code, JSON.stringify(coupon));
-    console.log("[coupons/use] Coupon used: " + code + " by userId=" + couponUserId + " (count: " + coupon.usedCount + ")");
+    // coupons: coupon used
     return c.json({ ok: true, usedCount: coupon.usedCount });
   } catch (e) {
-    console.log("[coupons/use] Error: " + e);
+    console.error("[coupons/use] Error: " + e);
     return c.json({ ok: false, error: "Erro ao aplicar cupom." }, 500);
   }
 });
@@ -19339,7 +19889,7 @@ async function _sendLgpdDpoNotification(record: any) {
   try {
     var cfg = await _getSmtpConfig();
     if (!cfg) {
-      console.log("[LGPD] SMTP not configured — skipping DPO notification email");
+      console.warn("[LGPD] SMTP not configured — skipping DPO notification email");
       return;
     }
     var typeLabel = LGPD_TYPE_LABELS[record.requestType] || record.requestType;
@@ -19390,9 +19940,9 @@ async function _sendLgpdDpoNotification(record: any) {
       html: html,
       replyTo: record.email,
     });
-    console.log("[LGPD] DPO notification email sent to " + LGPD_DPO_EMAIL + " for request " + record.id);
+    // LGPD: DPO notification sent
   } catch (emailErr: any) {
-    console.log("[LGPD] Failed to send DPO notification email: " + String(emailErr.message || emailErr));
+    console.error("[LGPD] Failed to send DPO notification email: " + String(emailErr.message || emailErr));
   }
 }
 
@@ -19400,7 +19950,7 @@ async function _sendLgpdConfirmationToRequester(record: any) {
   try {
     var cfg = await _getSmtpConfig();
     if (!cfg) {
-      console.log("[LGPD] SMTP not configured — skipping confirmation email to requester");
+      console.warn("[LGPD] SMTP not configured — skipping confirmation email to requester");
       return;
     }
     var typeLabel = LGPD_TYPE_LABELS[record.requestType] || record.requestType;
@@ -19435,9 +19985,9 @@ async function _sendLgpdConfirmationToRequester(record: any) {
       subject: "Confirmação de solicitação LGPD — Protocolo " + record.id,
       html: html,
     });
-    console.log("[LGPD] Confirmation email sent to requester " + record.email + " for request " + record.id);
+    // LGPD: confirmation email sent
   } catch (emailErr: any) {
-    console.log("[LGPD] Failed to send confirmation email to requester: " + String(emailErr.message || emailErr));
+    console.error("[LGPD] Failed to send confirmation email to requester: " + String(emailErr.message || emailErr));
   }
 }
 
@@ -19447,7 +19997,7 @@ app.use(BASE + "/lgpd/request", async (c: any, next: any) => {
   var rlKey = _getRateLimitKey(c, "lgpd_request");
   var rlResult = _checkRateLimit(rlKey, 5);
   if (!rlResult.allowed) {
-    console.log("[RateLimit] BLOCKED lgpd request from " + rlKey);
+    console.warn("[RateLimit] BLOCKED lgpd request");
     return _rl429(c, "Muitas solicitações. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
   return next();
@@ -19524,19 +20074,19 @@ app.post(BASE + "/lgpd/request", async (c) => {
     idx.push(id);
     await kv.set(LGPD_REQ_INDEX, JSON.stringify(idx));
 
-    console.log("[LGPD] New request: " + id + " | type=" + requestType + " | email=" + email);
+    // LGPD: new request created
 
     // Fire-and-forget: send email notifications (don't block the response)
     _sendLgpdDpoNotification(record).catch(function (err: any) {
-      console.log("[LGPD] DPO notification fire-and-forget error: " + String(err));
+      console.error("[LGPD] DPO notification fire-and-forget error: " + String(err));
     });
     _sendLgpdConfirmationToRequester(record).catch(function (err: any) {
-      console.log("[LGPD] Requester confirmation fire-and-forget error: " + String(err));
+      console.error("[LGPD] Requester confirmation fire-and-forget error: " + String(err));
     });
 
     return c.json({ ok: true, requestId: id, message: "Solicitação registrada com sucesso. Responderemos em até 15 dias úteis." });
   } catch (e) {
-    console.log("[LGPD] Error creating request: " + e);
+    console.error("[LGPD] Error creating request: " + e);
     return c.json({ error: "Erro interno ao registrar solicitacao." }, 500);
   }
 });
@@ -19572,7 +20122,7 @@ app.get(BASE + "/lgpd/request/status", async (c) => {
       },
     });
   } catch (e) {
-    console.log("[LGPD] Error checking status: " + e);
+    console.error("[LGPD] Error checking status: " + e);
     return c.json({ error: "Erro ao consultar status." }, 500);
   }
 });
@@ -19610,7 +20160,7 @@ app.get(BASE + "/admin/lgpd-requests", async (c) => {
 
     return c.json({ requests: requests, total: requests.length });
   } catch (e) {
-    console.log("[LGPD Admin] Error listing requests: " + e);
+    console.error("[LGPD Admin] Error listing requests: " + e);
     return c.json({ error: "Erro ao listar solicitacoes LGPD." }, 500);
   }
 });
@@ -19652,10 +20202,10 @@ app.put(BASE + "/admin/lgpd-requests/:id", async (c) => {
     record.updatedAt = Date.now();
 
     await kv.set(LGPD_REQ_PREFIX + reqId, JSON.stringify(record));
-    console.log("[LGPD Admin] Updated request " + reqId + " -> status=" + record.status);
+    // LGPD Admin: request updated
     return c.json({ ok: true, request: record });
   } catch (e) {
-    console.log("[LGPD Admin] Error updating request: " + e);
+    console.error("[LGPD Admin] Error updating request: " + e);
     return c.json({ error: "Erro ao atualizar solicitacao LGPD." }, 500);
   }
 });
@@ -19679,10 +20229,10 @@ app.delete(BASE + "/admin/lgpd-requests/:id", async (c) => {
     idx = idx.filter(function (x) { return x !== reqId; });
     await kv.set(LGPD_REQ_INDEX, JSON.stringify(idx));
 
-    console.log("[LGPD Admin] Deleted request " + reqId);
+    // LGPD Admin: request deleted
     return c.json({ ok: true, deleted: reqId });
   } catch (e) {
-    console.log("[LGPD Admin] Error deleting request: " + e);
+    console.error("[LGPD Admin] Error deleting request: " + e);
     return c.json({ error: "Erro ao excluir solicitacao LGPD." }, 500);
   }
 });
@@ -19721,7 +20271,7 @@ app.get(BASE + "/brands", async (c) => {
 
     return c.json({ brands: brands });
   } catch (e: any) {
-    console.log("[brands] Error:", e);
+    console.error("[brands] Error:", e);
     return c.json({ error: "Erro ao buscar marcas." }, 500);
   }
 });
@@ -19759,7 +20309,7 @@ app.get(BASE + "/brands/:slug", async (c) => {
 
     return c.json({ brand: found });
   } catch (e: any) {
-    console.log("[brands/:slug] Error:", e);
+    console.error("[brands/:slug] Error:", e);
     return c.json({ error: "Erro ao buscar marca." }, 500);
   }
 });
@@ -19814,7 +20364,7 @@ app.post(BASE + "/admin/brands", async (c) => {
       .upload(filename, arrayBuffer, { contentType: file.type, upsert: true });
 
     if (uploadResult.error) {
-      console.log("Brand upload error:", uploadResult.error.message);
+      console.error("Brand upload error:", uploadResult.error.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
 
@@ -19840,11 +20390,11 @@ app.post(BASE + "/admin/brands", async (c) => {
     };
 
     await kv.set("brand:" + brandId, JSON.stringify(brand));
-    console.log("Brand created: " + brandId + " name=" + name + " slug=" + slug);
+    // Brand created
 
     return c.json({ created: true, brand: brand });
   } catch (e: any) {
-    console.log("Error creating brand:", e);
+    console.error("Error creating brand:", e);
     return c.json({ error: "Erro ao criar marca." }, 500);
   }
 });
@@ -19910,7 +20460,7 @@ app.put(BASE + "/admin/brands/:id", async (c) => {
           .upload(newFilename, fArrayBuffer, { contentType: file.type, upsert: true });
 
         if (fUploadResult.error) {
-          console.log("Brand card upload error:", fUploadResult.error.message);
+          console.error("Brand card upload error:", fUploadResult.error.message);
           return c.json({ error: "Erro no upload do arquivo." }, 500);
         }
 
@@ -19941,11 +20491,11 @@ app.put(BASE + "/admin/brands/:id", async (c) => {
 
     brand.updatedAt = new Date().toISOString();
     await kv.set("brand:" + brandId, JSON.stringify(brand));
-    console.log("Brand updated: " + brandId);
+    // Brand updated
 
     return c.json({ updated: true, brand: brand });
   } catch (e: any) {
-    console.log("Error updating brand:", e);
+    console.error("Error updating brand:", e);
     return c.json({ error: "Erro ao atualizar marca." }, 500);
   }
 });
@@ -19968,11 +20518,11 @@ app.delete(BASE + "/admin/brands/:id", async (c) => {
     }
 
     await kv.del("brand:" + brandId);
-    console.log("Brand deleted: " + brandId);
+    // Brand deleted
 
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("Error deleting brand:", e);
+    console.error("Error deleting brand:", e);
     return c.json({ error: "Erro ao deletar marca." }, 500);
   }
 });
@@ -19992,7 +20542,7 @@ app.get(BASE + "/admin/auto-categorize-data", async (c) => {
       return c.json({ error: "Configuracao do servidor incompleta." }, 500);
     }
 
-    console.log("[AutoCateg] Fetching all data for auto-categorization...");
+    // AutoCateg: fetching data
     var t0 = Date.now();
 
     // 1) Fetch ALL products from DB (sku + titulo only, no limit)
@@ -20015,7 +20565,7 @@ app.get(BASE + "/admin/auto-categorize-data", async (c) => {
       });
       if (!dbRes.ok) {
         var errTxt = await dbRes.text();
-        console.log("[AutoCateg] DB fetch error: " + errTxt);
+        console.error("[AutoCateg] DB fetch error: " + errTxt);
         return c.json({ error: "Erro ao buscar produtos do banco: HTTP " + dbRes.status }, 500);
       }
       var rows = await dbRes.json();
@@ -20027,7 +20577,7 @@ app.get(BASE + "/admin/auto-categorize-data", async (c) => {
       hasMore = Array.isArray(rows) && rows.length === pageSize;
       offset += pageSize;
     }
-    console.log("[AutoCateg] Fetched " + allProducts.length + " products from DB");
+    // AutoCateg: products fetched
 
     // 2) Fetch ALL product metas (category assignments)
     var allMetas = await getAllProductMetas();
@@ -20047,10 +20597,10 @@ app.get(BASE + "/admin/auto-categorize-data", async (c) => {
         attrsObj[sku] = attrs;
       });
     } catch (e) {
-      console.log("[AutoCateg] Could not load attributes: " + String(e));
+      console.error("[AutoCateg] Could not load attributes: " + String(e));
     }
 
-    console.log("[AutoCateg] Done in " + (Date.now() - t0) + "ms | products=" + allProducts.length + " metas=" + Object.keys(metasObj).length + " attrs=" + Object.keys(attrsObj).length);
+    // AutoCateg: done
 
     return c.json({
       products: allProducts,
@@ -20059,7 +20609,7 @@ app.get(BASE + "/admin/auto-categorize-data", async (c) => {
       attributes: attrsObj,
     });
   } catch (e) {
-    console.log("[AutoCateg] Error:", e);
+    console.error("[AutoCateg] Error:", e);
     return c.json({ error: "Erro ao buscar dados para auto-categorizacao." }, 500);
   }
 });
@@ -20081,7 +20631,7 @@ app.post(BASE + "/admin/auto-categorize-apply", async (c) => {
       return c.json({ error: "assignments deve ser um array nao vazio." }, 400);
     }
 
-    console.log("[AutoCateg] Applying " + assignments.length + " category assignments...");
+    // AutoCateg: applying assignments
     var applied = 0;
     var errors: string[] = [];
 
@@ -20099,11 +20649,11 @@ app.post(BASE + "/admin/auto-categorize-apply", async (c) => {
     }
 
     invalidateMetaCache();
-    console.log("[AutoCateg] Applied " + applied + "/" + assignments.length + " assignments. Errors: " + errors.length);
+    // AutoCateg: assignments applied
 
     return c.json({ applied: applied, total: assignments.length, errors: errors });
   } catch (e) {
-    console.log("[AutoCateg] Apply error:", e);
+    console.error("[AutoCateg] Apply error:", e);
     return c.json({ error: "Erro ao aplicar categorizacao." }, 500);
   }
 });
@@ -20124,10 +20674,10 @@ var REVIEWS_BUCKET = "make-b7b07654-reviews";
     }
     if (!exists) {
       await supabaseAdmin.storage.createBucket(REVIEWS_BUCKET, { public: false });
-      console.log("Created private reviews bucket: " + REVIEWS_BUCKET);
+      // Reviews bucket created
     }
   } catch (e) {
-    console.log("Error ensuring reviews bucket: " + String(e));
+    console.error("Error ensuring reviews bucket: " + String(e));
   }
 })();
 
@@ -20211,7 +20761,7 @@ async function _migrateReviewIndexes(): Promise<void> {
   try {
     var existingAll = await _getAllReviewIds();
     if (existingAll.length > 0) return;
-    console.log("[Reviews] Migrating review indexes from getByPrefix...");
+    // Reviews: migrating indexes
     var allKvs = await kv.getByPrefix("review:");
     var allIds: string[] = [];
     var userMap: Record<string, string[]> = {};
@@ -20233,10 +20783,10 @@ async function _migrateReviewIndexes(): Promise<void> {
         var uid = userKeys[umi];
         await _saveReviewIdsByUser(uid, userMap[uid]);
       }
-      console.log("[Reviews] Migrated " + allIds.length + " reviews, " + userKeys.length + " user indexes");
+      // Reviews: migration complete
     }
   } catch (e) {
-    console.log("[Reviews] Migration error (non-fatal): " + String(e));
+    console.error("[Reviews] Migration error (non-fatal): " + String(e));
   }
 }
 
@@ -20289,7 +20839,7 @@ app.get(BASE + "/reviews/:sku", async function (c) {
     reviews.sort(function (a: any, b: any) { return b.createdAt - a.createdAt; });
     return c.json({ reviews: reviews, total: reviews.length, sku: sku });
   } catch (e) {
-    console.log("[Reviews] GET error:", e);
+    console.error("[Reviews] GET error:", e);
     return c.json({ error: "Erro ao buscar avaliacoes." }, 500);
   }
 });
@@ -20319,7 +20869,7 @@ app.get(BASE + "/reviews/:sku/summary", async function (c) {
     var avg = count > 0 ? Math.round((totalRating / count) * 10) / 10 : 0;
     return c.json({ sku: sku, averageRating: avg, totalReviews: count, distribution: dist });
   } catch (e) {
-    console.log("[reviews] Summary error:", e);
+    console.error("[reviews] Summary error:", e);
     return c.json({ error: "Erro ao calcular resumo de avaliacoes." }, 500);
   }
 });
@@ -20373,7 +20923,7 @@ app.post(BASE + "/reviews/summaries-batch", async function (c) {
     await Promise.all(promises);
     return c.json({ summaries: summaries });
   } catch (e) {
-    console.log("[Reviews] summaries-batch error: " + String(e));
+    console.error("[Reviews] summaries-batch error: " + String(e));
     return c.json({ error: "Erro ao calcular resumos." }, 500);
   }
 });
@@ -20397,7 +20947,7 @@ async function _userHasPurchasedSku(userId: string, sku: string): Promise<boolea
     }
     return false;
   } catch (e) {
-    console.log("[_userHasPurchasedSku] Error for user=" + userId + " sku=" + sku + ": " + String(e));
+    console.error("[_userHasPurchasedSku] Error: " + String(e));
     return false;
   }
 }
@@ -20492,10 +21042,9 @@ app.post(BASE + "/reviews", async function (c) {
     var pending = await _getReviewsPending();
     pending.push(reviewId);
     await _saveReviewsPending(pending);
-    console.log("[Reviews] New review " + reviewId + " for " + sku + " by " + userEmail);
     return c.json({ ok: true, reviewId: reviewId, status: "pending" });
   } catch (e) {
-    console.log("[Reviews] POST error:", e);
+    console.error("[Reviews] POST error:", e);
     return c.json({ error: "Erro ao enviar avaliacao." }, 500);
   }
 });
@@ -20530,7 +21079,7 @@ app.post(BASE + "/reviews/:id/images", async function (c) {
     var arrayBuffer = await file.arrayBuffer();
     var uploadRes = await supabaseAdmin.storage.from(REVIEWS_BUCKET).upload(filePath, arrayBuffer, { contentType: fileType, upsert: true });
     if (uploadRes.error) {
-      console.log("[Reviews] Image storage error:", uploadRes.error.message);
+      console.error("[Reviews] Image storage error:", uploadRes.error.message);
       return c.json({ error: "Erro no upload da imagem." }, 500);
     }
     if (!review.images) review.images = [];
@@ -20539,7 +21088,7 @@ app.post(BASE + "/reviews/:id/images", async function (c) {
     await kv.set("review:" + reviewId, JSON.stringify(review));
     return c.json({ ok: true, path: filePath, imageIndex: imgIndex });
   } catch (e) {
-    console.log("[Reviews] Image upload error:", e);
+    console.error("[Reviews] Image upload error:", e);
     return c.json({ error: "Erro ao enviar imagem." }, 500);
   }
 });
@@ -20560,7 +21109,7 @@ app.post(BASE + "/reviews/:id/helpful", async function (c) {
     await kv.set("review:" + reviewId, JSON.stringify(review));
     return c.json({ ok: true, helpful: review.helpful });
   } catch (e) {
-    console.log("[Reviews] Helpful error:", e);
+    console.error("[Reviews] Helpful error:", e);
     return c.json({ error: "Erro ao processar voto." }, 500);
   }
 });
@@ -20592,7 +21141,7 @@ app.get(BASE + "/reviews/user/mine", async function (c) {
     userReviews.sort(function (a: any, b: any) { return b.createdAt - a.createdAt; });
     return c.json({ reviews: userReviews, total: userReviews.length });
   } catch (e) {
-    console.log("[Reviews] User mine error:", e);
+    console.error("[Reviews] User mine error:", e);
     return c.json({ error: "Erro ao buscar suas avaliacoes." }, 500);
   }
 });
@@ -20626,7 +21175,7 @@ app.get(BASE + "/admin/reviews", async function (c) {
     allReviews.sort(function (a: any, b: any) { if (a.status === "pending" && b.status !== "pending") return -1; if (a.status !== "pending" && b.status === "pending") return 1; return b.createdAt - a.createdAt; });
     return c.json({ reviews: allReviews, total: allReviews.length });
   } catch (e) {
-    console.log("[admin/reviews] List error:", e);
+    console.error("[admin/reviews] List error:", e);
     return c.json({ error: "Erro ao listar avaliacoes." }, 500);
   }
 });
@@ -20663,7 +21212,7 @@ app.get(BASE + "/admin/reviews/stats", async function (c) {
     }
     return c.json({ pending: pendingCount, approved: approvedCount, rejected: rejectedCount, total: pendingCount + approvedCount + rejectedCount, totalImages: totalImages, pendingImages: pendingImages });
   } catch (e) {
-    console.log("[admin/reviews] Stats error:", e);
+    console.error("[admin/reviews] Stats error:", e);
     return c.json({ error: "Erro ao buscar estatisticas de avaliacoes." }, 500);
   }
 });
@@ -20715,7 +21264,7 @@ app.put(BASE + "/admin/reviews/:id/moderate", async function (c) {
         if (review.images[ri].status === "rejected") toRemove.push(review.images[ri].path);
       }
       if (toRemove.length > 0) {
-        try { await supabaseAdmin.storage.from(REVIEWS_BUCKET).remove(toRemove); } catch (removeErr) { console.log("[Reviews] Remove err: " + String(removeErr)); }
+        try { await supabaseAdmin.storage.from(REVIEWS_BUCKET).remove(toRemove); } catch (removeErr) { console.error("[Reviews] Remove err: " + String(removeErr)); }
         review.images = review.images.filter(function (img: any) { return img.status !== "rejected"; });
       }
     }
@@ -20724,10 +21273,9 @@ app.put(BASE + "/admin/reviews/:id/moderate", async function (c) {
     var newPending: string[] = [];
     for (var pi = 0; pi < pendingIds.length; pi++) { if (pendingIds[pi] !== reviewId) newPending.push(pendingIds[pi]); }
     await _saveReviewsPending(newPending);
-    console.log("[Reviews] " + reviewId + " " + action + "d by " + adminCheck.email);
     return c.json({ ok: true, reviewId: reviewId, status: review.status });
   } catch (e) {
-    console.log("[admin/reviews] Moderate error:", e);
+    console.error("[admin/reviews] Moderate error:", e);
     return c.json({ error: "Erro ao moderar avaliacao." }, 500);
   }
 });
@@ -20767,10 +21315,9 @@ app.delete(BASE + "/admin/reviews/:id", async function (c) {
     for (var pi = 0; pi < pendingIds.length; pi++) { if (pendingIds[pi] !== reviewId) newPending.push(pendingIds[pi]); }
     await _saveReviewsPending(newPending);
     await kv.del("review:" + reviewId);
-    console.log("[Reviews] Deleted " + reviewId + " by " + adminCheck.email);
     return c.json({ ok: true, deleted: reviewId });
   } catch (e) {
-    console.log("[admin/reviews] Delete error:", e);
+    console.error("[admin/reviews] Delete error:", e);
     return c.json({ error: "Erro ao deletar avaliacao." }, 500);
   }
 });
@@ -20783,7 +21330,7 @@ async function _sendWarrantyCertificateEmail(toEmail: string, orderId: string, w
   try {
     var cfg = await _getSmtpConfig();
     if (!cfg) {
-      console.log("[Warranty] SMTP not configured — skipping certificate email");
+      console.warn("[Warranty] SMTP not configured — skipping certificate email");
       return;
     }
     var paidDate = new Date();
@@ -20873,9 +21420,9 @@ async function _sendWarrantyCertificateEmail(toEmail: string, orderId: string, w
       subject: "Certificado de Garantia Estendida - Pedido " + orderId,
       html: html,
     });
-    console.log("[Warranty] Certificate email sent to " + toEmail + " for order " + orderId + " (" + warrantyItems.length + " items)");
+    // Warranty: certificate email sent
   } catch (e) {
-    console.log("[Warranty] Certificate email send error: " + e);
+    console.error("[Warranty] Certificate email send error: " + e);
   }
 }
 
@@ -20939,7 +21486,7 @@ app.get(BASE + "/admin/warranty/plans", async (c: any) => {
     plans.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     return c.json({ plans: plans });
   } catch (e) {
-    console.log("[admin/warranty] List error: " + e);
+    console.error("[admin/warranty] List error: " + e);
     return c.json({ error: "Erro ao listar planos de garantia." }, 500);
   }
 });
@@ -20983,10 +21530,10 @@ app.post(BASE + "/admin/warranty/plans", async (c: any) => {
     var ids = await _getWarrantyPlanIds();
     ids.push(id);
     await _saveWarrantyPlanIds(ids);
-    console.log("[admin/warranty] Created plan: " + name + " (" + id + ") by " + adminCheck.email);
+    // admin/warranty: plan created
     return c.json({ ok: true, plan: plan });
   } catch (e) {
-    console.log("[admin/warranty] Create error: " + e);
+    console.error("[admin/warranty] Create error: " + e);
     return c.json({ error: "Erro ao criar plano de garantia." }, 500);
   }
 });
@@ -21020,10 +21567,10 @@ app.put(BASE + "/admin/warranty/plans/:id", async (c: any) => {
     if (body.active !== undefined) plan.active = !!body.active;
     plan.updatedAt = Date.now();
     await kv.set(_warrantyPlanKey(planId), JSON.stringify(plan));
-    console.log("[admin/warranty] Updated plan: " + planId + " by " + adminCheck.email);
+    // admin/warranty: plan updated
     return c.json({ ok: true, plan: plan });
   } catch (e) {
-    console.log("[admin/warranty] Update error: " + e);
+    console.error("[admin/warranty] Update error: " + e);
     return c.json({ error: "Erro ao atualizar plano de garantia." }, 500);
   }
 });
@@ -21053,10 +21600,10 @@ app.delete(BASE + "/admin/warranty/plans/:id", async (c: any) => {
       }
     }
     await kv.del(_warrantyPlanKey(planId));
-    console.log("[admin/warranty] Deleted plan: " + planId + " by " + adminCheck.email);
+    // admin/warranty: plan deleted
     return c.json({ ok: true, deleted: planId });
   } catch (e) {
-    console.log("[admin/warranty] Delete error: " + e);
+    console.error("[admin/warranty] Delete error: " + e);
     return c.json({ error: "Erro ao excluir plano de garantia." }, 500);
   }
 });
@@ -21113,10 +21660,10 @@ app.put(BASE + "/admin/warranty/plans/:id/skus", async (c: any) => {
     plan.skus = newSkus;
     plan.updatedAt = Date.now();
     await kv.set(_warrantyPlanKey(planId), JSON.stringify(plan));
-    console.log("[admin/warranty] Updated SKUs for plan " + planId + ": " + newSkus.length + " SKUs by " + adminCheck.email);
+    // admin/warranty: SKUs updated
     return c.json({ ok: true, plan: plan });
   } catch (e) {
-    console.log("[admin/warranty] Assign SKUs error: " + e);
+    console.error("[admin/warranty] Assign SKUs error: " + e);
     return c.json({ error: "Erro ao atribuir SKUs de garantia." }, 500);
   }
 });
@@ -21149,7 +21696,7 @@ app.get(BASE + "/warranty/product/:sku", async (c: any) => {
     }
     return c.json({ plans: plans });
   } catch (e) {
-    console.log("[warranty] Get product plans error: " + e);
+    console.error("[warranty] Get product plans error: " + e);
     return c.json({ plans: [] });
   }
 });
@@ -21277,10 +21824,10 @@ app.post(BASE + "/affiliate/register", async function (c) {
     await kv.set("affiliate_code:" + code, userId);
     await _addToAffiliateIndex(userId);
 
-    console.log("[Affiliate] New registration: " + name + " (" + userEmail + ") code=" + code);
+    // Affiliate: new registration
     return c.json({ ok: true, affiliate: affiliate });
   } catch (e: any) {
-    console.log("[Affiliate] Register error: " + e);
+    console.error("[Affiliate] Register error: " + e);
     return c.json({ error: "Erro ao cadastrar afiliado." }, 500);
   }
 });
@@ -21296,7 +21843,7 @@ app.get(BASE + "/affiliate/profile", async function (c) {
 
     return c.json({ affiliate: aff });
   } catch (e: any) {
-    console.log("[Affiliate] Profile error: " + e);
+    console.error("[Affiliate] Profile error: " + e);
     return c.json({ error: "Erro ao buscar perfil." }, 500);
   }
 });
@@ -21326,7 +21873,7 @@ app.put(BASE + "/affiliate/profile", async function (c) {
     await _saveAffiliate(aff);
     return c.json({ ok: true, affiliate: aff });
   } catch (e: any) {
-    console.log("[Affiliate] Profile update error: " + e);
+    console.error("[Affiliate] Profile update error: " + e);
     return c.json({ error: "Erro ao atualizar perfil." }, 500);
   }
 });
@@ -21385,7 +21932,7 @@ app.get(BASE + "/affiliate/dashboard", async function (c) {
       },
     });
   } catch (e: any) {
-    console.log("[Affiliate] Dashboard error: " + e);
+    console.error("[Affiliate] Dashboard error: " + e);
     return c.json({ error: "Erro ao buscar dashboard." }, 500);
   }
 });
@@ -21417,10 +21964,10 @@ app.post(BASE + "/affiliate/track-click", async function (c) {
     aff.updatedAt = Date.now();
     await _saveAffiliate(aff);
 
-    console.log("[Affiliate] Click tracked for code=" + code + " affiliate=" + resolvedId);
+    // Affiliate: click tracked
     return c.json({ ok: true });
   } catch (e: any) {
-    console.log("[Affiliate] Track click error: " + e);
+    console.error("[Affiliate] Track click error: " + e);
     return c.json({ ok: false });
   }
 });
@@ -21454,7 +22001,7 @@ app.post(BASE + "/affiliate/track-sale", async function (c) {
     // SECURITY: Validate order belongs to user and use SERVER-SIDE total
     var orderRaw = await kv.get("user_order:" + userId + ":" + orderId);
     if (!orderRaw) {
-      console.log("[Affiliate] track-sale: order not found for user " + userId + " orderId=" + orderId);
+      // Affiliate: order not found for tracking
       return c.json({ ok: false, error: "Pedido nao encontrado." }, 404);
     }
     var orderData = typeof orderRaw === "string" ? JSON.parse(orderRaw) : orderRaw;
@@ -21475,7 +22022,7 @@ app.post(BASE + "/affiliate/track-sale", async function (c) {
 
     // Don't allow self-referral
     if (resolvedAffId === userId) {
-      console.log("[Affiliate] Self-referral blocked: " + userId);
+      console.warn("[Affiliate] Self-referral blocked");
       return c.json({ ok: false, reason: "self_referral" });
     }
 
@@ -21516,10 +22063,10 @@ app.post(BASE + "/affiliate/track-sale", async function (c) {
     aff.updatedAt = Date.now();
     await _saveAffiliate(aff);
 
-    console.log("[Affiliate] Sale tracked: code=" + affiliateCode + " order=" + orderId + " commission=R$" + commValue.toFixed(2));
+    // Affiliate: sale tracked
     return c.json({ ok: true, commission: commission });
   } catch (e: any) {
-    console.log("[Affiliate] Track sale error: " + e);
+    console.error("[Affiliate] Track sale error: " + e);
     return c.json({ error: "Erro ao rastrear venda." }, 500);
   }
 });
@@ -21544,7 +22091,7 @@ app.get(BASE + "/admin/affiliates", async function (c) {
     var config = await _getAffiliateConfig();
     return c.json({ affiliates: affiliates, total: affiliates.length, config: config });
   } catch (e: any) {
-    console.log("[Admin Affiliate] List error: " + e);
+    console.error("[Admin Affiliate] List error: " + e);
     return c.json({ error: "Erro ao listar afiliados." }, 500);
   }
 });
@@ -21578,10 +22125,10 @@ app.put(BASE + "/admin/affiliate/:id/status", async function (c) {
     if (body.rejectionReason) aff.rejectionReason = sanitizeInput(String(body.rejectionReason).substring(0, 1000));
     await _saveAffiliate(aff);
 
-    console.log("[Admin Affiliate] Status change: " + affId + " " + oldStatus + " -> " + newStatus);
+    // Admin Affiliate: status changed
     return c.json({ ok: true, affiliate: aff });
   } catch (e: any) {
-    console.log("[Admin Affiliate] Status update error: " + e);
+    console.error("[Admin Affiliate] Status update error: " + e);
     return c.json({ error: "Erro ao atualizar status." }, 500);
   }
 });
@@ -21595,7 +22142,7 @@ app.get(BASE + "/admin/affiliate-config", async function (c) {
     var config = await _getAffiliateConfig();
     return c.json({ config: config });
   } catch (e: any) {
-    console.log("[Admin Affiliate] Config get error: " + e);
+    console.error("[Admin Affiliate] Config get error: " + e);
     return c.json({ error: "Erro ao buscar configuracao." }, 500);
   }
 });
@@ -21622,10 +22169,10 @@ app.put(BASE + "/admin/affiliate-config", async function (c) {
     if (body.enabled !== undefined) config.enabled = Boolean(body.enabled);
 
     await kv.set("affiliate_config", JSON.stringify(config));
-    console.log("[Admin Affiliate] Config updated: " + JSON.stringify(config));
+    // Admin Affiliate: config updated
     return c.json({ ok: true, config: config });
   } catch (e: any) {
-    console.log("[Admin Affiliate] Config update error: " + e);
+    console.error("[Admin Affiliate] Config update error: " + e);
     return c.json({ error: "Erro ao atualizar configuracao." }, 500);
   }
 });
@@ -21672,10 +22219,10 @@ app.put(BASE + "/admin/affiliate-commission/:affId/:orderId", async function (c)
     }
 
     await kv.set(commKey, JSON.stringify(comm));
-    console.log("[Admin Affiliate] Commission " + affId + ":" + orderId + " " + oldStatus + " -> " + newStatus);
+    // Admin Affiliate: commission status changed
     return c.json({ ok: true, commission: comm });
   } catch (e: any) {
-    console.log("[Admin Affiliate] Commission update error: " + e);
+    console.error("[Admin Affiliate] Commission update error: " + e);
     return c.json({ error: "Erro ao atualizar comissao." }, 500);
   }
 });
@@ -21701,7 +22248,7 @@ app.get(BASE + "/admin/affiliate/:id/commissions", async function (c) {
     commissions.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     return c.json({ commissions: commissions, total: commissions.length });
   } catch (e: any) {
-    console.log("[Admin Affiliate] Commissions list error: " + e);
+    console.error("[Admin Affiliate] Commissions list error: " + e);
     return c.json({ error: "Erro ao listar comissoes." }, 500);
   }
 });
@@ -21725,7 +22272,7 @@ app.get(BASE + "/admin/sisfrete-wt/config", async function (c) {
     var cfg = await getSisfreteWTConfig();
     return c.json(cfg || { apiToken: "", canalVenda: "Carretao Auto Pecas", subCanal: "Loja Virtual", cnpjCd: "", enabled: false });
   } catch (e: any) {
-    console.log("[SisFrete-WT] Config GET error: " + e);
+    console.error("[SisFrete-WT] Config GET error: " + e);
     return c.json({ error: "Erro ao buscar configuracao SisFrete." }, 500);
   }
 });
@@ -21753,10 +22300,9 @@ app.put(BASE + "/admin/sisfrete-wt/config", async function (c) {
       updatedAt: Date.now(),
     };
     await kv.set("sisfrete_wt_config", JSON.stringify(wtCfg));
-    console.log("[SisFrete-WT] Config saved by " + userId);
     return c.json(wtCfg);
   } catch (e: any) {
-    console.log("[SisFrete-WT] Config PUT error: " + e);
+    console.error("[SisFrete-WT] Config PUT error: " + e);
     return c.json({ error: "Erro ao salvar configuracao SisFrete." }, 500);
   }
 });
@@ -21776,7 +22322,7 @@ app.post(BASE + "/admin/sisfrete-wt/send-order", async function (c) {
     if (JSON.stringify(body).length > 500000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     var pedidos = body.pedidos;
     if (!Array.isArray(pedidos) || pedidos.length === 0) return c.json({ error: "Nenhum pedido informado." }, 400);
-    console.log("[SisFrete-WT] Sending " + pedidos.length + " pedido(s)");
+    // SisFrete-WT: sending pedidos
     var sisRes = await fetch(SISFRETE_WT_BASE + "/pedidos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Token-API": cfg.apiToken },
@@ -21784,7 +22330,7 @@ app.post(BASE + "/admin/sisfrete-wt/send-order", async function (c) {
       signal: AbortSignal.timeout(30000),
     });
     var sisText = await sisRes.text();
-    console.log("[SisFrete-WT] POST /pedidos => HTTP " + sisRes.status + " body=" + sisText.slice(0, 1000));
+    // SisFrete-WT: pedidos response received
     var sisData: any = {};
     try { sisData = JSON.parse(sisText); } catch (pe) { sisData = { raw: sisText }; }
     if (sisRes.ok) {
@@ -21798,7 +22344,7 @@ app.post(BASE + "/admin/sisfrete-wt/send-order", async function (c) {
       return c.json({ success: false, error: "SisFrete API retornou HTTP " + sisRes.status, data: sisData }, sisRes.status >= 500 ? 502 : 400);
     }
   } catch (e: any) {
-    console.log("[SisFrete-WT] send-order error: " + e);
+    console.error("[SisFrete-WT] send-order error: " + e);
     return c.json({ error: "Erro ao enviar pedido SisFrete." }, 500);
   }
 });
@@ -21821,7 +22367,7 @@ app.post(BASE + "/admin/sisfrete-wt/cancel-order", async function (c) {
     if (!coValid.ok) return c.json({ error: coValid.errors[0] || "Dados invalidos." }, 400);
     if (!body.chaveNfe || !body.numeroDoPedido || !body.pedidoCanalVenda) return c.json({ error: "chaveNfe, numeroDoPedido e pedidoCanalVenda sao obrigatorios." }, 400);
     var cancelPayload = { chaveNfe: body.chaveNfe, numeroDoPedido: body.numeroDoPedido, pedidoCanalVenda: body.pedidoCanalVenda, cnpjCd: body.cnpjCd || cfg.cnpjCd || "", notificarCanal: body.notificarCanal || "N" };
-    console.log("[SisFrete-WT] Cancelling order " + body.numeroDoPedido);
+    // SisFrete-WT: cancelling order
     var cancelRes = await fetch(SISFRETE_WT_BASE + "/cancela", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Token-API": cfg.apiToken },
@@ -21829,7 +22375,7 @@ app.post(BASE + "/admin/sisfrete-wt/cancel-order", async function (c) {
       signal: AbortSignal.timeout(15000),
     });
     var cancelText = await cancelRes.text();
-    console.log("[SisFrete-WT] POST /cancela => HTTP " + cancelRes.status + " body=" + cancelText.slice(0, 500));
+    // SisFrete-WT: cancel response received
     var cancelData: any = {};
     try { cancelData = JSON.parse(cancelText); } catch (pe2) { cancelData = { raw: cancelText }; }
     var wtCKey = "sisfrete_wt_order:" + body.numeroDoPedido;
@@ -21844,7 +22390,7 @@ app.post(BASE + "/admin/sisfrete-wt/cancel-order", async function (c) {
     }
     return c.json({ success: cancelRes.ok, data: cancelData });
   } catch (e: any) {
-    console.log("[SisFrete-WT] cancel-order error: " + e);
+    console.error("[SisFrete-WT] cancel-order error: " + e);
     return c.json({ error: "Erro ao cancelar pedido SisFrete." }, 500);
   }
 });
@@ -21855,14 +22401,14 @@ app.get(BASE + "/admin/sisfrete-wt/rastreio", async function (c) {
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     var cfg = await getSisfreteWTConfig();
     if (!cfg || !cfg.apiToken) return c.json({ error: "Token SisFrete Webtracking nao configurado." }, 400);
-    console.log("[SisFrete-WT] Fetching tracking events");
+    // SisFrete-WT: fetching tracking
     var trackRes = await fetch(SISFRETE_WT_BASE + "/rastreio", {
       method: "GET",
       headers: { "Token-API": cfg.apiToken },
       signal: AbortSignal.timeout(30000),
     });
     var trackText = await trackRes.text();
-    console.log("[SisFrete-WT] GET /rastreio => HTTP " + trackRes.status + " length=" + trackText.length);
+    // SisFrete-WT: rastreio response received
     var trackData: any = [];
     try { trackData = JSON.parse(trackText); } catch (pe3) { trackData = { raw: trackText }; }
     if (trackRes.ok) {
@@ -21875,7 +22421,7 @@ app.get(BASE + "/admin/sisfrete-wt/rastreio", async function (c) {
       return c.json({ success: false, error: errMsg, data: trackData }, trackRes.status >= 500 ? 502 : 400);
     }
   } catch (e: any) {
-    console.log("[SisFrete-WT] rastreio error: " + e);
+    console.error("[SisFrete-WT] rastreio error: " + e);
     return c.json({ error: "Erro ao consultar rastreios." }, 500);
   }
 });
@@ -21894,7 +22440,7 @@ app.get(BASE + "/admin/sisfrete-wt/sent-orders", async function (c) {
     sentOrders.sort(function (a, b) { return new Date(b.sentAt || 0).getTime() - new Date(a.sentAt || 0).getTime(); });
     return c.json({ orders: sentOrders, total: sentOrders.length });
   } catch (e: any) {
-    console.log("[SisFrete-WT] sent-orders error: " + e);
+    console.error("[SisFrete-WT] sent-orders error: " + e);
     return c.json({ error: "Erro ao listar pedidos enviados." }, 500);
   }
 });
@@ -21913,7 +22459,7 @@ app.post(BASE + "/admin/sisfrete-wt/send-products", async function (c) {
     if (!sprdValid.ok) return c.json({ error: sprdValid.errors[0] || "Dados invalidos." }, 400);
     var produtos = sprdValid.sanitized.produtos;
     if (!Array.isArray(produtos) || produtos.length === 0) return c.json({ error: "Nenhum produto informado." }, 400);
-    console.log("[SisFrete-WT] Sending " + produtos.length + " produto(s)");
+    // SisFrete-WT: sending produtos
     var prodRes = await fetch(SISFRETE_WT_BASE + "/produtos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Token-API": cfg.apiToken },
@@ -21921,12 +22467,12 @@ app.post(BASE + "/admin/sisfrete-wt/send-products", async function (c) {
       signal: AbortSignal.timeout(30000),
     });
     var prodText = await prodRes.text();
-    console.log("[SisFrete-WT] POST /produtos => HTTP " + prodRes.status + " body=" + prodText.slice(0, 500));
+    // SisFrete-WT: produtos response received
     var prodData: any = {};
     try { prodData = JSON.parse(prodText); } catch (ppe) { prodData = { raw: prodText }; }
     return c.json({ success: prodRes.ok, data: prodData });
   } catch (e: any) {
-    console.log("[SisFrete-WT] send-products error: " + e);
+    console.error("[SisFrete-WT] send-products error: " + e);
     return c.json({ error: "Erro ao enviar produtos SisFrete." }, 500);
   }
 });
@@ -21945,7 +22491,7 @@ app.post(BASE + "/admin/sisfrete-wt/send-embalamento", async function (c) {
     if (!embValid.ok) return c.json({ error: embValid.errors[0] || "Dados invalidos." }, 400);
     var caixas = embValid.sanitized.caixas;
     if (!Array.isArray(caixas) || caixas.length === 0) return c.json({ error: "Nenhuma caixa informada." }, 400);
-    console.log("[SisFrete-WT] Sending " + caixas.length + " caixa(s)");
+    // SisFrete-WT: sending embalamento
     var embRes = await fetch(SISFRETE_WT_BASE + "/embalamento", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Token-API": cfg.apiToken },
@@ -21953,12 +22499,12 @@ app.post(BASE + "/admin/sisfrete-wt/send-embalamento", async function (c) {
       signal: AbortSignal.timeout(30000),
     });
     var embText = await embRes.text();
-    console.log("[SisFrete-WT] POST /embalamento => HTTP " + embRes.status + " body=" + embText.slice(0, 500));
+    // SisFrete-WT: embalamento response received
     var embData: any = {};
     try { embData = JSON.parse(embText); } catch (epe) { embData = { raw: embText }; }
     return c.json({ success: embRes.ok, data: embData });
   } catch (e: any) {
-    console.log("[SisFrete-WT] send-embalamento error: " + e);
+    console.error("[SisFrete-WT] send-embalamento error: " + e);
     return c.json({ error: "Erro ao enviar embalamento." }, 500);
   }
 });
@@ -21978,7 +22524,7 @@ app.get(BASE + "/admin/sisfrete-delivery/config", async function (c) {
     if (raw) return c.json(JSON.parse(raw));
     return c.json({ apiToken: "", enabled: false });
   } catch (e) {
-    console.log("[SisFrete Delivery] config GET error: " + String(e));
+    console.error("[SisFrete Delivery] config GET error: " + String(e));
     return c.json({ error: "Erro ao carregar configuracao Delivery." }, 500);
   }
 });
@@ -22001,7 +22547,7 @@ app.put(BASE + "/admin/sisfrete-delivery/config", async function (c) {
     await kv.set("sisfrete_delivery_config", JSON.stringify(cfg));
     return c.json(cfg);
   } catch (e) {
-    console.log("[SisFrete Delivery] config PUT error: " + String(e));
+    console.error("[SisFrete Delivery] config PUT error: " + String(e));
     return c.json({ error: "Erro ao salvar configuracao Delivery." }, 500);
   }
 });
@@ -22036,7 +22582,7 @@ app.post(BASE + "/admin/sisfrete-delivery/create-deliveryman", async function (c
       active: body.active !== undefined ? String(body.active) : "",
       email: String(body.email || ""),
     };
-    console.log("[SisFrete Delivery] Creating deliveryman: " + payload.name + " doc=" + payload.document);
+    // SisFrete Delivery: creating deliveryman
     var res = await fetch("https://sisfrete-delivery.persys.eti.br/api/v2/deliveryman", {
       method: "POST",
       headers: { "Authorization-API": cfg.apiToken, "Content-Type": "application/json", "Accept": "*/*" },
@@ -22044,7 +22590,7 @@ app.post(BASE + "/admin/sisfrete-delivery/create-deliveryman", async function (c
       signal: AbortSignal.timeout(15000),
     });
     var resText = await res.text();
-    console.log("[SisFrete Delivery] Create response HTTP " + res.status + ": " + resText.slice(0, 500));
+    // SisFrete Delivery: create response received
     var resData = null;
     try { resData = JSON.parse(resText); } catch (_e) { resData = resText; }
     if (res.ok) {
@@ -22056,7 +22602,7 @@ app.post(BASE + "/admin/sisfrete-delivery/create-deliveryman", async function (c
     }
     return c.json({ success: false, status: res.status, error: resData }, res.status);
   } catch (e) {
-    console.log("[SisFrete Delivery] create-deliveryman error: " + String(e));
+    console.error("[SisFrete Delivery] create-deliveryman error: " + String(e));
     return c.json({ error: "Erro ao criar entregador." }, 500);
   }
 });
@@ -22072,7 +22618,7 @@ app.get(BASE + "/admin/sisfrete-delivery/deliverymen", async function (c) {
     var list = listRaw ? JSON.parse(listRaw) : [];
     return c.json({ deliverymen: list, total: list.length });
   } catch (e) {
-    console.log("[SisFrete Delivery] deliverymen GET error: " + String(e));
+    console.error("[SisFrete Delivery] deliverymen GET error: " + String(e));
     return c.json({ error: "Erro ao listar entregadores." }, 500);
   }
 });
@@ -22094,13 +22640,13 @@ app.get(BASE + "/admin/sisfrete-delivery/deliveryman-details", async function (c
       signal: AbortSignal.timeout(15000),
     });
     var resText = await res.text();
-    console.log("[SisFrete Delivery] Details response HTTP " + res.status + ": " + resText.slice(0, 500));
+    // SisFrete Delivery: details response received
     var resData = null;
     try { resData = JSON.parse(resText); } catch (_e) { resData = resText; }
     if (res.ok) return c.json({ success: true, data: resData });
     return c.json({ success: false, status: res.status, error: resData }, res.status);
   } catch (e) {
-    console.log("[SisFrete Delivery] deliveryman-details error: " + String(e));
+    console.error("[SisFrete Delivery] deliveryman-details error: " + String(e));
     return c.json({ error: "Erro ao consultar detalhes do entregador." }, 500);
   }
 });
@@ -22124,7 +22670,7 @@ app.put(BASE + "/admin/sisfrete-delivery/change-password", async function (c) {
     });
     if (!chPwdValid.ok) return c.json({ error: chPwdValid.errors[0] || "Dados invalidos." }, 400);
     var payload = { password: String(body.password || ""), passwordNew: String(body.passwordNew || "") };
-    console.log("[SisFrete Delivery] Changing password");
+    // SisFrete Delivery: changing password
     var res = await fetch("https://sisfrete-delivery.persys.eti.br/api/deliveryman/change_password", {
       method: "PUT",
       headers: { "Authorization-API": cfg.apiToken, "Content-Type": "application/json", "Accept": "*/*" },
@@ -22132,13 +22678,13 @@ app.put(BASE + "/admin/sisfrete-delivery/change-password", async function (c) {
       signal: AbortSignal.timeout(15000),
     });
     var resText = await res.text();
-    console.log("[SisFrete Delivery] Change password response HTTP " + res.status + ": " + resText.slice(0, 300));
+    // SisFrete Delivery: change password response received
     var resData = null;
     try { resData = JSON.parse(resText); } catch (_e) { resData = resText; }
     if (res.ok) return c.json({ success: true, data: resData });
     return c.json({ success: false, status: res.status, error: resData }, res.status);
   } catch (e) {
-    console.log("[SisFrete Delivery] change-password error: " + String(e));
+    console.error("[SisFrete Delivery] change-password error: " + String(e));
     return c.json({ error: "Erro ao alterar senha do entregador." }, 500);
   }
 });
@@ -22164,7 +22710,7 @@ app.delete(BASE + "/admin/sisfrete-delivery/deliveryman", async function (c) {
     await kv.set("sisfrete_delivery_deliverymen", JSON.stringify(newList));
     return c.json({ success: true, removed: list.length - newList.length });
   } catch (e) {
-    console.log("[SisFrete Delivery] delete deliveryman error: " + String(e));
+    console.error("[SisFrete Delivery] delete deliveryman error: " + String(e));
     return c.json({ error: "Erro ao remover entregador." }, 500);
   }
 });
@@ -22193,7 +22739,7 @@ async function _getSafrapayConfig(): Promise<{ merchantToken: string; merchantId
     if (!envMT) return null;
     return { merchantToken: envMT, merchantId: envMI, sandbox: true, maxInstallments: 12, minInstallmentValue: 500, softDescriptor: "CARRETAO", enabled: true };
   } catch (e) {
-    console.log("[SafraPay] Config read error: " + String(e));
+    console.error("[SafraPay] Config read error: " + String(e));
     return null;
   }
 }
@@ -22217,20 +22763,20 @@ async function _safrapayGatewayAuth(cfg: { merchantToken: string; sandbox: boole
         var rd = await rr.json();
         if (rd.success && rd.accessToken) {
           _safrapayTokenCache = { accessToken: rd.accessToken, refreshToken: rd.refreshToken || _safrapayTokenCache.refreshToken, expiresAt: Date.now() + 25 * 60 * 1000 };
-          console.log("[SafraPay] Token refreshed OK");
+          // SafraPay: token refreshed
           return { accessToken: _safrapayTokenCache.accessToken, refreshToken: _safrapayTokenCache.refreshToken };
         }
       }
-    } catch (re) { console.log("[SafraPay] Refresh failed, re-auth: " + String(re)); }
+    } catch (re) { console.error("[SafraPay] Refresh failed, re-auth: " + String(re)); }
   }
   var authUrl = _safrapayGwUrl(cfg.sandbox) + "/v2/merchant/auth";
-  console.log("[SafraPay] Auth POST " + authUrl + " token-len=" + (cfg.merchantToken || "").length);
+  // SafraPay: authenticating
   var ar = await fetch(authUrl, { method: "POST", headers: { "Authorization": cfg.merchantToken } });
-  if (!ar.ok) { var et = await ar.text(); console.log("[SafraPay] Auth FAILED status=" + ar.status + " body=" + et); throw new Error("SafraPay auth failed (" + ar.status + "): " + et); }
+  if (!ar.ok) { var et = await ar.text(); console.error("[SafraPay] Auth FAILED status=" + ar.status); throw new Error("SafraPay auth failed (" + ar.status + "): " + et); }
   var ad = await ar.json();
   if (!ad.success) throw new Error("SafraPay auth error: " + JSON.stringify(ad.errors || []));
   _safrapayTokenCache = { accessToken: ad.accessToken, refreshToken: ad.refreshToken, expiresAt: Date.now() + 25 * 60 * 1000 };
-  console.log("[SafraPay] Authenticated OK, cached 25min");
+  // SafraPay: authenticated
   return { accessToken: ad.accessToken, refreshToken: ad.refreshToken };
 }
 
@@ -22319,19 +22865,19 @@ app.post(BASE + "/safrapay/charge", async function (c) {
       capture: true
     };
 
-    console.log("[SafraPay] Charge " + amt + "c " + instNum + "x brand=" + brand + " id=" + mChargeId);
+    // SafraPay: processing charge
     var cr = await fetch(_safrapayGwUrl(cfg.sandbox) + "/v2/charge/authorization", {
       method: "POST",
       headers: { "Authorization": "Bearer " + tokens.accessToken, "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     var cd = await cr.json();
-    console.log("[SafraPay] Charge resp: status=" + cr.status + " success=" + String(cd.success) + " chargeStatus=" + String(cd.charge ? cd.charge.chargeStatus : "N/A"));
+    // SafraPay: charge response received
 
     if (!cd.success) {
       var em = "Pagamento nao aprovado.";
       if (cd.errors && cd.errors.length > 0) em = cd.errors.map(function(e: any) { return e.message || String(e.errorCode); }).join("; ");
-      console.log("[SafraPay] Charge failed: " + em);
+      console.error("[SafraPay] Charge failed: " + em);
       return c.json({ success: false, error: em, errors: cd.errors || [], traceKey: cd.traceKey || null });
     }
 
@@ -22374,7 +22920,7 @@ app.post(BASE + "/safrapay/charge", async function (c) {
       traceKey: cd.traceKey || null
     });
   } catch (e) {
-    console.log("[SafraPay] Charge exception: " + String(e));
+    console.error("[SafraPay] Charge exception: " + String(e));
     return c.json({ success: false, error: "Erro ao processar cartao." }, 500);
   }
 });
@@ -22388,7 +22934,7 @@ app.get(BASE + "/safrapay/config", async function (c) {
     if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
     var cfg = await _getSafrapayConfig();
     return c.json({ configured: !!cfg, sandbox: cfg ? cfg.sandbox : true, merchantId: cfg ? cfg.merchantId : null, hasToken: cfg ? !!cfg.merchantToken : false, maxInstallments: cfg ? cfg.maxInstallments : 12, minInstallmentValue: cfg ? cfg.minInstallmentValue : 500, softDescriptor: cfg ? cfg.softDescriptor : "CARRETAO", enabled: cfg ? cfg.enabled : false });
-  } catch (e) { console.log("[SafraPay] Config GET error:", e); return c.json({ error: "Erro ao buscar configuracao SafraPay." }, 500); }
+  } catch (e) { console.error("[SafraPay] Config GET error:", e); return c.json({ error: "Erro ao buscar configuracao SafraPay." }, 500); }
 });
 
 // POST /safrapay/config — Admin save config
@@ -22423,9 +22969,8 @@ app.post(BASE + "/safrapay/config", async function (c) {
       enabled: body.enabled !== false
     }));
     _safrapayTokenCache = null;
-    console.log("[SafraPay] Config saved by " + userId);
     return c.json({ success: true });
-  } catch (e) { console.log("[SafraPay] Config PUT error:", e); return c.json({ error: "Erro ao salvar configuracao SafraPay." }, 500); }
+  } catch (e) { console.error("[SafraPay] Config PUT error:", e); return c.json({ error: "Erro ao salvar configuracao SafraPay." }, 500); }
 });
 
 // POST /safrapay/activate — Activate merchant with activation code to get MerchantToken
@@ -22469,21 +23014,21 @@ app.post(BASE + "/safrapay/activate", async function (c) {
     var successData: any = null;
     for (var ci = 0; ci < candidateUrls.length; ci++) {
       var tryUrl = candidateUrls[ci];
-      console.log("[SafraPay] Activate attempt " + (ci + 1) + "/" + candidateUrls.length + " POST " + tryUrl);
+      // SafraPay: activate attempt
       try {
         var resp = await fetch(tryUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: payloadStr });
         var respText = await resp.text();
         lastStatus = resp.status;
         lastBody = respText;
-        console.log("[SafraPay] Activate attempt " + (ci + 1) + " status=" + resp.status + " body=" + respText.substring(0, 500));
+        // SafraPay: activate response received
         if (resp.status === 404 || resp.status === 405) continue;
         if (resp.ok) {
           try { successData = JSON.parse(respText); } catch (pe) { successData = null; }
-          if (successData) { console.log("[SafraPay] Activate SUCCESS on " + tryUrl); break; }
+          if (successData) { break; }
         }
         if (resp.status !== 404 && resp.status !== 405) break;
       } catch (fetchErr) {
-        console.log("[SafraPay] Activate attempt " + (ci + 1) + " fetch error: " + String(fetchErr));
+        console.error("[SafraPay] Activate fetch error: " + String(fetchErr));
         lastBody = String(fetchErr);
         continue;
       }
@@ -22507,9 +23052,8 @@ app.post(BASE + "/safrapay/activate", async function (c) {
     existingCfg.enabled = true;
     await kv.set("safrapay_config", JSON.stringify(existingCfg));
     _safrapayTokenCache = null;
-    console.log("[SafraPay] Activated and config saved! token-len=" + newToken.length);
     return c.json({ success: true, merchantToken: newToken, message: "Merchant ativado com sucesso! Token salvo automaticamente." });
-  } catch (e) { console.log("[SafraPay] Activate error: " + String(e)); return c.json({ error: "Erro ao ativar merchant SafraPay." }, 500); }
+  } catch (e) { console.error("[SafraPay] Activate error: " + String(e)); return c.json({ error: "Erro ao ativar merchant SafraPay." }, 500); }
 });
 
 // GET /safrapay/test-auth — Test connection with SafraPay gateway
@@ -22528,7 +23072,7 @@ app.get(BASE + "/safrapay/test-auth", async function (c) {
     }
     return c.json({ error: "Auth retornou sem accessToken.", success: false }, 400);
   } catch (e) {
-    console.log("[SafraPay] Test auth error: " + String(e));
+    console.error("[SafraPay] Test auth error: " + String(e));
     return c.json({ error: "Falha na autenticacao SafraPay.", success: false }, 400);
   }
 });
@@ -22555,18 +23099,18 @@ app.post(BASE + "/safrapay/webhook", async function (c) {
     // Input validation for SafraPay webhook payload
     if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
     if (JSON.stringify(body).length > 50000) return c.json({ received: true, warning: "payload too large" });
-    console.log("[SafraPay WH] " + JSON.stringify(body).substring(0, 2000));
+    // SafraPay WH: payload received
     var authH = c.req.header("Authorization") || "";
     var cfg = await _getSafrapayConfig();
     // SECURITY: Always require merchantToken for webhook auth — reject if not configured
     if (!cfg || !cfg.merchantToken) {
-      console.log("[SafraPay WH] REJECTED: merchantToken not configured");
+      console.warn("[SafraPay WH] REJECTED: merchantToken not configured");
       return c.json({ received: false, error: "Webhook auth not configured" }, 403);
     }
-    try { var dec = atob(authH); if (dec !== cfg.merchantToken) { console.log("[SafraPay WH] Auth mismatch"); return c.json({ received: false }, 403); } } catch (de) { console.log("[SafraPay WH] Auth decode failed"); return c.json({ received: false }, 403); }
+    try { var dec = atob(authH); if (dec !== cfg.merchantToken) { console.warn("[SafraPay WH] Auth mismatch"); return c.json({ received: false }, 403); } } catch (de) { console.warn("[SafraPay WH] Auth decode failed"); return c.json({ received: false }, 403); }
     var cId = body.ChargeId || body.chargeId || "";
     var cSt = body.ChargeStatus || body.chargeStatus || "";
-    console.log("[SafraPay WH] chargeId=" + cId + " status=" + cSt);
+    // SafraPay WH: processing
     if (cId) {
       var allK = await kv.getByPrefix("user_order:");
       if (Array.isArray(allK)) {
@@ -22583,11 +23127,11 @@ app.post(BASE + "/safrapay/webhook", async function (c) {
                 od.updatedAt = new Date().toISOString();
                 od.safrapayWebhookStatus = cSt;
                 await kv.set(allK[i].key, JSON.stringify(od));
-                console.log("[SafraPay WH] Order " + od.localOrderId + " -> " + ns);
+                // SafraPay WH: order status updated
                 if (ns === "paid" && !od.emailSent) {
                   od.emailSent = true;
                   await kv.set(allK[i].key, JSON.stringify(od));
-                  _sendPaymentApprovedEmail(od).catch(function(ee) { console.log("[SafraPay WH] Email err: " + ee); });
+                  _sendPaymentApprovedEmail(od).catch(function(ee) { console.error("[SafraPay WH] Email err: " + ee); });
                 }
               }
               break;
@@ -22598,7 +23142,7 @@ app.post(BASE + "/safrapay/webhook", async function (c) {
     }
     return c.json({ received: true });
   } catch (e) {
-    console.log("[SafraPay WH] Exception: " + String(e));
+    console.error("[SafraPay WH] Exception: " + String(e));
     return c.json({ received: true });
   }
 });
@@ -22623,7 +23167,7 @@ app.get(BASE + "/branches", async (c) => {
     items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
     return c.json({ branches: items });
   } catch (e: any) {
-    console.log("[branches GET] Error: " + String(e));
+    console.error("[branches GET] Error: " + String(e));
     return c.json({ error: "Erro ao buscar filiais." }, 500);
   }
 });
@@ -22644,7 +23188,7 @@ app.get(BASE + "/admin/branches", async (c) => {
     items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
     return c.json({ branches: items });
   } catch (e: any) {
-    console.log("[admin/branches GET] Error: " + String(e));
+    console.error("[admin/branches GET] Error: " + String(e));
     return c.json({ error: "Erro ao buscar filiais." }, 500);
   }
 });
@@ -22688,7 +23232,7 @@ app.put(BASE + "/admin/branches/:id", async (c) => {
         upsert: true,
       });
       if (uploadRes.error) {
-        console.log("[admin/branches PUT] Upload error: " + uploadRes.error.message);
+        console.error("[admin/branches PUT] Upload error: " + uploadRes.error.message);
         return c.json({ error: "Erro no upload da imagem." }, 500);
       }
       var supaUrl = Deno.env.get("SUPABASE_URL");
@@ -22711,10 +23255,10 @@ app.put(BASE + "/admin/branches/:id", async (c) => {
     if (!current.createdAt) current.createdAt = Date.now();
 
     await kv.set(kvKey, JSON.stringify(current));
-    console.log("[admin/branches PUT] Saved branch: " + branchId + " (" + nome + ")");
+    // admin/branches: saved
     return c.json({ branch: current });
   } catch (e: any) {
-    console.log("[admin/branches PUT] Error: " + String(e));
+    console.error("[admin/branches PUT] Error: " + String(e));
     return c.json({ error: "Erro ao salvar filial." }, 500);
   }
 });
@@ -22737,10 +23281,10 @@ app.delete(BASE + "/admin/branches/:id", async (c) => {
       }
     }
     await kv.del(kvKey);
-    console.log("[admin/branches DELETE] Deleted branch: " + branchId);
+    // admin/branches: deleted
     return c.json({ deleted: true });
   } catch (e: any) {
-    console.log("[admin/branches DELETE] Error: " + String(e));
+    console.error("[admin/branches DELETE] Error: " + String(e));
     return c.json({ error: "Erro ao excluir filial." }, 500);
   }
 });

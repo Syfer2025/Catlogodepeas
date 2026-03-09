@@ -148,6 +148,14 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    caret-color: transparent;
+  }
+
+  /* Restore caret in elements that actually accept text input */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: auto;
   }
 
   body {

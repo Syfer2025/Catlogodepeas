@@ -139,9 +139,7 @@ export function ShippingCalculator({
 
     try {
       const res = await api.calculateShipping(digits, items, totalValue);
-      if (res._enrichment) {
-        console.log("[Frete] Dados SIGE enriquecidos:", res._enrichment, "Peso total:", res.totalWeight, "kg");
-      }
+      // res._enrichment and res.totalWeight available for debugging if needed
       if (res.error) {
         setError(res.error);
       } else {

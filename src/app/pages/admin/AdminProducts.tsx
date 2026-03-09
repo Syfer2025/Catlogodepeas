@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
 import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode, SigeMatchResult } from "../../services/api";
@@ -6,7 +6,8 @@ import type { ProductBalance, StockSummary } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import { defaultCategoryTree } from "../../data/categoryTree";
-import { SigeStockSync } from "./SigeStockSync";
+// Lazy-load SigeStockSync — only shown when the stock sync sub-tab is active
+const SigeStockSync = lazy(function () { return import("./SigeStockSync").then(function (m) { return { default: m.SigeStockSync }; }); });
 import { PriceBadge } from "../../components/PriceBadge";
 import { convertImageToWebP, ProductImage as ProductImage2 } from "../../components/ProductImage";
 import {
@@ -271,8 +272,8 @@ export function AdminProducts() {
     navigate(`/produto/${encodeURIComponent(sku)}`);
   };
 
-  // ─── Apply client-side filters and sorting ───
-  const filteredProdutos = (() => {
+  // ─── Apply client-side filters and sorting (memoized) ───
+  const filteredProdutos = useMemo(() => {
     let list = [...produtos];
 
     // Stock filter
@@ -318,7 +319,7 @@ export function AdminProducts() {
     }
 
     return list;
-  })();
+  }, [produtos, stockFilter, visibilityFilter, sortOption, balanceMap, metaMap]);
 
   const hasActiveFilters = stockFilter !== "all" || visibilityFilter !== "all" || sortOption !== "default";
 
@@ -546,10 +547,12 @@ export function AdminProducts() {
       </div>
 
       {/* SIGE Sync Panel */}
-      <SigeStockSync onSyncComplete={() => {
-        loadData();
-        loadGlobalSummary();
-      }} />
+      <Suspense fallback={<div className="flex items-center justify-center py-6"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
+        <SigeStockSync onSyncComplete={() => {
+          loadData();
+          loadGlobalSummary();
+        }} />
+      </Suspense>
 
       {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

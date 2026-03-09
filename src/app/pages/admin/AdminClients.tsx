@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Users,
   Search,
@@ -107,8 +107,8 @@ export function AdminClients() {
     loadClients();
   }, []);
 
-  // Filtering
-  const filtered = clients.filter((c) => {
+  // Filtering (memoized)
+  const filtered = useMemo(() => clients.filter((c) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -119,10 +119,10 @@ export function AdminClients() {
       (c.city || "").toLowerCase().includes(q) ||
       (c.state || "").toLowerCase().includes(q)
     );
-  });
+  }), [clients, search]);
 
-  // Sorting
-  const sorted = [...filtered].sort((a, b) => {
+  // Sorting (memoized)
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     let va: string | number = "";
     let vb: string | number = "";
 
@@ -148,7 +148,7 @@ export function AdminClients() {
     if (va < vb) return sortDir === "asc" ? -1 : 1;
     if (va > vb) return sortDir === "asc" ? 1 : -1;
     return 0;
-  });
+  }), [filtered, sortField, sortDir]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -196,9 +196,15 @@ export function AdminClients() {
     URL.revokeObjectURL(url);
   };
 
-  // Counts
-  const confirmedCount = clients.filter((c) => c.email_confirmed).length;
-  const activeCount = clients.filter((c) => c.last_sign_in).length;
+  // Counts (memoized — single pass)
+  const { confirmedCount, activeCount } = useMemo(() => {
+    var confirmed = 0, active = 0;
+    for (var i = 0; i < clients.length; i++) {
+      if (clients[i].email_confirmed) confirmed++;
+      if (clients[i].last_sign_in) active++;
+    }
+    return { confirmedCount: confirmed, activeCount: active };
+  }, [clients]);
 
   if (loading) {
     return (

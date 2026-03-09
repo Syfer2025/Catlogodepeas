@@ -231,14 +231,23 @@ export function AdminDashboard() {
       )}
 
       {/* Chart */}
-      {stats.chartData && stats.chartData.length > 0 && (
+      {stats.chartData && stats.chartData.length > 0 && (() => {
+        // Deduplicate chartData by month to avoid recharts duplicate-key warnings
+        var seen: Record<string, boolean> = {};
+        var uniqueChartData = stats.chartData.filter(function (entry: any) {
+          var k = entry.month || "";
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+        return (
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <h3 className="text-gray-900 mb-4" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
             Vendas nos Ultimos 6 Meses
           </h3>
           <div style={{ width: "100%", height: 280 }}>
             <ResponsiveContainer>
-              <BarChart data={stats.chartData} barCategoryGap="20%">
+              <BarChart data={uniqueChartData} barCategoryGap="20%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
@@ -260,7 +269,8 @@ export function AdminDashboard() {
             </ResponsiveContainer>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Recent Orders */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">

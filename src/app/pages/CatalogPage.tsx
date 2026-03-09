@@ -151,7 +151,7 @@ export function CatalogPage() {
       })
       .catch((e) => { if (e && e.name !== "AbortError") console.error("[CatalogPage] Bulk balance error:", e); });
 
-    api.getProductPricesBulk(skus, { signal: ac.signal })
+    api.getProductPricesBulkSafe(skus, { signal: ac.signal })
       .then((res) => {
         if (ac.signal.aborted) return;
         const map: Record<string, ProductPrice> = {};

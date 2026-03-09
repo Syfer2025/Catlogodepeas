@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from "react-router";
 import { Header } from "./Header";
-import { Footer } from "./Footer";
 import { HomepageInitProvider, useHomepageInit } from "../contexts/HomepageInitContext";
 import { GA4Provider } from "./GA4Provider";
 import { Suspense, lazy, useEffect, useState, Component } from "react";
@@ -47,7 +46,7 @@ class LazyBoundary extends Component<LazyBoundaryProps, LazyBoundaryState> {
     return { hasError: true };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.log("[LazyBoundary] Component failed to load:", error.message);
+    console.error("[LazyBoundary] Component failed to load:", error.message);
   }
   render() {
     if (this.state.hasError) return null;
@@ -78,6 +77,11 @@ const ScrollToTopButton = lazyWithRetry(function () {
 // Lazy-load MobileBottomNav — only needed on mobile
 const MobileBottomNav = lazyWithRetry(function () {
   return import("./MobileBottomNav").then(function (m) { return { default: m.MobileBottomNav }; });
+});
+
+// Lazy-load Footer — always below the fold, not needed for FCP
+const Footer = lazyWithRetry(function () {
+  return import("./Footer").then(function (m) { return { default: m.Footer }; });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -203,7 +207,7 @@ const MobileBottomNav = lazyWithRetry(function () {
         "@type": "SearchAction",
         "target": {
           "@type": "EntryPoint",
-          "urlTemplate": window.location.origin + "/catalogo?search={search_term_string}"
+          "urlTemplate": window.location.origin + "/catalogo?busca={search_term_string}"
         },
         "query-input": "required name=search_term_string"
       }
@@ -351,6 +355,9 @@ function DeferredCartDrawer() {
   var [ready, setReady] = useState(false);
 
   useEffect(function () {
+    // Once ready, no need to set up listeners again
+    if (ready) return;
+
     // Mount after user interacts or after 4s idle (whichever comes first)
     var mounted = true;
     var timer: ReturnType<typeof setTimeout>;
@@ -423,7 +430,7 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
         } else {
           // FAIL-CLOSED: if API is unreachable after 3 attempts on production,
           // assume maintenance is active to protect the site
-          console.log("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — failing closed (showing maintenance)");
+          console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — failing closed (showing maintenance)");
           setMaintenance(true);
           setChecked(true);
         }
@@ -520,7 +527,11 @@ export function Layout() {
                 <Outlet />
               </Suspense>
             </main>
-            <Footer />
+            <LazyBoundary>
+              <Suspense fallback={null}>
+                <Footer />
+              </Suspense>
+            </LazyBoundary>
             {/* Spacer for mobile bottom nav so footer content isn't hidden behind it */}
             <div className="md:hidden" style={{ height: "68px" }} />
             <DeferredCartDrawer />

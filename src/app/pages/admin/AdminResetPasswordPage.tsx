@@ -74,13 +74,11 @@ export function AdminResetPasswordPage() {
     const rid = localStorage.getItem("recovery_id");
 
     if (!rid) {
-      console.log("[ResetPassword] No recovery_id in localStorage");
       setMode("no-session");
       return;
     }
 
     ridRef.current = rid;
-    console.log("[ResetPassword] Starting polling for rid:", rid);
 
     const poll = async () => {
       try {
@@ -88,15 +86,12 @@ export function AdminResetPasswordPage() {
         setPollCount((c) => c + 1);
 
         if (result.status === "verified") {
-          console.log("[ResetPassword] Recovery verified via last_sign_in_at change!");
-
           // Stop polling
           if (pollRef.current) clearInterval(pollRef.current);
 
           // Show password form (ridRef still holds the rid for the submit step)
           setMode("password");
         } else if (result.status === "expired" || result.status === "not_found") {
-          console.log("[ResetPassword] Recovery expired or not found");
           if (pollRef.current) clearInterval(pollRef.current);
           localStorage.removeItem("recovery_id");
           localStorage.removeItem("recovery_email");

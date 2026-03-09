@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as api from "../../services/api";
 import type { EmktSubscriber, EmktTemplate, EmktCampaign, EmktSendLog, EmktConfig } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -805,11 +805,11 @@ function SubscribersPanel() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const filtered = subs.filter((s) => {
+  const filtered = useMemo(() => subs.filter((s) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return s.email.toLowerCase().indexOf(q) >= 0 || (s.name || "").toLowerCase().indexOf(q) >= 0;
-  });
+  }), [subs, search]);
 
   return (
     <div>

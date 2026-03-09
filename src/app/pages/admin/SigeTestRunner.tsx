@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Play,
   CheckCircle2,
@@ -245,24 +245,44 @@ export function SigeTestRunner({ isConnected }: Props) {
     setRunning(false);
   }, [getAccessToken]);
 
-  const passed = results.filter((r) => r.status === "pass").length;
-  const failed = results.filter((r) => r.status === "fail").length;
-  const skipped = results.filter((r) => r.status === "skip").length;
-  const pending = results.filter((r) => r.status === "pending" || r.status === "running").length;
-  const total = results.length;
-  const avgMs = total > 0 && (passed + failed > 0) ? Math.round(results.filter((r) => r.durationMs > 0).reduce((a, b) => a + b.durationMs, 0) / (passed + failed)) : 0;
-  const slowest = results.filter((r) => r.durationMs > 0).sort((a, b) => b.durationMs - a.durationMs)[0];
-  const fastest = results.filter((r) => r.durationMs > 0).sort((a, b) => a.durationMs - b.durationMs)[0];
+  const { passed, failed, skipped, pending, total, avgMs, slowest, fastest } = useMemo(() => {
+    var pass = 0, fail = 0, skip = 0, pend = 0, durSum = 0, durCount = 0;
+    var slow: typeof results[0] | undefined;
+    var fast: typeof results[0] | undefined;
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (r.status === "pass") pass++;
+      else if (r.status === "fail") fail++;
+      else if (r.status === "skip") skip++;
+      else pend++;
+      if (r.durationMs > 0) {
+        durSum += r.durationMs;
+        durCount++;
+        if (!slow || r.durationMs > slow.durationMs) slow = r;
+        if (!fast || r.durationMs < fast.durationMs) fast = r;
+      }
+    }
+    return {
+      passed: pass, failed: fail, skipped: skip, pending: pend,
+      total: results.length,
+      avgMs: durCount > 0 ? Math.round(durSum / durCount) : 0,
+      slowest: slow, fastest: fast,
+    };
+  }, [results]);
 
-  // Group by module
-  const modules = Array.from(new Set(results.map((r) => r.module)));
-  const byModule = modules.map((m) => ({
-    name: m,
-    tests: results.filter((r) => r.module === m),
-    passed: results.filter((r) => r.module === m && r.status === "pass").length,
-    failed: results.filter((r) => r.module === m && r.status === "fail").length,
-    total: results.filter((r) => r.module === m).length,
-  }));
+  // Group by module (memoized)
+  const byModule = useMemo(() => {
+    var modMap: Record<string, { name: string; tests: typeof results; passed: number; failed: number; total: number }> = {};
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (!modMap[r.module]) modMap[r.module] = { name: r.module, tests: [], passed: 0, failed: 0, total: 0 };
+      modMap[r.module].tests.push(r);
+      modMap[r.module].total++;
+      if (r.status === "pass") modMap[r.module].passed++;
+      else if (r.status === "fail") modMap[r.module].failed++;
+    }
+    return Object.values(modMap);
+  }, [results]);
 
   const statusIcon = (s: TestResult["status"]) => {
     switch (s) {

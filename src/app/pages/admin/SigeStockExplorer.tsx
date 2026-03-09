@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import {
   Loader2,
   ChevronDown,
@@ -111,9 +111,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
       if (descFilter.trim()) params.descProdutoEst = descFilter.trim();
       if (tipoProduto.trim()) params.tipoProduto = tipoProduto.trim();
 
-      console.log("[StockExplorer] Calling sigeProductGet with params:", params);
       const result = await api.sigeProductGet(token, params);
-      console.log("[StockExplorer] Raw API response:", result);
       setRawResponse(result);
 
       // Deep extract products array — try many possible formats
@@ -126,7 +124,6 @@ export function SigeStockExplorer({ isConnected }: Props) {
           const candidate = result[key];
           if (Array.isArray(candidate) && candidate.length > 0) {
             items = candidate;
-            console.log(`[StockExplorer] Found ${items.length} products under key "${key}"`);
             break;
           }
         }
@@ -136,24 +133,19 @@ export function SigeStockExplorer({ isConnected }: Props) {
             const candidate = result.data[key];
             if (Array.isArray(candidate) && candidate.length > 0) {
               items = candidate;
-              console.log(`[StockExplorer] Found ${items.length} products under data.${key}`);
               break;
             }
           }
           // If result.data itself is an array
           if (items.length === 0 && Array.isArray(result.data)) {
             items = result.data;
-            console.log(`[StockExplorer] Found ${items.length} products in result.data (array)`);
           }
         }
         // Last resort: if result is a single product object
         if (items.length === 0 && (result.codProduto || result.id || result.descProdutoEst)) {
           items = [result];
-          console.log("[StockExplorer] Result appears to be a single product object");
         }
       }
-
-      console.log(`[StockExplorer] Extracted ${items.length} products`);
 
       if (items.length === 0 && result && !result.error) {
         // Show a diagnostic warning
@@ -243,7 +235,6 @@ export function SigeStockExplorer({ isConnected }: Props) {
 
             let totalQtd = 0, totalRes = 0, totalDisp = 0;
             if (items2.length > 0) {
-              console.log(`[StockExplorer] Balance for ${pid}: ${items2.length} items, keys=[${Object.keys(items2[0]).join(",")}]`);
               for (const it of items2) {
                 let q = tryNumFields(it, QTD_KEYS);
                 if (q === 0) q = autoDetect(it);
@@ -259,7 +250,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
               totalRes = tryNumFields(balData, RES_KEYS);
               totalDisp = totalQtd - totalRes;
               if (totalQtd === 0) {
-                console.log(`[StockExplorer] Balance for ${pid}: no qty found. Keys=[${Object.keys(balData).join(",")}]`, balData);
+                // Balance keys not recognized — will show diagnostic in UI
               }
             }
 
@@ -318,11 +309,22 @@ export function SigeStockExplorer({ isConnected }: Props) {
   const getProductId = (p: SigeProduct) => String(p.id || p.codProduto || p.codigo || "—");
   const getProductDesc = (p: SigeProduct) => p.descProdutoEst || p.descricao || p.descProduto || "(sem descrição)";
 
-  // Stats
-  const withBalance = products.filter((p) => p.balance && !p.balance.loading && p.balance.found);
-  const inStock = withBalance.filter((p) => (p.balance!.disponivel ?? p.balance!.quantidade ?? 0) > 0).length;
-  const outOfStock = withBalance.filter((p) => (p.balance!.disponivel ?? p.balance!.quantidade ?? 0) === 0).length;
-  const balErrors = products.filter((p) => p.balance && !p.balance.loading && !p.balance.found).length;
+  // Stats (memoized — single pass)
+  const { inStock, outOfStock, balErrors } = useMemo(() => {
+    var _in = 0, _out = 0, _err = 0;
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      if (p.balance && !p.balance.loading) {
+        if (p.balance.found) {
+          var qty = p.balance.disponivel ?? p.balance.quantidade ?? 0;
+          if (qty > 0) _in++; else _out++;
+        } else {
+          _err++;
+        }
+      }
+    }
+    return { inStock: _in, outOfStock: _out, balErrors: _err };
+  }, [products]);
 
   const inputClass = "w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 focus:bg-white transition-all";
   const inputStyle = { fontSize: "0.8rem" } as const;
@@ -548,7 +550,7 @@ export function SigeStockExplorer({ isConnected }: Props) {
               )}
 
               {/* Diagnostic: when all balances loaded but all zero */}
-              {!loadingBalances && products.length > 0 && withBalance.length > 0 && inStock === 0 && (() => {
+              {!loadingBalances && products.length > 0 && inStock === 0 && (() => {
                 const firstBal = products.find(p => p.balance?.raw)?.balance;
                 if (!firstBal?.raw) return null;
                 const raw = firstBal.raw;

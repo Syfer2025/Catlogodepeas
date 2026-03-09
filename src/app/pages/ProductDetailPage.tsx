@@ -18,7 +18,7 @@ import {
   Share2,
   ShieldCheck,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as api from "../services/api";
 import type { ProductImage, SuperPromo, ProductBalance, ProductPrice } from "../services/api";
 import { computePromoPrice, getProductOgUrl } from "../services/api";
@@ -296,15 +296,13 @@ export function ProductDetailPage() {
         // Save to recently viewed
         addRecentlyViewed(sku, prod.titulo);
 
-        if (initData._elapsed) {
-          console.log("[ProductDetail] Server-side init completed in " + initData._elapsed + "ms");
-        }
+        // initData._elapsed available for performance debugging if needed
       } catch (e: any) {
         // If aborted (navigation away), exit silently — no fallback needed
         if (cancelled || (e && e.name === "AbortError")) return;
         console.error("[ProductDetail] Combined endpoint failed, attempting individual fallback:", e);
 
-        // ── FALLBACK: 6 individual parallel calls ──
+        // ─��� FALLBACK: 6 individual parallel calls ──
         try {
           var fallbackResults = await Promise.allSettled([
             api.getProdutoBySku(sku),
@@ -373,7 +371,6 @@ export function ProductDetailPage() {
           // Save to recently viewed (fallback path)
           addRecentlyViewed(sku, fbProd.titulo);
 
-          console.log("[ProductDetail] Fallback completed successfully (6 individual calls)");
         } catch (fallbackErr) {
           console.error("[ProductDetail] Fallback also failed:", fallbackErr);
           if (!cancelled) {
@@ -407,8 +404,7 @@ export function ProductDetailPage() {
             sku: sku,
             qty: fresh.found ? (fresh.disponivel ?? fresh.quantidade ?? 0) : null,
           }]);
-          console.log("[ProductDetail] Layer 1 stock validation: force-refreshed balance for " + sku +
-            " -> disponivel=" + (fresh.disponivel ?? "?") + " qty=" + (fresh.quantidade ?? "?"));
+          // Layer 1 stock validation complete — balance force-refreshed
         })
         .catch(function (e) {
           console.warn("[ProductDetail] Layer 1 stock validation failed (non-blocking):", e);
@@ -542,7 +538,7 @@ export function ProductDetailPage() {
     const ac = new AbortController();
     const skus = related.map((p) => p.sku);
 
-    api.getProductPricesBulk(skus, { signal: ac.signal })
+    api.getProductPricesBulkSafe(skus, { signal: ac.signal })
       .then((res) => {
         if (ac.signal.aborted) return;
         const map: Record<string, ProductPrice> = {};
@@ -604,6 +600,12 @@ export function ProductDetailPage() {
     const scrollTarget = thumbLeft - containerWidth / 2 + thumbWidth / 2;
     container.scrollTo({ left: scrollTarget, behavior: "smooth" });
   }, [activeIndex]);
+
+  // ── Moved BEFORE early returns to comply with Rules of Hooks ──
+  const activeImage = images[activeIndex] || null;
+  const hasImages = images.length > 0;
+  const attrEntries = useMemo(() => attributes ? Object.entries(attributes) : [], [attributes]);
+  const isInPromo = !!(activePromo && promoProduct);
 
   if (loading) {
     return (
@@ -676,12 +678,6 @@ export function ProductDetailPage() {
       </div>
     );
   }
-
-  const activeImage = images[activeIndex] || null;
-  const hasImages = images.length > 0;
-  const attrEntries = attributes ? Object.entries(attributes) : [];
-
-  const isInPromo = !!(activePromo && promoProduct);
 
   return (
     <div className="min-h-screen" style={{ background: isInPromo ? "#b91c1c" : "#f9fafb" }}>

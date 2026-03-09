@@ -260,6 +260,10 @@ export var schemas = {
     name: { maxLen: 150 },
     phone: { maxLen: 30, custom: validators.phone },
     cpf: { maxLen: 20, custom: validators.cpf },
+    personType: { maxLen: 5 },
+    cnpj: { maxLen: 25, custom: validators.cnpj },
+    razaoSocial: { maxLen: 200 },
+    inscricaoEstadual: { maxLen: 30 },
     website: { maxLen: 500 },
     company_url: { maxLen: 500 },
     fax_number: { maxLen: 500 },
@@ -311,6 +315,10 @@ export var schemas = {
     phone: { maxLen: 30, custom: validators.phone },
     cpf: { maxLen: 20, custom: validators.cpf },
     birthdate: { maxLen: 15 },
+    personType: { maxLen: 5 },
+    cnpj: { maxLen: 25, custom: validators.cnpj },
+    razaoSocial: { maxLen: 200 },
+    inscricaoEstadual: { maxLen: 30 },
   },
 };
 

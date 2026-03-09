@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
 import {
   Layers,
   Plus,
@@ -23,7 +23,7 @@ import {
 import * as api from "../../services/api";
 import type { CategoryNode } from "../../services/api";
 import { defaultCategoryTree, countNodes } from "../../data/categoryTree";
-import { AdminBulkCategoryAssign } from "./AdminBulkCategoryAssign";
+const AdminBulkCategoryAssign = lazy(function () { return import("./AdminBulkCategoryAssign").then(function (m) { return { default: m.AdminBulkCategoryAssign }; }); });
 
 type SubTab = "tree" | "bulk-assign";
 
@@ -246,7 +246,7 @@ export function AdminCategories() {
     setDeleteConfirm(null);
   };
 
-  // ���── reset to defaults ───
+  // ── reset to defaults ───
   const resetToDefaults = async () => {
     if (!confirm("Tem certeza? Isso substituira todas as categorias pelas pre-cadastradas.")) return;
     setSaving(true);
@@ -263,12 +263,12 @@ export function AdminCategories() {
     }
   };
 
-  // ─── filtered tree ───
-  const filteredTree = searchQ.trim()
+  // ─── filtered tree (memoized) ───
+  const filteredTree = useMemo(() => searchQ.trim()
     ? tree.filter((p) => matchesSearch(p, searchQ))
-    : tree;
+    : tree, [tree, searchQ]);
 
-  const stats = countNodes(tree);
+  const stats = useMemo(() => countNodes(tree), [tree]);
 
   // ─── render loading ───
   if (loading) {
@@ -320,7 +320,9 @@ export function AdminCategories() {
 
       {/* Conditional content */}
       {subTab === "bulk-assign" ? (
-        <AdminBulkCategoryAssign key="bulk-assign-view" />
+        <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
+          <AdminBulkCategoryAssign key="bulk-assign-view" />
+        </Suspense>
       ) : (
       <div key="tree-view" className="space-y-5">
       {/* Header */}

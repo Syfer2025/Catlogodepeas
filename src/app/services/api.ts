@@ -3,6 +3,53 @@ import type { Product, Category } from "../data/products";
 
 const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Edge Function Warmup — fires at module load time (before React renders).
+// The edge function has ~23k lines and heavy imports; a cold start can take
+// 5–10s, causing "Network error" on the first batch of POST requests.
+// This fire-and-forget GET /health warms the function so subsequent calls
+// hit a hot instance.  Uses a lightweight fetch with a generous timeout.
+// A second "belt-and-suspenders" ping fires after 2s to cover cases where
+// the first attempt was swallowed by the browser during page load.
+// ═══════════════════════════════════════════════════════════════════════════
+var _warmupDone = false;
+
+function _doWarmup() {
+  if (_warmupDone) return;
+  _warmupDone = true;
+  var url = BASE_URL + "/health";
+  // Try sendBeacon first — cheapest possible fire-and-forget
+  if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+    try { navigator.sendBeacon(url); } catch (_e) { /* ignore */ }
+  }
+  // Also fire a proper fetch so the edge function fully boots (sendBeacon
+  // doesn't guarantee the response is read / runtime fully inits).
+  var ac = new AbortController();
+  var tid = setTimeout(function () { ac.abort(); }, 12000);
+  fetch(url, {
+    method: "GET",
+    headers: { Authorization: "Bearer " + publicAnonKey },
+    signal: ac.signal,
+  }).then(function () {
+    clearTimeout(tid);
+  }).catch(function () {
+    clearTimeout(tid);
+    // Silent — warmup failure is non-critical; retry logic in request() handles it
+  });
+}
+
+// Fire immediately at module load
+_doWarmup();
+
+// Belt-and-suspenders: second ping after 2s in case the first was throttled
+setTimeout(function () {
+  var url = BASE_URL + "/health";
+  fetch(url, {
+    method: "GET",
+    headers: { Authorization: "Bearer " + publicAnonKey },
+  }).catch(function () { /* silent */ });
+}, 2000);
+
 const headers = {
   "Content-Type": "application/json",
   Authorization: `Bearer ${publicAnonKey}`,
@@ -18,6 +65,65 @@ function _authUrl(path: string, accessToken: string): string {
 const MAX_RETRIES = 3; // 4 total attempts — handles edge function cold starts (up to ~10s)
 const RETRY_STATUS = new Set([429, 502, 503, 504]);
 const REQUEST_TIMEOUT_MS = 45000; // 45s timeout — edge function cold start + SIGE API latency
+
+// ═══════════════════════════════════════════════════════════
+// Fast-fail request for SIGE-dependent bulk endpoints.
+// Uses a shorter timeout and NO retries — these are display-only
+// calls (stock badges, price tags) where showing "unavailable"
+// quickly is better than waiting 3×45s for a retry cascade.
+// ═══════════════════════════════════════════════════════════
+var _FAST_TIMEOUT_MS = 25000; // 25s — enough for cold start + cached SIGE, but fails fast if SIGE is down
+
+async function _requestFastFail<T>(path: string, options?: RequestInit): Promise<T> {
+  var callerSignal = options ? (options.signal as AbortSignal | undefined) : undefined;
+  await _acquireSlotWithSignal(callerSignal);
+  try {
+    if (callerSignal && callerSignal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, _FAST_TIMEOUT_MS);
+    var _onCallerAbort: (() => void) | null = null;
+    if (callerSignal) {
+      _onCallerAbort = function () { controller.abort(); };
+      callerSignal.addEventListener("abort", _onCallerAbort, { once: true });
+    }
+    try {
+      var _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
+      var _finalPath = path;
+      if (_merged["X-User-Token"]) {
+        var _ut = _merged["X-User-Token"];
+        delete _merged["X-User-Token"];
+        _finalPath = _finalPath + (_finalPath.includes("?") ? "&" : "?") + "_ut=" + encodeURIComponent(_ut);
+      }
+      var res = await fetch(BASE_URL + _finalPath, {
+        ...options,
+        headers: _merged,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
+      if (!res.ok) {
+        var errorBody = await res.json().catch(function () { return {}; });
+        var msg = (errorBody as any)?.error || "HTTP " + res.status + " on " + path;
+        throw new Error(msg);
+      }
+      return res.json();
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
+      if (callerSignal && callerSignal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (e.name === "AbortError") {
+        console.warn("[API] Fast-fail timeout (" + (_FAST_TIMEOUT_MS / 1000) + "s) on " + path);
+      }
+      throw e;
+    }
+  } finally {
+    _releaseSlot();
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // Global concurrency limiter — prevents overwhelming the
@@ -264,9 +370,63 @@ export const verifyCaptcha = (token: string, action: string) =>
     body: JSON.stringify({ token, action }),
   });
 
+// ─── CNPJ Lookup (Receita Federal via BrasilAPI) ───
+
+export interface CnpjLookupResult {
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string;
+  situacao: string;
+  ativa: boolean;
+  endereco: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  cep: string;
+  atividadePrincipal: string;
+  dataAbertura: string;
+  dataSituacao: string;
+  error?: string;
+  notFound?: boolean;
+}
+
+export const cnpjLookup = (cnpj: string) =>
+  request<CnpjLookupResult>("/auth/cnpj-lookup?cnpj=" + encodeURIComponent(cnpj.replace(/\D/g, "")));
+
+export interface CnpjCheckResult {
+  cnpj: string;
+  taken: boolean;
+  error?: string;
+}
+
+export const checkCnpjUniqueness = (cnpj: string, excludeUserId?: string) => {
+  var params = "cnpj=" + encodeURIComponent(cnpj.replace(/\D/g, ""));
+  if (excludeUserId) params = params + "&excludeUserId=" + encodeURIComponent(excludeUserId);
+  return request<CnpjCheckResult>("/auth/cnpj-check?" + params);
+};
+
+// ─── Signup Availability Check ───
+
+export interface SignupCheckResult {
+  emailTaken: boolean;
+  cpfTaken: boolean;
+  cnpjTaken: boolean;
+  cpfPersonType: string | null;
+  cnpjPersonType: string | null;
+  cpfEmail?: string;
+  cnpjEmail?: string;
+  error?: string;
+}
+
+export const checkSignupAvailability = (data: { email?: string; cpf?: string; cnpj?: string }) =>
+  request<SignupCheckResult>("/auth/signup-check", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 // ─── User Auth ───
 
-export const userSignup = (data: { email: string; password: string; name: string; phone?: string; cpf?: string; captchaToken?: string }) =>
+export const userSignup = (data: { email: string; password: string; name: string; phone?: string; cpf?: string; captchaToken?: string; personType?: "pf" | "pj"; cnpj?: string; razaoSocial?: string; inscricaoEstadual?: string }) =>
   request<{ user: { id: string; email: string; name: string }; emailConfirmationRequired?: boolean }>("/auth/user/signup", {
     method: "POST",
     body: JSON.stringify(data),
@@ -288,6 +448,10 @@ type UserMeResult = {
   avatarId: string | null;
   customAvatarUrl: string | null;
   created_at: string;
+  personType?: string;
+  cnpj?: string;
+  razaoSocial?: string;
+  inscricaoEstadual?: string;
 };
 
 var _userMeInflight: Promise<UserMeResult> | null = null;
@@ -352,6 +516,10 @@ export const userUpdateProfile = (
     city: string;
     state: string;
     cep: string;
+    personType?: string;
+    cnpj?: string;
+    razaoSocial?: string;
+    inscricaoEstadual?: string;
   }
 ) =>
   request<{ ok: boolean; profile: any }>("/auth/user/profile", {
@@ -1456,8 +1624,11 @@ export function getSettingsFresh(): Promise<SiteSettings> {
   return getSettings();
 }
 
-export const updateSettings = (settings: SiteSettings) =>
-  request<SiteSettings>("/settings", { method: "PUT", body: JSON.stringify(settings) });
+export const updateSettings = (settings: SiteSettings, accessToken?: string) => {
+  var opts: any = { method: "PUT", body: JSON.stringify(settings) };
+  if (accessToken) opts.headers = { "X-User-Token": accessToken };
+  return request<SiteSettings>("/settings", opts);
+};
 
 // ─── Google Analytics 4 ───
 export interface GA4Config {
@@ -1676,9 +1847,12 @@ export interface ProductBalance {
 
 // ═══════════════════════════════════════════════════════════
 // Stock balance auto-batching — collects individual SKU
-// requests over a 80ms window and sends them as a single
+// requests over a 150ms window and sends them as a single
 // bulk POST to /produtos/saldos, dramatically reducing the
 // number of concurrent connections to the edge function.
+// In-flight deduplication: if a SKU is already being fetched,
+// new requests piggyback on the existing promise instead of
+// spawning another network call.
 // ═══════════════════════════════════════════════════════════
 var _balanceBatchQueue: Array<{
   sku: string;
@@ -1686,8 +1860,11 @@ var _balanceBatchQueue: Array<{
   reject: (e: any) => void;
 }> = [];
 var _balanceBatchTimer: ReturnType<typeof setTimeout> | null = null;
-var _BALANCE_BATCH_DELAY = 80;
-var _BALANCE_BATCH_MAX = 30;
+var _BALANCE_BATCH_DELAY = 150; // increased from 80ms — lets more SKUs accumulate, fewer requests
+var _BALANCE_BATCH_MAX = 40;    // increased from 30 — bigger batches = fewer round-trips
+
+// In-flight dedup map: SKU → promise that will resolve when the current batch completes
+var _balanceInflight: Map<string, Promise<ProductBalance>> = new Map();
 
 function _flushBalanceBatch() {
   _balanceBatchTimer = null;
@@ -1696,8 +1873,7 @@ function _flushBalanceBatch() {
   var skuSet = new Set<string>();
   for (var bi = 0; bi < batch.length; bi++) skuSet.add(batch[bi].sku);
   var skus = Array.from(skuSet);
-  console.log("[API] Balance batch flush: " + skus.length + " unique SKUs from " + batch.length + " callers");
-  request<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
+  _requestFastFail<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
     method: "POST",
     body: JSON.stringify({ skus: skus, force: false }),
   }).then(function (resp) {
@@ -1717,8 +1893,18 @@ function _flushBalanceBatch() {
         entry.resolve({ sku: entry.sku, found: false, sige: true, quantidade: 0 } as any);
       }
     }
+    // Clear in-flight entries for these SKUs
+    for (var si = 0; si < skus.length; si++) _balanceInflight.delete(skus[si]);
   }).catch(function (err) {
-    for (var ci = 0; ci < batch.length; ci++) batch[ci].reject(err);
+    // Graceful degradation: resolve with fallback data instead of rejecting.
+    // This prevents cascading errors in UI components (StockBadge, StockBar, etc.)
+    // that don't critically need real-time stock data.
+    console.error("[API] Saldos batch failed, resolving with fallback:", err && err.message || err);
+    for (var ci = 0; ci < batch.length; ci++) {
+      batch[ci].resolve({ sku: batch[ci].sku, found: false, sige: true, quantidade: 0, _networkError: true } as any);
+    }
+    // Clear in-flight entries for these SKUs
+    for (var si = 0; si < skus.length; si++) _balanceInflight.delete(skus[si]);
   });
 }
 
@@ -1734,7 +1920,11 @@ export const getProductBalance = (sku: string, opts?: { force?: boolean; debug?:
       "/produtos/saldo/" + encodeURIComponent(sku) + (qs ? "?" + qs : "")
     );
   }
-  return new Promise<ProductBalance>(function (resolve, reject) {
+  // In-flight dedup: if this SKU is already being fetched in a current batch, piggyback
+  var existing = _balanceInflight.get(sku);
+  if (existing) return existing as any;
+
+  var p = new Promise<ProductBalance>(function (resolve, reject) {
     _balanceBatchQueue.push({ sku: sku, resolve: resolve, reject: reject });
     if (_balanceBatchQueue.length >= _BALANCE_BATCH_MAX) {
       if (_balanceBatchTimer) { clearTimeout(_balanceBatchTimer); _balanceBatchTimer = null; }
@@ -1742,16 +1932,61 @@ export const getProductBalance = (sku: string, opts?: { force?: boolean; debug?:
     } else if (!_balanceBatchTimer) {
       _balanceBatchTimer = setTimeout(_flushBalanceBatch, _BALANCE_BATCH_DELAY);
     }
-  }) as any;
+  });
+  _balanceInflight.set(sku, p);
+  return p as any;
 };
 
-/** Get stock balances for multiple SKUs in bulk */
-export const getProductBalances = (skus: string[], opts?: { force?: boolean; signal?: AbortSignal }) =>
-  request<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
+// ═══════════════════════════════════════════════════════════
+// getProductBalances dedup — when multiple components mount
+// simultaneously (HomePage, SuperPromo, RecentlyViewed, etc.)
+// they may all call getProductBalances with overlapping SKU sets.
+// We dedup by cacheKey so identical requests share one fetch.
+// ═══════════════════════════════════════════════════════════
+var _bulkBalanceInflight: Map<string, Promise<{ results: ProductBalance[]; total: number }>> = new Map();
+
+/** Get stock balances for multiple SKUs in bulk.
+ *  Non-force calls use fast-fail (25s, no retry) and resolve with empty results on error.
+ *  Force calls (checkout validation) use full retry logic. */
+export const getProductBalances = (skus: string[], opts?: { force?: boolean; signal?: AbortSignal }): Promise<{ results: ProductBalance[]; total: number }> => {
+  var force = opts?.force || false;
+  // Build a stable cache key from sorted SKUs + force flag
+  var sortedKey = skus.slice().sort().join(",") + (force ? ":f" : "");
+
+  // If not forcing refresh, check for in-flight dedup
+  if (!force) {
+    var inflight = _bulkBalanceInflight.get(sortedKey);
+    if (inflight) return inflight;
+  }
+
+  // Force = checkout stock validation → full retry. Non-force = display → fast-fail + graceful fallback.
+  var reqFn = force ? request : _requestFastFail;
+
+  var promise = reqFn<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
     method: "POST",
-    body: JSON.stringify({ skus: skus, force: opts?.force || false }),
+    body: JSON.stringify({ skus: skus, force: force }),
     signal: opts?.signal,
+  }).then(function (resp) {
+    _bulkBalanceInflight.delete(sortedKey);
+    return resp;
+  }).catch(function (err) {
+    _bulkBalanceInflight.delete(sortedKey);
+    // For non-force (display) calls, resolve with empty results instead of throwing.
+    // UI components will show "stock unknown" rather than error states.
+    if (!force) {
+      if (err && err.name !== "AbortError") {
+        console.warn("[API] Saldos bulk failed (display), resolving empty:", err.message || err);
+      }
+      return { results: [] as ProductBalance[], total: 0, _unavailable: true } as any;
+    }
+    throw err;
   });
+
+  if (!force) {
+    _bulkBalanceInflight.set(sortedKey, promise);
+  }
+  return promise;
+};
 
 /** Clear balance cache for all SKUs (admin, requires auth) */
 export const clearBalanceCache = (accessToken: string) =>
@@ -2367,15 +2602,40 @@ export interface ProductPrice {
 }
 
 export const getProductPrice = (sku: string, options?: { signal?: AbortSignal }) =>
-  request<ProductPrice>("/produtos/preco/" + encodeURIComponent(sku), options);
+  _requestFastFail<ProductPrice>("/produtos/preco/" + encodeURIComponent(sku), options);
 
-/** Bulk fetch prices for multiple SKUs in one call (public, no auth) */
+/** Bulk fetch prices for multiple SKUs in one call (public, no auth).
+ *  Uses fast-fail (25s, no retry) — display-only, not checkout-critical. */
 export const getProductPricesBulk = (skus: string[], opts?: { signal?: AbortSignal }) =>
-  request<{ results: ProductPrice[]; config: PriceConfig | null }>("/produtos/precos-bulk", {
+  _requestFastFail<{ results: ProductPrice[]; config: PriceConfig | null }>("/produtos/precos-bulk", {
     method: "POST",
     body: JSON.stringify({ skus }),
     signal: opts?.signal,
   });
+
+/** Safe wrapper for getProductPricesBulk — never throws for display-only usage.
+ *  On total failure (edge function down, timeout, network error), returns empty results
+ *  so the UI can degrade gracefully (e.g., show "Consulte" instead of crashing). */
+export async function getProductPricesBulkSafe(skus: string[], opts?: { signal?: AbortSignal }): Promise<{ results: ProductPrice[]; config: PriceConfig | null }> {
+  try {
+    return await getProductPricesBulk(skus, opts);
+  } catch (e: any) {
+    if (e && e.name === "AbortError") throw e; // propagate abort (component unmount)
+    console.error("[API] getProductPricesBulkSafe: total failure, returning empty results:", e.message || e);
+    return { results: [], config: null };
+  }
+}
+
+/** Safe wrapper for getProductPrice — never throws for display-only usage. */
+export async function getProductPriceSafe(sku: string, opts?: { signal?: AbortSignal }): Promise<ProductPrice> {
+  try {
+    return await getProductPrice(sku, opts);
+  } catch (e: any) {
+    if (e && e.name === "AbortError") throw e;
+    console.error("[API] getProductPriceSafe: failure for " + sku + ":", e.message || e);
+    return { sku: sku, found: false, source: "error", price: null, v1: null, v2: null, v3: null, tier: "v2", showPrice: true } as ProductPrice;
+  }
+}
 
 export const setProductCustomPrice = (sku: string, price: number, accessToken: string) =>
   request<{ ok: boolean; sku: string; price: number }>(

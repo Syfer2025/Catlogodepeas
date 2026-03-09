@@ -102,7 +102,6 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
         console.warn("[AdminLogin] Pre-check error (continuing):", preErr);
       }
 
-      console.log("[AdminLogin] Step 1: Attempting signInWithPassword for:", email.trim());
       const { data, error: authError } =
         await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -118,7 +117,6 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
           "| Code:", (authError as any).code,
           "| Status:", (authError as any).status
         );
-        console.log("[AuditLog] Login failed for:", email.trim(), authError.message);
         if (authError.message.includes("Invalid login credentials")) {
           setError("Email ou senha incorretos.");
         } else if (authError.message.includes("Email not confirmed")) {
@@ -132,21 +130,15 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
       // Report success (clears failed attempt counter) — pass token so backend can verify
       api.reportLoginResult(email.trim(), true, data.session?.access_token).catch(() => {});
 
-      console.log("[AdminLogin] Step 1 OK - Signed in. User ID:", data.user?.id, "| Email:", data.user?.email);
-      console.log("[AdminLogin] Step 2: Session exists?", !!data.session, "| Token length:", data.session?.access_token?.length);
-
       if (data.session?.access_token) {
         // CRITICAL: Verify the user is actually an admin before granting access
         var adminIsMaster = false;
         var adminPermissions: string[] = [];
         try {
-          console.log("[AdminLogin] Step 3: Calling check-admin with token...");
           const adminCheck = await api.checkAdmin(data.session.access_token);
-          console.log("[AdminLogin] Step 3 RESULT:", JSON.stringify(adminCheck));
           if (!adminCheck.isAdmin) {
             // Check if NO admins exist — show bootstrap option
             if (adminCheck.noAdminsExist) {
-              console.log("[AdminLogin] No admins configured yet. Offering bootstrap for:", email);
               clearSupabaseLocalSession();
               setShowBootstrap(true);
               setError(null);
@@ -183,7 +175,6 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
         // Clear the Supabase client session from localStorage WITHOUT
         // calling signOut (which may revoke the JWT server-side in some versions)
         clearSupabaseLocalSession();
-        console.log("[AdminLogin] Supabase session cleared (local). Admin token saved to localStorage.");
 
         onLoginSuccess(data.session.access_token, userEmail, userName, adminIsMaster, adminPermissions);
       } else {
@@ -211,10 +202,7 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
 
     setForgotLoading(true);
     try {
-      console.log("[ForgotPassword] Requesting recovery via server for:", forgotEmail.trim());
-
       const result = await api.forgotPassword(forgotEmail.trim());
-      console.log("[ForgotPassword] Server response:", result);
 
       if (result.recoveryId) {
         localStorage.setItem("recovery_id", result.recoveryId);
@@ -260,7 +248,6 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
     try {
       const result = await api.bootstrapAdmin(email.trim(), password);
       if (result.ok) {
-        console.log("[Bootstrap] Admin configured:", result.email);
         // Now sign in normally — the user is now an admin
         const { data, error: signInErr } = await supabase.auth.signInWithPassword({
           email: email.trim(),

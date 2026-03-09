@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Star,
   ThumbsUp,
@@ -548,8 +548,8 @@ export function ProductReviews({ sku }: { sku: string }) {
     loadReviews();
   }, [loadReviews]);
 
-  // Sort reviews
-  var sortedReviews = (function () {
+  // Sort reviews (memoized)
+  var sortedReviews = useMemo(function () {
     var sorted = reviews.slice();
     if (sortBy === "helpful") {
       sorted.sort(function (a, b) { return b.helpful - a.helpful; });
@@ -560,7 +560,7 @@ export function ProductReviews({ sku }: { sku: string }) {
     }
     // default: recent (already sorted from API)
     return sorted;
-  })();
+  }, [reviews, sortBy]);
 
   var handleHelpful = function (id: string) {
     if (!isLoggedIn) {

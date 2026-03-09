@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Users,
   Loader2,
@@ -204,19 +204,28 @@ export function AdminAffiliates() {
     }
   };
 
-  // Filtered affiliates
-  var filtered = affiliates.filter(function (a) {
-    if (statusFilter !== "all" && a.status !== statusFilter) return false;
-    if (searchTerm.trim()) {
-      var q = searchTerm.toLowerCase();
-      return (a.name.toLowerCase().indexOf(q) >= 0 || a.email.toLowerCase().indexOf(q) >= 0 || a.code.toLowerCase().indexOf(q) >= 0);
-    }
-    return true;
-  });
+  // Filtered affiliates (memoized)
+  var filtered = useMemo(function () {
+    return affiliates.filter(function (a) {
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      if (searchTerm.trim()) {
+        var q = searchTerm.toLowerCase();
+        return (a.name.toLowerCase().indexOf(q) >= 0 || a.email.toLowerCase().indexOf(q) >= 0 || a.code.toLowerCase().indexOf(q) >= 0);
+      }
+      return true;
+    });
+  }, [affiliates, statusFilter, searchTerm]);
 
-  var pendingCount = affiliates.filter(function (a) { return a.status === "pending"; }).length;
-  var approvedCount = affiliates.filter(function (a) { return a.status === "approved"; }).length;
-  var totalCommission = affiliates.reduce(function (sum, a) { return sum + (a.totalCommission || 0); }, 0);
+  // Stats (memoized — single pass)
+  var { pendingCount, approvedCount, totalCommission } = useMemo(function () {
+    var pending = 0, approved = 0, commission = 0;
+    for (var i = 0; i < affiliates.length; i++) {
+      if (affiliates[i].status === "pending") pending++;
+      else if (affiliates[i].status === "approved") approved++;
+      commission += (affiliates[i].totalCommission || 0);
+    }
+    return { pendingCount: pending, approvedCount: approved, totalCommission: commission };
+  }, [affiliates]);
 
   return (
     <div>

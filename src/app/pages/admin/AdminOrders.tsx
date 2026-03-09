@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { AdminOrder } from "../../services/api";
@@ -202,8 +202,8 @@ export function AdminOrders() {
     }
   };
 
-  // Filtering
-  const filtered = orders.filter((o) => {
+  // Filtering (memoized)
+  const filtered = useMemo(() => orders.filter((o) => {
     if (statusFilter !== "all" && o.status !== statusFilter) return false;
     if (paymentFilter !== "all" && o.paymentMethod !== paymentFilter) return false;
     if (search) {
@@ -219,26 +219,28 @@ export function AdminOrders() {
       );
     }
     return true;
-  });
+  }), [orders, statusFilter, paymentFilter, search]);
 
-  // Sorting
-  const sorted = [...filtered].sort((a, b) => {
+  // Sorting (memoized)
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (sortField === "total") {
       return sortDir === "desc" ? (b.total || 0) - (a.total || 0) : (a.total || 0) - (b.total || 0);
     }
     const da = new Date(a.createdAt || 0).getTime();
     const db = new Date(b.createdAt || 0).getTime();
     return sortDir === "desc" ? db - da : da - db;
-  });
+  }), [filtered, sortField, sortDir]);
 
-  // Stats
-  const stats = {
-    total: orders.length,
-    paid: orders.filter((o) => o.status === "paid").length,
-    awaiting: orders.filter((o) => o.status === "awaiting_payment").length,
-    cancelled: orders.filter((o) => o.status === "cancelled").length,
-    revenue: orders.filter((o) => o.status === "paid").reduce((sum, o) => sum + (o.total || 0), 0),
-  };
+  // Stats (memoized — single pass instead of 4 filters)
+  const stats = useMemo(() => {
+    var paid = 0, awaiting = 0, cancelled = 0, revenue = 0;
+    for (var i = 0; i < orders.length; i++) {
+      if (orders[i].status === "paid") { paid++; revenue += (orders[i].total || 0); }
+      else if (orders[i].status === "awaiting_payment") { awaiting++; }
+      else if (orders[i].status === "cancelled") { cancelled++; }
+    }
+    return { total: orders.length, paid: paid, awaiting: awaiting, cancelled: cancelled, revenue: revenue };
+  }, [orders]);
 
   if (loading) {
     return (

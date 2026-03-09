@@ -42,7 +42,7 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
     var skus = prods.map(function (p) { return p.sku; });
     var ac = new AbortController();
 
-    api.getProductPricesBulk(skus, { signal: ac.signal })
+    api.getProductPricesBulkSafe(skus, { signal: ac.signal })
       .then(function (res) {
         if (ac.signal.aborted) return;
         var map: Record<string, ProductPrice> = {};

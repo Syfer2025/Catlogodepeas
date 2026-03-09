@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import {
   Save,
   Loader2,
@@ -39,7 +39,8 @@ import {
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
-import { AdminShippingTables } from "./AdminShippingTables";
+// Lazy-load AdminShippingTables — only shown when the shipping tables sub-tab is active
+const AdminShippingTables = lazy(function () { return import("./AdminShippingTables").then(function (m) { return { default: m.AdminShippingTables }; }); });
 
 // Physical field names for highlighting in debug UI
 const SIGE_WEIGHT_FIELDS_UI = ["peso", "pesoliquido", "pesobruto", "pesoliq", "peso_liquido", "peso_bruto", "weight", "pesokg", "pesogr", "pesounitario"];
@@ -1104,7 +1105,9 @@ export function AdminShipping() {
 
       {/* ═══ TABLES TAB ═══ */}
       {activeTab === "tables" && (
-        <AdminShippingTables />
+        <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
+          <AdminShippingTables />
+        </Suspense>
       )}
 
       {/* ═══ API TAB ═══ */}

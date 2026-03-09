@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   Menu,
@@ -19,7 +19,6 @@ import {
   Layers,
 } from "lucide-react";
 import { SearchAutocomplete } from "./SearchAutocomplete";
-import { CategoryMegaMenu, MobileCategoryMenu } from "./CategoryMegaMenu";
 import { supabase } from "../services/supabaseClient";
 import { getValidAccessToken } from "../services/supabaseClient";
 import * as api from "../services/api";
@@ -27,6 +26,14 @@ import { useCart } from "../contexts/CartContext";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { UserAvatar } from "./AvatarPicker";
 import { HeaderCepInput } from "./HeaderCepInput";
+
+// Lazy-load CategoryMegaMenu — only shown on hover/click, not needed for FCP
+const CategoryMegaMenu = lazy(function () {
+  return import("./CategoryMegaMenu").then(function (m) { return { default: m.CategoryMegaMenu }; });
+});
+const MobileCategoryMenu = lazy(function () {
+  return import("./CategoryMegaMenu").then(function (m) { return { default: m.MobileCategoryMenu }; });
+});
 
 /* Badge bounce keyframes — injected once */
 var _badgeCssInjected = false;
@@ -126,6 +133,20 @@ export function Header() {
         try { localStorage.removeItem(AVATAR_CACHE_KEY); } catch {}
       }
     });
+
+    // Listen for auth state changes (login/logout from any tab or page)
+    var authSub = supabase.auth.onAuthStateChange(function (event, session) {
+      if (event === "SIGNED_IN" && session && session.user) {
+        setSessionWithAvatar(session.user, session.access_token);
+      } else if (event === "SIGNED_OUT") {
+        setUserSession(null);
+        try { localStorage.removeItem(AVATAR_CACHE_KEY); } catch {}
+      }
+    });
+
+    return function () {
+      authSub.data.subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -469,7 +490,9 @@ export function Header() {
         {/* Navigation — only Categories */}
         <nav className="bg-gray-50/80 border-t border-gray-100 hidden md:block">
           <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-            <CategoryMegaMenu />
+            <Suspense fallback={<div className="h-10 w-10 bg-gray-100 rounded-lg animate-pulse" />}>
+              <CategoryMegaMenu />
+            </Suspense>
             <div className="shrink-0 ml-4">
               <HeaderCepInput />
             </div>
@@ -486,7 +509,9 @@ export function Header() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-white border-b border-gray-200 shadow-lg animate-in slide-in-from-top-2 duration-200">
           <div className="px-4 py-3">
-            <MobileCategoryMenu onNavigate={function () { setMobileMenuOpen(false); }} />
+            <Suspense fallback={<div className="h-10 w-10 bg-gray-100 rounded-lg animate-pulse" />}>
+              <MobileCategoryMenu onNavigate={function () { setMobileMenuOpen(false); }} />
+            </Suspense>
           </div>
         </div>
       )}

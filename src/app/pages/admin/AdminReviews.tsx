@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Star,
   Check,
@@ -424,18 +424,20 @@ export function AdminReviews() {
     }
   };
 
-  // Filter by search term
-  var filteredReviews = reviews.filter(function (r) {
-    if (!searchTerm) return true;
-    var term = searchTerm.toLowerCase();
-    return (
-      (r.sku && r.sku.toLowerCase().indexOf(term) >= 0) ||
-      (r.userName && r.userName.toLowerCase().indexOf(term) >= 0) ||
-      (r.userEmail && r.userEmail.toLowerCase().indexOf(term) >= 0) ||
-      (r.title && r.title.toLowerCase().indexOf(term) >= 0) ||
-      (r.comment && r.comment.toLowerCase().indexOf(term) >= 0)
-    );
-  });
+  // Filter by search term (memoized)
+  var filteredReviews = useMemo(function () {
+    return reviews.filter(function (r) {
+      if (!searchTerm) return true;
+      var term = searchTerm.toLowerCase();
+      return (
+        (r.sku && r.sku.toLowerCase().indexOf(term) >= 0) ||
+        (r.userName && r.userName.toLowerCase().indexOf(term) >= 0) ||
+        (r.userEmail && r.userEmail.toLowerCase().indexOf(term) >= 0) ||
+        (r.title && r.title.toLowerCase().indexOf(term) >= 0) ||
+        (r.comment && r.comment.toLowerCase().indexOf(term) >= 0)
+      );
+    });
+  }, [reviews, searchTerm]);
 
   return (
     <div className="space-y-6">

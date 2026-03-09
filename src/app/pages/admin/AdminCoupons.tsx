@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import React from "react";
 import {
   Ticket,
@@ -190,12 +190,12 @@ export function AdminCoupons() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const filteredCoupons = search.trim()
+  const filteredCoupons = useMemo(() => search.trim()
     ? coupons.filter((c) =>
         c.code.toLowerCase().indexOf(search.toLowerCase()) >= 0 ||
         (c.description || "").toLowerCase().indexOf(search.toLowerCase()) >= 0
       )
-    : coupons;
+    : coupons, [coupons, search]);
 
   if (loading) {
     return (

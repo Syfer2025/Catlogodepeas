@@ -10,7 +10,7 @@ interface Props {
   showLabel?: boolean;
 }
 
-export function WishlistButton({ sku, titulo, size = "md", className = "", showLabel = false }: Props) {
+function WishlistButtonInner({ sku, titulo, size = "md", className = "", showLabel = false }: Props) {
   var { isFavorite, toggleFavorite } = useWishlist();
   var [animating, setAnimating] = useState(false);
   var fav = isFavorite(sku);
@@ -54,3 +54,5 @@ export function WishlistButton({ sku, titulo, size = "md", className = "", showL
     </button>
   );
 }
+
+export const WishlistButton = React.memo(WishlistButtonInner);

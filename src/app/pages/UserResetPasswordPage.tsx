@@ -41,13 +41,11 @@ export function UserResetPasswordPage() {
     const rid = localStorage.getItem("recovery_id");
 
     if (!rid) {
-      console.log("[UserResetPassword] No recovery_id in localStorage");
       setMode("no-session");
       return;
     }
 
     ridRef.current = rid;
-    console.log("[UserResetPassword] Starting polling for rid:", rid);
 
     const poll = async () => {
       try {
@@ -55,11 +53,9 @@ export function UserResetPasswordPage() {
         setPollCount((c) => c + 1);
 
         if (result.status === "verified") {
-          console.log("[UserResetPassword] Recovery verified!");
           if (pollRef.current) clearInterval(pollRef.current);
           setMode("password");
         } else if (result.status === "expired" || result.status === "not_found") {
-          console.log("[UserResetPassword] Recovery expired or not found");
           if (pollRef.current) clearInterval(pollRef.current);
           localStorage.removeItem("recovery_id");
           localStorage.removeItem("recovery_email");

@@ -11,6 +11,7 @@ import * as api from "../../services/api";
 import type { SuperPromoProduct } from "../../services/api";
 import { computePromoPrice } from "../../services/api";
 import { ProductImage as ProductImg } from "../../components/ProductImage";
+import { invalidateHomepageCache } from "../../contexts/HomepageInitContext";
 
 /* ── helpers ── */
 
@@ -150,11 +151,21 @@ export function AdminSuperPromo() {
   }, []);
 
   const handleSave = async () => {
+    // Validate: warn if enabling an expired promo (won't show on homepage)
+    if (enabled && endDate < Date.now()) {
+      setError("A data de término já passou. Atualize o período antes de ativar a promoção.");
+      return;
+    }
+    if (enabled && products.length === 0) {
+      setError("Adicione pelo menos 1 produto antes de ativar a promoção.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
       const token = await getToken();
       await api.saveAdminPromo(token, { title, subtitle, enabled, startDate, endDate, discountType, discountValue, bgColor, products });
+      invalidateHomepageCache();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {
@@ -169,6 +180,7 @@ export function AdminSuperPromo() {
     try {
       const token = await getToken();
       await api.deleteAdminPromo(token);
+      invalidateHomepageCache();
       setTitle("Super Promoção");
       setSubtitle("Ofertas imperdíveis por tempo limitado!");
       setEnabled(false);
@@ -192,9 +204,7 @@ export function AdminSuperPromo() {
     setSearching(true);
     setSearchError("");
     try {
-      console.log("[SuperPromo] Search:", query.trim());
       const result = await api.getProdutosDB(1, 30, query.trim());
-      console.log("[SuperPromo] Results:", result?.data?.length ?? 0);
       if (!result || !result.data) { setSearchError("Resposta inesperada da API."); setSearchResults([]); return; }
       const cur = productsRef.current;
       const filtered = result.data.filter((p: any) => !cur.some((pp) => pp.sku === p.sku));

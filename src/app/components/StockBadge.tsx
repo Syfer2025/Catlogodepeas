@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, AlertTriangle, PackageCheck, PackageX, RefreshCw } from "lucide-react";
 import * as api from "../services/api";
 import type { ProductBalance } from "../services/api";
@@ -11,7 +11,7 @@ interface StockBadgeProps {
   preloaded?: ProductBalance | null;
 }
 
-export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgeProps) {
+function StockBadgeInner({ sku, variant = "compact", preloaded }: StockBadgeProps) {
   const [balance, setBalance] = useState<ProductBalance | null>(preloaded ?? null);
   const [loading, setLoading] = useState(preloaded === undefined);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -20,18 +20,13 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
     if (!sku) return;
     setLoading(true);
     setFetchError(null);
-    console.log(`[StockBadge] Fetching balance for SKU: ${sku}${force ? " (FORCE)" : ""}`);
     api.getProductBalance(sku, { force, debug: force })
       .then((data) => {
-        console.log(`[StockBadge] Result for ${sku}:`, JSON.stringify(data));
-        console.log(`[StockBadge] ${sku} → found=${data.found}, sige=${data.sige}, qty=${data.quantidade}, disp=${data.disponivel}, error=${data.error || "none"}`);
-        if (data._debug) console.log(`[StockBadge] Debug log:`, data._debug);
-        if (data._sigeResponses) console.log(`[StockBadge] SIGE responses:`, data._sigeResponses);
         setBalance(data);
         if (data.error) setFetchError(data.error);
       })
       .catch((e) => {
-        console.error(`[StockBadge] Fetch error for ${sku}:`, e);
+        console.error("[StockBadge] Fetch error for " + sku + ":", e);
         setFetchError(e.message || "Erro");
         setBalance(null);
       })
@@ -172,3 +167,5 @@ export function StockBadge({ sku, variant = "compact", preloaded }: StockBadgePr
     </div>
   );
 }
+
+export const StockBadge = React.memo(StockBadgeInner);

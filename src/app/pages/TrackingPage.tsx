@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
-import { supabase } from "../services/supabaseClient";
+import { getValidAccessToken } from "../services/supabaseClient";
 import { TrackingPageContent } from "../components/TrackingTimeline";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { Loader2, LogIn } from "lucide-react";
@@ -17,8 +17,7 @@ export function TrackingPage() {
   });
 
   useEffect(function () {
-    supabase.auth.getSession().then(function (res) {
-      var token = res.data?.session?.access_token || null;
+    getValidAccessToken().then(function (token) {
       setAccessToken(token);
       setLoading(false);
     });

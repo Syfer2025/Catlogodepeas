@@ -83,13 +83,11 @@ function loadPdfJs(): Promise<void> {
     let lastErr: Error | null = null;
     for (const cdn of CDN_SOURCES) {
       try {
-        console.log(`[PDF.js] Trying ${cdn.name}...`);
         await tryLoadScript(cdn.script);
         const lib = (window as any).pdfjsLib;
         if (lib) {
           lib.GlobalWorkerOptions.workerSrc = cdn.worker;
           _pdfjsLoaded = true;
-          console.log(`[PDF.js] Loaded from ${cdn.name}`);
           return;
         }
         lastErr = new Error(`${cdn.name}: script loaded but pdfjsLib undefined`);

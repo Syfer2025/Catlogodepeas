@@ -72,6 +72,10 @@ interface UserProfile {
   email: string;
   phone: string;
   cpf: string;
+  personType?: string;
+  cnpj?: string;
+  razaoSocial?: string;
+  inscricaoEstadual?: string;
   address: string;
   city: string;
   state: string;
@@ -154,7 +158,7 @@ export function CheckoutPage() {
   const [couponError, setCouponError] = useState<string | null>(null);
 
   const couponDiscount = couponApplied?.discountAmount ?? 0;
-  const totalWithShipping = totalPrice + shippingPrice - couponDiscount;
+  const totalWithShipping = Math.max(0, totalPrice + shippingPrice - couponDiscount);
 
   // Mercado Pago
   const [mpEnabled, setMpEnabled] = useState(false);
@@ -214,6 +218,10 @@ export function CheckoutPage() {
           email: me.email || "",
           phone: me.phone || "",
           cpf: me.cpf || "",
+          personType: me.personType || "pf",
+          cnpj: me.cnpj || "",
+          razaoSocial: me.razaoSocial || "",
+          inscricaoEstadual: me.inscricaoEstadual || "",
           address: me.address || "",
           city: me.city || "",
           state: me.state || "",
@@ -296,7 +304,6 @@ export function CheckoutPage() {
             });
           }
         }
-        console.log("[Checkout] Layer 3 stock validation: " + skus.length + " items checked, " + issues.length + " issues found");
         setStockValidation({ loading: false, checked: true, issues: issues });
       })
       .catch(function (e) {
@@ -304,6 +311,57 @@ export function CheckoutPage() {
         setStockValidation({ loading: false, checked: true, issues: [] });
       });
   }, [items.length]); // Re-check when item count changes
+
+  // ─── Polling for Mercado Pago payment status ───
+  // (Must be declared before the MP return URL handler that references it)
+  const startMPPolling = useCallback((paymentId: string, extRef: string | null, pollAccessToken?: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    const checkMPStatus = async () => {
+      try {
+        const result = await api.getMPPaymentStatus(paymentId);
+        setPaymentStatus(result.status);
+        const statusLabels: Record<string, string> = {
+          approved: "Aprovado",
+          pending: "Pendente",
+          in_process: "Em processamento",
+          rejected: "Rejeitado",
+          cancelled: "Cancelado",
+          refunded: "Reembolsado",
+        };
+        setPaymentStatusLabel(statusLabels[result.status] || result.status);
+
+        if (result.status === "approved") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setStep("success");
+          trackEvent("purchase", {
+            transaction_id: paymentId,
+            currency: "BRL",
+            value: result.transaction_amount || totalWithShipping,
+            payment_type: "mercadopago",
+          });
+          clearCart();
+          // NOTE: "paid" status is set by MercadoPago webhook (server-side verified).
+          // User endpoint blocks "paid" for security — just link transactionId.
+          if (pollAccessToken && extRef && paymentId) {
+            api.updateOrderStatus(pollAccessToken, extRef, "awaiting_payment", String(paymentId)).catch(e =>
+              console.error("MP polling: update transactionId error (non-fatal):", e)
+            );
+          }
+        } else if (result.status === "rejected" || result.status === "cancelled" || result.status === "refunded") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setErrorMessage("Pagamento " + (statusLabels[result.status] || result.status) + ".");
+          setErrorDetail(result.status_detail || "");
+          setStep("error");
+        }
+      } catch (e) {
+        console.error("MP Status poll error:", e);
+      }
+    };
+
+    checkMPStatus();
+    pollRef.current = setInterval(checkMPStatus, 8000); // Poll every 8s for MP
+  }, [clearCart, trackEvent, totalWithShipping]);
 
   // ─── Handle Mercado Pago return URL ───
   useEffect(() => {
@@ -326,7 +384,7 @@ export function CheckoutPage() {
       trackEvent("purchase", {
         transaction_id: collectionId || extRef || "",
         currency: "BRL",
-        value: totalPrice,
+        value: totalWithShipping,
         payment_type: "mercadopago",
       });
       // NOTE: "paid" status is set by MercadoPago webhook (server-side verified).
@@ -343,7 +401,7 @@ export function CheckoutPage() {
       if (collectionId) {
         setTxId(collectionId);
         // Start polling MP payment status
-        startMPPolling(collectionId, extRef || null);
+        startMPPolling(collectionId, extRef || null, accessToken || undefined);
       }
     } else if (collectionStatus === "rejected" || collectionStatus === "null") {
       setStep("error");
@@ -354,7 +412,8 @@ export function CheckoutPage() {
 
     // Clean URL params
     navigate("/checkout", { replace: true });
-  }, [searchParams, mpReturnHandled, clearCart, trackEvent, totalPrice, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, mpReturnHandled, clearCart, trackEvent, totalWithShipping, navigate, accessToken, startMPPolling]);
 
   // ─── Cleanup polling ───
   useEffect(() => {
@@ -367,10 +426,14 @@ export function CheckoutPage() {
   const effectiveName = nameEdit.trim() || profile.name.trim();
   const effectiveCpf = cpfEdit.replace(/\D/g, "") || profile.cpf.replace(/\D/g, "");
   const effectivePhone = phoneEdit.replace(/\D/g, "") || profile.phone.replace(/\D/g, "");
+  const isPJ = profile.personType === "pj";
+  const effectiveCnpj = isPJ ? (profile.cnpj || "").replace(/\D/g, "") : "";
+  // For PagHiper payer_cpf_cnpj: use CNPJ when PJ, CPF when PF
+  const effectiveCpfCnpj = isPJ && effectiveCnpj.length === 14 ? effectiveCnpj : effectiveCpf;
 
   // Validations
   const nameValid = effectiveName.length >= 2;
-  const cpfValid = effectiveCpf.length === 11;
+  const cpfValid = effectiveCpf.length === 11 || (isPJ && effectiveCnpj.length === 14);
   const phoneValid = effectivePhone.length >= 10;
 
   // Address validation — uses the new address picker
@@ -451,7 +514,6 @@ export function CheckoutPage() {
         buyerEmail: email,
       });
       if (result.ok) {
-        console.log("[Affiliate] Sale tracked for code=" + affiliateCode + " order=" + orderId);
         clearAffiliateCode();
       }
     } catch (e) {
@@ -523,7 +585,6 @@ export function CheckoutPage() {
           state: selectedAddress ? selectedAddress.state : profile.state,
           cep: selectedAddress ? selectedAddress.cep : profile.cep,
         });
-        console.log("Profile saved to KV before SIGE sync");
       } catch (profileErr: any) {
         console.error("Failed to save profile to KV:", profileErr);
         // Continue anyway — sync may still work if profile existed
@@ -536,16 +597,14 @@ export function CheckoutPage() {
         const myMapping = await api.sigeMyMapping(accessToken);
         if (myMapping.found && myMapping.sigeCustomerId) {
           sigeCustomerId = myMapping.sigeCustomerId;
-          console.log("SIGE mapping found:", sigeCustomerId);
         }
       } catch (e) {
-        console.log("SIGE my-mapping check failed (non-fatal):", e);
+        // SIGE my-mapping check failed — non-fatal, continue
       }
 
       if (!sigeCustomerId && userId) {
         try {
           const syncResult = await api.sigeSyncCustomer(accessToken, userId);
-          console.log("SIGE sync result:", JSON.stringify(syncResult));
           // sigeCustomerId lives inside mapping.sigeCustomerId
           sigeCustomerId =
             syncResult.mapping?.sigeCustomerId ||
@@ -556,44 +615,38 @@ export function CheckoutPage() {
         }
       }
 
+      // SIGE sync is non-blocking: if it fails, checkout continues with local-only order.
+      // Order will be saved to KV and payment charge created normally.
+      // Admin can manually sync later or webhook will capture payment.
       if (!sigeCustomerId) {
-        setErrorMessage("Não foi possível vincular seu cadastro ao SIGE.");
-        setErrorDetail("Verifique se seu perfil está completo (nome, CPF, etc) em Minha Conta.");
-        setStep("error");
-        setSubmitting(false);
-        return;
+        console.warn("[Checkout] SIGE customer sync unavailable — proceeding with local-only order.");
       }
 
-      // 2. Create SIGE order
-      const salePayload: api.CreateSalePayload = {
-        codCliente: sigeCustomerId,
-        items: items.map((item) => ({
-          codProduto: item.sku,
-          quantidade: item.quantidade,
-          // valorUnitario is REQUIRED by SIGE API — always send it.
-          // Use nullish coalescing (??) so a price of 0 is preserved;
-          // only null/undefined falls back to 0 (backend will fetch real price from SIGE).
-          valorUnitario: item.precoUnitario ?? 0,
-          // Product name and image for order history display in user panel
-          titulo: item.titulo,
-          imageUrl: item.imageUrl,
-          // NOTE: codRef is NOT sent here — the backend resolves it automatically
-          // by fetching the product's references from SIGE API.
-          // Sending codRef = codProduto was WRONG (SIGE concatenates them for lookup).
-        })),
-        tipoPedido: "704",
-        observacao: observacao.trim() || `Pedido via site - ${effectiveName}`,
-      };
-
+      // 2. Create SIGE order (only when SIGE customer is linked)
       let saleResult: any = null;
-      try {
-        saleResult = await api.sigeCreateSale(accessToken, salePayload);
-        if (saleResult?.orderId) {
-          setSigeOrderId(saleResult.orderId);
+      if (sigeCustomerId) {
+        const salePayload: api.CreateSalePayload = {
+          codCliente: sigeCustomerId,
+          items: items.map((item) => ({
+            codProduto: item.sku,
+            quantidade: item.quantidade,
+            valorUnitario: item.precoUnitario ?? 0,
+            titulo: item.titulo,
+            imageUrl: item.imageUrl,
+          })),
+          tipoPedido: "704",
+          observacao: observacao.trim() || "Pedido via site - " + effectiveName,
+        };
+
+        try {
+          saleResult = await api.sigeCreateSale(accessToken, salePayload);
+          if (saleResult?.orderId) {
+            setSigeOrderId(saleResult.orderId);
+          }
+        } catch (e: any) {
+          console.error("SIGE create sale error:", e);
+          // Continue with payment even if SIGE fails — payment is primary
         }
-      } catch (e: any) {
-        console.error("SIGE create sale error:", e);
-        // Continue with PagHiper even if SIGE fails — payment is primary
       }
 
       // 3. Create PagHiper charge
@@ -674,8 +727,6 @@ export function CheckoutPage() {
         free: selectedShipping.free,
         sisfreteQuoteId: selectedShipping.sisfreteQuoteId || undefined,
       } : undefined;
-      console.log("[Checkout] selectedShipping full:", JSON.stringify(selectedShipping));
-      console.log("[Checkout] orderShippingOpt:", JSON.stringify(orderShippingOpt));
       const orderCouponInfo = couponApplied ? {
         code: couponApplied.code,
         discountType: couponApplied.discountType,
@@ -683,22 +734,25 @@ export function CheckoutPage() {
         discountAmount: couponApplied.discountAmount,
       } : undefined;
 
-      // Increment coupon usage if applied
-      if (couponApplied) {
+      // NOTE: Coupon usage is incremented AFTER payment charge is successfully created
+      // (not here) to avoid consuming the coupon if the payment creation fails.
+      var couponUsed = false;
+      var _useCouponOnce = async function () {
+        if (couponUsed || !couponApplied) return;
+        couponUsed = true;
         try {
           await api.useCoupon(couponApplied.code);
-          console.log("Coupon used:", couponApplied.code);
         } catch (e) {
           console.error("Coupon use error (non-fatal):", e);
         }
-      }
+      };
 
       if (paymentMethod === "pix") {
         const pixPayload: api.PixCreatePayload = {
           order_id: localOrderId,
           payer_email: profile.email,
           payer_name: effectiveName,
-          payer_cpf_cnpj: effectiveCpf,
+          payer_cpf_cnpj: effectiveCpfCnpj,
           payer_phone: effectivePhone || undefined,
           days_due_date: "1",
           items: paghiperItems,
@@ -728,6 +782,7 @@ export function CheckoutPage() {
             coupon: orderCouponInfo,
           } as any);
           trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
+          _useCouponOnce();
         } catch (e) {
           console.error("Save user order error (non-fatal):", e);
         }
@@ -736,7 +791,7 @@ export function CheckoutPage() {
           order_id: localOrderId,
           payer_email: profile.email,
           payer_name: effectiveName,
-          payer_cpf_cnpj: effectiveCpf,
+          payer_cpf_cnpj: effectiveCpfCnpj,
           payer_phone: effectivePhone || undefined,
           payer_street: fullAddrStr || undefined,
           payer_city: (selectedAddress ? selectedAddress.city : profile.city) || undefined,
@@ -770,6 +825,7 @@ export function CheckoutPage() {
             coupon: orderCouponInfo,
           } as any);
           trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
+          _useCouponOnce();
         } catch (e) {
           console.error("Save user order error (non-fatal):", e);
         }
@@ -836,6 +892,7 @@ export function CheckoutPage() {
             coupon: orderCouponInfo,
           } as any);
           trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
+          _useCouponOnce();
         } catch (e) {
           console.error("Save user order error (non-fatal):", e);
         }
@@ -904,6 +961,7 @@ export function CheckoutPage() {
             installments: cardInstallments,
           } as any);
           trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
+          _useCouponOnce();
         } catch (e) {
           console.error("Save user order error (non-fatal):", e);
         }
@@ -1002,56 +1060,6 @@ export function CheckoutPage() {
     checkStatus();
     pollRef.current = setInterval(checkStatus, 5000);
   }, [clearCart, trackEvent, totalPrice, totalWithShipping, shippingPrice, items]);
-
-  // ─── Polling for Mercado Pago payment status ───
-  const startMPPolling = useCallback((paymentId: string, extRef: string | null) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-
-    const checkMPStatus = async () => {
-      try {
-        const result = await api.getMPPaymentStatus(paymentId);
-        setPaymentStatus(result.status);
-        const statusLabels: Record<string, string> = {
-          approved: "Aprovado",
-          pending: "Pendente",
-          in_process: "Em processamento",
-          rejected: "Rejeitado",
-          cancelled: "Cancelado",
-          refunded: "Reembolsado",
-        };
-        setPaymentStatusLabel(statusLabels[result.status] || result.status);
-
-        if (result.status === "approved") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setStep("success");
-          trackEvent("purchase", {
-            transaction_id: paymentId,
-            currency: "BRL",
-            value: result.transaction_amount || totalWithShipping,
-            payment_type: "mercadopago",
-          });
-          clearCart();
-          // NOTE: "paid" status is set by MercadoPago webhook (server-side verified).
-          // User endpoint blocks "paid" for security — just link transactionId.
-          if (accessToken && extRef && paymentId) {
-            api.updateOrderStatus(accessToken, extRef, "awaiting_payment", String(paymentId)).catch(e =>
-              console.error("MP polling: update transactionId error (non-fatal):", e)
-            );
-          }
-        } else if (result.status === "rejected" || result.status === "cancelled" || result.status === "refunded") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setErrorMessage("Pagamento " + (statusLabels[result.status] || result.status) + ".");
-          setErrorDetail(result.status_detail || "");
-          setStep("error");
-        }
-      } catch (e) {
-        console.error("MP Status poll error:", e);
-      }
-    };
-
-    checkMPStatus();
-    pollRef.current = setInterval(checkMPStatus, 8000); // Poll every 8s for MP
-  }, [clearCart, trackEvent, totalWithShipping]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -1448,7 +1456,7 @@ export function CheckoutPage() {
               <button
                 onClick={() => {
                   if (paymentMethod === "mercadopago" && txId) {
-                    startMPPolling(txId, orderId);
+                    startMPPolling(txId, orderId, accessToken || undefined);
                   } else if (txId) {
                     startPolling(txId, paymentMethod);
                   }
@@ -1553,7 +1561,7 @@ export function CheckoutPage() {
     );
   }
 
-  // ─── Error ───
+  // ─── Error ─��─
   if (step === "error") {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -1835,7 +1843,12 @@ export function CheckoutPage() {
                       />
                       {cpfEdit && !cpfValid && (
                         <p className="text-red-500 mt-1" style={{ fontSize: "0.72rem" }}>
-                          CPF deve ter 11 digitos
+                          {isPJ ? "CPF deve ter 11 dígitos (ou CNPJ será usado do perfil)" : "CPF deve ter 11 dígitos"}
+                        </p>
+                      )}
+                      {isPJ && effectiveCnpj.length === 14 && (
+                        <p className="text-blue-600 mt-1" style={{ fontSize: "0.72rem" }}>
+                          CNPJ da empresa será usado para faturamento
                         </p>
                       )}
                     </div>
@@ -2482,8 +2495,13 @@ export function CheckoutPage() {
                     <CreditCard className="w-4 h-4" />
                     Ir para Pagamento
                   </button>
-                  {!canProceed && items.length > 0 && totalPrice > 0 && (
+                  {!canProceed && items.length > 0 && (
                     <div className="mt-2 space-y-1 text-center">
+                      {totalPrice <= 0 && (
+                        <p className="text-red-600" style={{ fontSize: "0.75rem", fontWeight: 600 }}>
+                          Os itens do carrinho estao sem preco definido. Entre em contato pelo WhatsApp.
+                        </p>
+                      )}
                       {!nameValid && (
                         <p className="text-amber-600" style={{ fontSize: "0.75rem" }}>
                           Preencha seu nome completo
@@ -2491,7 +2509,7 @@ export function CheckoutPage() {
                       )}
                       {!cpfValid && (
                         <p className="text-amber-600" style={{ fontSize: "0.75rem" }}>
-                          Informe um CPF válido
+                          Informe um CPF valido
                         </p>
                       )}
                       {!phoneValid && (
@@ -2501,7 +2519,7 @@ export function CheckoutPage() {
                       )}
                       {!addressComplete && (
                         <p className="text-amber-600" style={{ fontSize: "0.75rem" }}>
-                          Adicione um endereço de entrega
+                          Adicione um endereco de entrega
                         </p>
                       )}
                       {hasStockIssues && (

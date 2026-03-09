@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import React from "react";
 import {
   ShieldCheck,
@@ -257,12 +257,12 @@ export function AdminWarranty() {
     }
   };
 
-  const filteredPlans = search.trim()
+  const filteredPlans = useMemo(() => search.trim()
     ? plans.filter((p) =>
         p.name.toLowerCase().indexOf(search.toLowerCase()) >= 0 ||
         (p.description || "").toLowerCase().indexOf(search.toLowerCase()) >= 0
       )
-    : plans;
+    : plans, [plans, search]);
 
   if (loading) {
     return (

@@ -172,10 +172,8 @@ export function SigeDepModule({ isConnected }: SigeDepModuleProps) {
 
       const result = await api.sigeDep(token, endpoint, queryParams);
       setTestResult(result);
-      console.log(`[SIGE] GET /${selectedEndpoint.path} result:`, result);
     } catch (e: any) {
       setTestError(e.message || "Erro ao consultar endpoint.");
-      console.log(`[SIGE] GET /${selectedEndpoint?.path} error:`, e.message);
     } finally { setTesting(false); }
   };
 

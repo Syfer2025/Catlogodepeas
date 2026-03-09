@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { Link } from "react-router";
 import {
   X,
@@ -260,8 +260,8 @@ export function CartDrawer() {
   );
 }
 
-// Individual cart item row
-function CartItemRow({
+// Individual cart item row — memoized to avoid re-renders when sibling items change
+const CartItemRow = React.memo(function CartItemRow({
   item,
   onRemove,
   onUpdateQty,
@@ -389,4 +389,4 @@ function CartItemRow({
       </button>
     </div>
   );
-}
+});
