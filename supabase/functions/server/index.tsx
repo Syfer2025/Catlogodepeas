@@ -10862,15 +10862,25 @@ app.post(BASE + "/produtos/saldos", async (c) => {
         results.push(fr);
       }
 
-      // Batch write all KV entries at once
+      // Batch-write KV entries in small chunks to avoid PostgreSQL deadlocks
       if (kvWritesBatch.length > 0) {
-        const batchKeys: string[] = [];
-        const batchVals: string[] = [];
-        for (const entry of kvWritesBatch) {
-          batchKeys.push(entry.key);
-          batchVals.push(entry.value);
-        }
-        kv.mset(batchKeys, batchVals).catch(function(e) { console.error("[Saldo bulk] mset error:", e); });
+        var KV_CHUNK = 5;
+        (async function() {
+          for (var ci = 0; ci < kvWritesBatch.length; ci += KV_CHUNK) {
+            var chunk = kvWritesBatch.slice(ci, ci + KV_CHUNK);
+            var chunkKeys: string[] = [];
+            var chunkVals: string[] = [];
+            for (var entry of chunk) {
+              chunkKeys.push(entry.key);
+              chunkVals.push(entry.value);
+            }
+            try {
+              await kv.mset(chunkKeys, chunkVals);
+            } catch (e) {
+              console.error("[Saldo bulk] mset chunk error:", e);
+            }
+          }
+        })();
       }
     }
 
@@ -12217,15 +12227,25 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
           results.push({ ...fr, cached: false });
         }
 
-        // Batch write all KV entries at once
+        // Batch write KV entries in small chunks to avoid PostgreSQL deadlocks
         if (kvWritesBatch.length > 0) {
-          const batchKeys: string[] = [];
-          const batchVals: string[] = [];
-          for (const entry of kvWritesBatch) {
-            batchKeys.push(entry.key);
-            batchVals.push(entry.value);
-          }
-          kv.mset(batchKeys, batchVals).catch(function(e) { console.error("[PriceBulk] mset error:", e); });
+          var KV_CHUNK_P = 5;
+          (async function() {
+            for (var ci = 0; ci < kvWritesBatch.length; ci += KV_CHUNK_P) {
+              var chunk = kvWritesBatch.slice(ci, ci + KV_CHUNK_P);
+              var chunkKeys: string[] = [];
+              var chunkVals: string[] = [];
+              for (var entry of chunk) {
+                chunkKeys.push(entry.key);
+                chunkVals.push(entry.value);
+              }
+              try {
+                await kv.mset(chunkKeys, chunkVals);
+              } catch (e) {
+                console.error("[PriceBulk] mset chunk error:", e);
+              }
+            }
+          })();
         }
       }
     }
