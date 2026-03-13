@@ -1,0 +1,230 @@
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.9.4 -> 11.11.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.11.1
+npm notice To update run: npm install -g npm@11.11.1
+npm notice
+[autopecascarreta@carretao Catlogodepeas]$ npm run build
+
+> @figma/my-make-file@0.0.1 build
+> vite build
+
+vite v6.3.5 building for production...
+✓ 2826 modules transformed.
+[plugin vite:reporter]
+(!) /home/autopecascarreta/repositories/Catlogodepeas/src/app/services/api.ts is dynamically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/utils/prefetch.ts but also statically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/AddToCartButton.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/CartAbandonedTracker.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/CheckoutAddressManager.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/CouponMegaMenu.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ExitIntentPopup.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/Header.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/HomeReels.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/InfluencerCarousel.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/Layout.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/MobileBottomNav.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/PriceBadge.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ProductReels.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ProductReviews.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/RecentlyViewedSection.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ReviewStars.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ShippingCalculator.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/StockBadge.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/StockBar.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/SuperPromoSection.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/TrackingTimeline.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/contexts/AffiliateContext.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/contexts/CatalogModeContext.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/contexts/HomepageInitContext.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/contexts/WishlistContext.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/AboutPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/AffiliatePage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/BrandPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/CatalogPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/CheckoutPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/ContactPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/CouponsPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/FaqPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/HomePage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/LgpdRightsPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/ProductDetailPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/UserAccountPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/UserAuthPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/UserResetPasswordPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminAdmins.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminAffiliates.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminApiSige.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminAttributes.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminAuditLog.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminAutoCateg.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminBanners.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminBranches.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminBrands.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminBulkCategoryAssign.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminCategories.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminClients.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminCoupons.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminDashboard.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminEmailMarketing.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminExitIntent.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminFaq.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminFooterBadges.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminHomepageCategories.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminInfluencers.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminInfrastructure.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminLgpdRequests.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminLoginPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminMarketing.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminMercadoPago.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminMidBanners.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminOrders.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminPagHiper.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminProducts.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminReels.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminResetPasswordPage.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminReviews.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminSettings.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminShipping.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminShippingTables.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminSisfreteWT.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminSuperPromo.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminWarranty.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminWhatsApp.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeApiDocsModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeCategoryModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeCustomerAddressModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeCustomerComplementModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeCustomerContactModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeCustomerModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeDepModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeIntegrationModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderDiagnoseModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderInstallmentModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderItemsModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderItemsTextModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeOrderObservationModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductBalanceModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductPcpModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductPriceModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductPromotionModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductReferenceModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeProductTechnicalSheetModule.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeStockExplorer.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeStockSync.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/SigeTestRunner.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/CookieConsentBanner.tsx is dynamically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/Layout.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/admin/AdminErrorScanner.tsx but also statically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/GA4Provider.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/GTMProvider.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/GoogleReviewsBadge.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/MarketingPixels.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/WebVitalsReporter.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /home/autopecascarreta/repositories/Catlogodepeas/src/app/utils/prefetch.ts is dynamically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/CategoryMegaMenu.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/contexts/CartContext.tsx but also statically imported by /home/autopecascarreta/repositories/Catlogodepeas/src/app/App.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/components/ProductCard.tsx, /home/autopecascarreta/repositories/Catlogodepeas/src/app/pages/ProductDetailPage.tsx, dynamic import will not move module into another chunk.
+
+dist/index.html                                              0.69 kB │ gzip:   0.35 kB
+dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.75 kB
+dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          19.00 kB
+dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.26 kB
+dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.07 kB
+dist/assets/index-DSKG5x8X.css                             217.34 kB │ gzip:  31.60 kB
+dist/assets/minus-BMtTwMRw.js                                0.29 kB │ gzip:   0.24 kB │ map:     0.79 kB
+dist/assets/chevron-up-2XUydoEf.js                           0.30 kB │ gzip:   0.25 kB │ map:     0.83 kB
+dist/assets/play-DxBn5Lfr.js                                 0.31 kB │ gzip:   0.25 kB │ map:     0.81 kB
+dist/assets/plus-9ZGSJK_F.js                                 0.33 kB │ gzip:   0.26 kB │ map:     0.89 kB
+dist/assets/arrow-up-B3Qscms1.js                             0.34 kB │ gzip:   0.27 kB │ map:     0.93 kB
+dist/assets/arrow-left-DgtQLhL_.js                           0.34 kB │ gzip:   0.27 kB │ map:     0.94 kB
+dist/assets/arrow-up-right-DOSpU81-.js                       0.34 kB │ gzip:   0.27 kB │ map:     0.96 kB
+dist/assets/ban-Hom5c3OV.js                                  0.35 kB │ gzip:   0.28 kB │ map:     0.93 kB
+dist/assets/gauge-aDbXFlkW.js                                0.35 kB │ gzip:   0.28 kB │ map:     0.92 kB
+dist/assets/circle-check-eIQhHCVb.js                         0.35 kB │ gzip:   0.28 kB │ map:     0.99 kB
+dist/assets/message-square-DpuG6D1A.js                       0.35 kB │ gzip:   0.27 kB │ map:     0.92 kB
+dist/assets/clipboard-CdHgUwkZ.js                            0.37 kB │ gzip:   0.25 kB │ map:     1.30 kB
+dist/assets/smartphone-CChBE-Id.js                           0.37 kB │ gzip:   0.29 kB │ map:     1.04 kB
+dist/assets/rotate-ccw-DyWZGCcJ.js                           0.37 kB │ gzip:   0.29 kB │ map:     0.98 kB
+dist/assets/info--360x9E9.js                                 0.38 kB │ gzip:   0.29 kB │ map:     1.03 kB
+dist/assets/trending-up-CU9rj_nn.js                          0.38 kB │ gzip:   0.29 kB │ map:     0.99 kB
+dist/assets/toggle-left-BcZ2kn4B.js                          0.38 kB │ gzip:   0.30 kB │ map:     1.08 kB
+dist/assets/circle-x-BTzdoOG2.js                             0.38 kB │ gzip:   0.29 kB │ map:     1.05 kB
+dist/assets/toggle-right-UZnEVdox.js                         0.38 kB │ gzip:   0.29 kB │ map:     1.09 kB
+dist/assets/pause-CYcuilbN.js                                0.39 kB │ gzip:   0.27 kB │ map:     1.07 kB
+dist/assets/mail-EYlsZ1Im.js                                 0.39 kB │ gzip:   0.31 kB │ map:     1.01 kB
+dist/assets/table-2-CsnwuSos.js                              0.39 kB │ gzip:   0.29 kB │ map:     0.94 kB
+dist/assets/dollar-sign-DuxPlRog.js                          0.39 kB │ gzip:   0.30 kB │ map:     1.04 kB
+dist/assets/activity-BCAYmddQ.js                             0.41 kB │ gzip:   0.31 kB │ map:     0.97 kB
+dist/assets/copy-CK-EM7ut.js                                 0.41 kB │ gzip:   0.32 kB │ map:     1.04 kB
+dist/assets/circle-help-DfTr1RYx.js                          0.41 kB │ gzip:   0.31 kB │ map:     1.11 kB
+dist/assets/link-2-DVTmrTo7.js                               0.42 kB │ gzip:   0.31 kB │ map:     1.10 kB
+dist/assets/globe-BoS9SGl6.js                                0.42 kB │ gzip:   0.30 kB │ map:     1.08 kB
+dist/assets/percent-DAtJXUsW.js                              0.42 kB │ gzip:   0.30 kB │ map:     1.16 kB
+dist/assets/database-B2WGSaN_.js                             0.42 kB │ gzip:   0.31 kB │ map:     1.12 kB
+dist/assets/type-BPD2X1sf.js                                 0.42 kB │ gzip:   0.30 kB │ map:     1.13 kB
+dist/assets/arrow-up-down-CquuCO92.js                        0.42 kB │ gzip:   0.30 kB │ map:     1.16 kB
+dist/assets/test-tube-BErYooY3.js                            0.42 kB │ gzip:   0.31 kB │ map:     1.08 kB
+dist/assets/circle-alert-BmuqIPSB.js                         0.42 kB │ gzip:   0.30 kB │ map:     1.21 kB
+dist/assets/external-link-BMtK3fi8.js                        0.43 kB │ gzip:   0.31 kB │ map:     1.11 kB
+dist/assets/shopping-bag-Cm6D3fKE.js                         0.43 kB │ gzip:   0.31 kB │ map:     1.10 kB
+dist/assets/funnel-DuA11Zo6.js                               0.43 kB │ gzip:   0.32 kB │ map:     0.98 kB
+dist/assets/eye-8WJbYNlB.js                                  0.43 kB │ gzip:   0.31 kB │ map:     1.05 kB
+dist/assets/calendar-Dg4Swamw.js                             0.43 kB │ gzip:   0.31 kB │ map:     1.20 kB
+dist/assets/monitor-CzznQ3e_.js                              0.43 kB │ gzip:   0.31 kB │ map:     1.22 kB
+dist/assets/log-in-BkfIVZoG.js                               0.43 kB │ gzip:   0.32 kB │ map:     1.12 kB
+dist/assets/download-evVm_iyG.js                             0.44 kB │ gzip:   0.33 kB │ map:     1.13 kB
+dist/assets/barcode-y3vFUAa5.js                              0.44 kB │ gzip:   0.29 kB │ map:     1.21 kB
+dist/assets/shield-B_j6aVwX.js                               0.45 kB │ gzip:   0.33 kB │ map:     1.00 kB
+dist/assets/award-I5wYaEDq.js                                0.45 kB │ gzip:   0.33 kB │ map:     1.08 kB
+dist/assets/pencil-CNhBnOgb.js                               0.45 kB │ gzip:   0.33 kB │ map:     1.06 kB
+dist/assets/flame-D259i5NU.js                                0.45 kB │ gzip:   0.34 kB │ map:     1.00 kB
+dist/assets/pen-line-Cw_UcZFB.js                             0.45 kB │ gzip:   0.33 kB │ map:     1.07 kB
+dist/assets/book-open-C5JbGY0n.js                            0.45 kB │ gzip:   0.31 kB │ map:     1.08 kB
+dist/assets/wifi-qFmf0UF9.js                                 0.45 kB │ gzip:   0.31 kB │ map:     1.15 kB
+dist/assets/wallet-B57_pzhE.js                               0.46 kB │ gzip:   0.31 kB │ map:     1.07 kB
+dist/assets/house-BL0bN8Cz.js                                0.46 kB │ gzip:   0.32 kB │ map:     1.07 kB
+dist/assets/send-CRIIM8eo.js                                 0.46 kB │ gzip:   0.34 kB │ map:     1.07 kB
+dist/assets/thumbs-up-DrmYB3TI.js                            0.48 kB │ gzip:   0.34 kB │ map:     1.10 kB
+dist/assets/scissors-CzwRw5en.js                             0.49 kB │ gzip:   0.32 kB │ map:     1.31 kB
+dist/assets/shield-check-BLJ3DPDe.js                         0.49 kB │ gzip:   0.36 kB │ map:     1.14 kB
+dist/assets/ticket-pPX5gPIE.js                               0.50 kB │ gzip:   0.32 kB │ map:     1.23 kB
+dist/assets/tag-DUlgORIT.js                                  0.50 kB │ gzip:   0.35 kB │ map:     1.14 kB
+dist/assets/save-FmEhuBuk.js                                 0.50 kB │ gzip:   0.33 kB │ map:     1.17 kB
+dist/assets/list-ordered-D5O68QIv.js                         0.51 kB │ gzip:   0.32 kB │ map:     1.37 kB
+dist/assets/file-text-B6N6wJAY.js                            0.51 kB │ gzip:   0.32 kB │ map:     1.29 kB
+dist/assets/gift-DGCPtF7u.js                                 0.53 kB │ gzip:   0.36 kB │ map:     1.31 kB
+dist/assets/hourglass-HanJ5Qip.js                            0.53 kB │ gzip:   0.34 kB │ map:     1.31 kB
+dist/assets/scale-DRUSmFMq.js                                0.54 kB │ gzip:   0.35 kB │ map:     1.31 kB
+dist/assets/grip-vertical-Dcoji5m8.js                        0.55 kB │ gzip:   0.31 kB │ map:     1.56 kB
+dist/assets/file-spreadsheet-CWy1LnHQ.js                     0.55 kB │ gzip:   0.33 kB │ map:     1.44 kB
+dist/assets/phone-DFqueWi_.js                                0.57 kB │ gzip:   0.36 kB │ map:     1.11 kB
+dist/assets/truck-BrGBgXcm.js                                0.58 kB │ gzip:   0.37 kB │ map:     1.43 kB
+dist/assets/film-WKiHT7tn.js                                 0.58 kB │ gzip:   0.35 kB │ map:     1.58 kB
+dist/assets/clipboard-list-UaUzDpkY.js                       0.59 kB │ gzip:   0.37 kB │ map:     1.56 kB
+dist/assets/mouse-pointer-click-DAvrm2Se.js                  0.59 kB │ gzip:   0.39 kB │ map:     1.47 kB
+dist/assets/eye-off-DBljIPuP.js                              0.60 kB │ gzip:   0.38 kB │ map:     1.38 kB
+dist/assets/folder-tree-BfaK8ggm.js                          0.65 kB │ gzip:   0.37 kB │ map:     1.45 kB
+dist/assets/JsonLdBreadcrumb-crK0t4zS.js                     0.67 kB │ gzip:   0.45 kB │ map:     2.66 kB
+dist/assets/calendar-days-DhO0m4vY.js                        0.67 kB │ gzip:   0.37 kB │ map:     1.84 kB
+dist/assets/folder-Be0BPjZ4.js                               0.82 kB │ gzip:   0.40 kB │ map:     1.84 kB
+dist/assets/qr-code-CnrpVqRR.js                              0.82 kB │ gzip:   0.42 kB │ map:     2.20 kB
+dist/assets/user-plus-QbLJXOP2.js                            0.87 kB │ gzip:   0.44 kB │ map:     2.25 kB
+dist/assets/list-D8tCBJ1b.js                                 0.90 kB │ gzip:   0.40 kB │ map:     2.44 kB
+dist/assets/users-5DkSqbMf.js                                0.92 kB │ gzip:   0.44 kB │ map:     2.18 kB
+dist/assets/volume-x-CLecm4-I.js                             1.08 kB │ gzip:   0.45 kB │ map:     2.43 kB
+dist/assets/GoogleReviewsBadge-DUb4JFN0.js                   1.28 kB │ gzip:   0.68 kB │ map:     4.26 kB
+dist/assets/CartAbandonedTracker-BYov6dX-.js                 1.30 kB │ gzip:   0.68 kB │ map:     6.00 kB
+dist/assets/VirtualProductGrid-DTJxDqd7.js                   1.37 kB │ gzip:   0.67 kB │ map:     6.49 kB
+dist/assets/OptimizedImage-Ban0zeh6.js                       1.54 kB │ gzip:   0.86 kB │ map:     8.26 kB
+dist/assets/ScrollToTopButton-CsaFddar.js                    1.83 kB │ gzip:   0.91 kB │ map:     4.53 kB
+dist/assets/TrackingPage-CbhxxZ9G.js                         1.95 kB │ gzip:   0.97 kB │ map:     4.06 kB
+dist/assets/BrandCarousel-B7WTJjA2.js                        2.35 kB │ gzip:   1.03 kB │ map:     5.58 kB
+dist/assets/NotFoundPage-OPR6H-NA.js                         2.68 kB │ gzip:   1.03 kB │ map:     5.01 kB
+dist/assets/WhatsAppButton-DkRze0bP.js                       2.76 kB │ gzip:   1.32 kB │ map:     6.00 kB
+dist/assets/SwipeHint-CVwu0FAe.js                            2.89 kB │ gzip:   1.28 kB │ map:     7.63 kB
+dist/assets/RecentlyViewedSection-D-Uq6C-6.js                4.67 kB │ gzip:   1.84 kB │ map:    14.91 kB
+dist/assets/BrandPage-BTWLthLJ.js                            4.77 kB │ gzip:   1.77 kB │ map:    12.79 kB
+dist/assets/SigeOrderInstallmentModule-83BjMoXr.js           4.93 kB │ gzip:   1.79 kB │ map:    11.08 kB
+dist/assets/MobileBottomNav-CL0w1_9x.js                      5.11 kB │ gzip:   1.91 kB │ map:    13.19 kB
+dist/assets/categoryTree-B-GGW-hT.js                         5.63 kB │ gzip:   2.28 kB │ map:    11.97 kB
+dist/assets/AddToCartButton-Dvut9Tgl.js                      6.56 kB │ gzip:   2.37 kB │ map:    22.11 kB
+dist/assets/SigeProductPcpModule-BIzQ6ypq.js                 6.79 kB │ gzip:   2.27 kB │ map:    14.86 kB
+dist/assets/ShareButtons-DbbKuw_Z.js                         6.94 kB │ gzip:   2.78 kB │ map:    14.98 kB
+dist/assets/AdminMidBanners-Cy0eyvsp.js                      7.57 kB │ gzip:   2.77 kB │ map:    18.49 kB
+dist/assets/ShippingCalculator-CU1HSYOK.js                   7.71 kB │ gzip:   2.79 kB │ map:    23.72 kB
+dist/assets/WebVitalsReporter-BK1ukQ2x.js                    7.93 kB │ gzip:   3.20 kB │ map:    20.78 kB
+dist/assets/AdminFooterBadges-CHllUGD5.js                    8.20 kB │ gzip:   2.94 kB │ map:    19.90 kB
+dist/assets/AboutPage-DZvd9__9.js                            8.51 kB │ gzip:   2.48 kB │ map:    19.29 kB
+dist/assets/ExitIntentPopup-3o2bJFNh.js                      8.59 kB │ gzip:   3.17 kB │ map:    22.66 kB
+dist/assets/SigeProductBalanceModule-BdZMgBNO.js             8.90 kB │ gzip:   3.02 kB │ map:    18.83 kB
+dist/assets/CartDrawer-f2LcatMZ.js                           9.28 kB │ gzip:   3.04 kB │ map:    23.67 kB
+dist/assets/TermsPage-FFWnV_lL.js                            9.40 kB │ gzip:   3.44 kB │ map:    15.21 kB
+dist/assets/UserResetPasswordPage-CYiPfw8p.js                9.66 kB │ gzip:   3.00 kB │ map:    24.49 kB
+dist/assets/AdminDashboard-CSLIsRL1.js                       9.80 kB │ gzip:   3.15 kB │ map:    24.29 kB
+dist/assets/SigeProductPromotionModule-Cp9w05uK.js          10.00 kB │ gzip:   2.95 kB │ map:    22.93 kB
+dist/assets/CouponMegaMenu-DGNr89Ac.js                      10.05 kB │ gzip:   3.40 kB │ map:    26.74 kB
+dist/assets/FaqPage-DS0ku3Pq.js                             10.11 kB │ gzip:   3.73 kB │ map:    21.16 kB
+dist/assets/ContactPage-C1DQyX6U.js                         10.20 kB │ gzip:   3.18 kB │ map:    22.16 kB
+dist/assets/Footer-bq8_880a.js                              10.40 kB │ gzip:   2.93 kB │ map:    25.01 kB
+dist/assets/SigeOrderItemsModule-DGGvl2au.js                10.89 kB │ gzip:   3.39 kB │ map:    23.31 kB
+dist/assets/AdminResetPasswordPage-DRHcC5uW.js              11.14 kB │ gzip:   3.44 kB │ map:    28.61 kB
+dist/assets/SigeOrderObservationModule-uX0a11eR.js          12.03 kB │ gzip:   3.15 kB │ map:    28.40 kB
+dist/assets/AdminFaq-CVrij88H.js                            12.12 kB │ gzip:   3.59 kB │ map:    28.41 kB
+dist/assets/SigeOrderDiagnoseModule-DG7CvDRY.js             12.37 kB │ gzip:   4.08 kB │ map:    28.85 kB
+dist/assets/AdminExitIntent-BZjwvgC5.js                     12.50 kB │ gzip:   3.31 kB │ map:    27.13 kB
+dist/assets/SigeProductTechnicalSheetModule-D4MQk-Ks.js     12.77 kB │ gzip:   3.25 kB │ map:    30.31 kB
+dist/assets/CategoryMegaMenu-deq-D7Uu.js                    12.87 kB │ gzip:   4.04 kB │ map:    40.14 kB
+dist/assets/AdminAuditLog-l3MMmNy1.js                       13.94 kB │ gzip:   3.64 kB │ map:    34.98 kB
+dist/assets/SuperPromoSection-DEqhJ243.js                   14.25 kB │ gzip:   4.69 kB │ map:    38.22 kB
+dist/assets/SigeStockSync-Bi09dSqs.js                       14.30 kB │ gzip:   3.86 kB │ map:    34.92 kB
+dist/assets/PrivacyPolicyPage-u34n20pi.js                   14.32 kB │ gzip:   4.42 kB │ map:    23.84 kB
+dist/assets/SigeCustomerComplementModule-BQtlxWUL.js        14.53 kB │ gzip:   3.83 kB │ map:    31.92 kB
+dist/assets/AdminGA4-Cvsk334v.js                            14.68 kB │ gzip:   4.39 kB │ map:    30.93 kB
+dist/assets/SigeCustomerAddressModule-XR9Ksdol.js           14.75 kB │ gzip:   3.77 kB │ map:    34.63 kB
+dist/assets/AdminSafrapay-CEkDNKi1.js                       14.77 kB │ gzip:   4.25 kB │ map:    32.63 kB
+dist/assets/AdminLgpdRequests-Bgn5WMlx.js                   15.05 kB │ gzip:   4.21 kB │ map:    38.91 kB
+dist/assets/CheckoutAddressManager-CH1oNcOA.js              15.24 kB │ gzip:   3.89 kB │ map:    43.19 kB
+dist/assets/AdminHomepageCategories-TCc4q-yj.js             15.91 kB │ gzip:   4.44 kB │ map:    41.71 kB
+dist/assets/InfluencerCarousel-B6UKxwL_.js                  16.05 kB │ gzip:   4.95 kB │ map:    45.90 kB
+dist/assets/SigeCustomerContactModule-CXNj3_yy.js           16.14 kB │ gzip:   4.16 kB │ map:    37.73 kB
+dist/assets/SigeProductReferenceModule-aCkadkzN.js          16.40 kB │ gzip:   4.27 kB │ map:    37.78 kB
+dist/assets/AdminBranches-DB9djt3X.js                       16.41 kB │ gzip:   4.44 kB │ map:    44.14 kB
+dist/assets/AdminAdmins-DBSUf8Yx.js                         16.51 kB │ gzip:   4.79 kB │ map:    41.14 kB
+dist/assets/TrackingTimeline-TGz5O62m.js                    16.54 kB │ gzip:   4.11 kB │ map:    41.12 kB
+dist/assets/SigeProductModule-Do1PL3qB.js                   17.02 kB │ gzip:   4.44 kB │ map:    39.40 kB
+dist/assets/SigeOrderItemsTextModule-DlriomMs.js            17.22 kB │ gzip:   4.20 kB │ map:    40.07 kB
+dist/assets/ProductReviews-BgYqbR1v.js                      17.32 kB │ gzip:   5.23 kB │ map:    49.45 kB
+dist/assets/SigeCategoryModule-EwgYnS0W.js                  17.40 kB │ gzip:   3.61 kB │ map:    41.90 kB
+dist/assets/AdminCoupons-VYIca9YT.js                        17.55 kB │ gzip:   4.31 kB │ map:    42.90 kB
+dist/assets/AdminInfluencers-DNpLsP6U.js                    17.57 kB │ gzip:   5.52 kB │ map:    47.22 kB
+dist/assets/CatalogPage-8yH7nx5g.js                         17.59 kB │ gzip:   5.04 kB │ map:    50.44 kB
+dist/assets/AdminClients-DXo-yf95.js                        17.87 kB │ gzip:   4.41 kB │ map:    44.14 kB
+dist/assets/AdminCategories-BX8-ARhq.js                     17.94 kB │ gzip:   5.15 kB │ map:    41.83 kB
+dist/assets/SigeTestRunner-CfeIOVUw.js                      18.08 kB │ gzip:   4.96 kB │ map:    45.40 kB
+dist/assets/AdminBrands-CZUV7VI_.js                         18.56 kB │ gzip:   5.03 kB │ map:    50.34 kB
+dist/assets/AdminWarranty-BeN19ARQ.js                       19.04 kB │ gzip:   4.91 kB │ map:    49.86 kB
+dist/assets/SigeOrderModule-DzK08WYK.js                     19.67 kB │ gzip:   4.62 kB │ map:    48.01 kB
+dist/assets/HomeReels-CTYZ0i4G.js                           20.07 kB │ gzip:   5.66 kB │ map:    58.98 kB
+dist/assets/AdminShippingTables-aU4_qMUn.js                 20.14 kB │ gzip:   5.82 kB │ map:    53.01 kB
+dist/assets/AdminWhatsApp-CFowM2J_.js                       20.43 kB │ gzip:   5.23 kB │ map:    43.77 kB
+dist/assets/AdminReviews-DULVpI-v.js                        20.50 kB │ gzip:   4.83 kB │ map:    52.37 kB
+dist/assets/SigeDepModule-CFV5WM05.js                       20.75 kB │ gzip:   5.34 kB │ map:    45.92 kB
+dist/assets/AffiliatePage-D3BE8ozv.js                       21.00 kB │ gzip:   4.89 kB │ map:    47.52 kB
+dist/assets/SigeCustomerModule-DOoY8o6W.js                  21.59 kB │ gzip:   4.76 kB │ map:    51.86 kB
+dist/assets/AdminOrders-DqHOPcV3.js                         21.70 kB │ gzip:   5.84 kB │ map:    56.36 kB
+dist/assets/AdminAffiliates-B_66QIiW.js                     22.06 kB │ gzip:   5.35 kB │ map:    59.23 kB
+dist/assets/AdminBanners-Bgs6gIh_.js                        23.31 kB │ gzip:   5.93 kB │ map:    57.59 kB
+dist/assets/LgpdRightsPage-CFbW88X4.js                      23.66 kB │ gzip:   5.56 kB │ map:    53.73 kB
+dist/assets/SigeProductPriceModule-DwV_nozX.js              24.49 kB │ gzip:   6.07 kB │ map:    58.33 kB
+dist/assets/CouponsPage-VslMZ8TP.js                         26.24 kB │ gzip:   7.97 kB │ map:    58.32 kB
+dist/assets/AdminSuperPromo-Dqgbekec.js                     28.13 kB │ gzip:   6.64 kB │ map:    68.50 kB
+dist/assets/AdminMercadoPago-3pPwyg0f.js                    28.96 kB │ gzip:   7.35 kB │ map:    67.25 kB
+dist/assets/AdminAutoCateg-DQNMRKn4.js                      29.42 kB │ gzip:   8.13 kB │ map:    72.19 kB
+dist/assets/SigeStockExplorer-D9K3zc-X.js                   29.45 kB │ gzip:   6.86 kB │ map:    79.71 kB
+dist/assets/SigeApiDocsModule-DD5GAqsa.js                   30.28 kB │ gzip:   8.87 kB │ map:    86.84 kB
+dist/assets/AdminReels-D_jLfsha.js                          30.53 kB │ gzip:   8.78 kB │ map:    88.10 kB
+dist/assets/AdminPagHiper-DHD_fABz.js                       34.39 kB │ gzip:   6.73 kB │ map:    81.69 kB
+dist/assets/AdminRegressionTest-CEOW9nvq.js                 39.55 kB │ gzip:  10.59 kB │ map:    83.28 kB
+dist/assets/AdminBulkCategoryAssign-CspR7qzF.js             39.68 kB │ gzip:   9.95 kB │ map:   117.69 kB
+dist/assets/ProductDetailPage-BeMaKxWf.js                   40.93 kB │ gzip:  11.38 kB │ map:   125.41 kB
+dist/assets/AdminApiSige-B_11f9vi.js                        45.84 kB │ gzip:   9.35 kB │ map:    91.13 kB
+dist/assets/AdminSisfreteWT-CnLTUHEx.js                     45.90 kB │ gzip:  10.31 kB │ map:   112.56 kB
+dist/assets/UserAuthPage-wNDIvOsA.js                        46.32 kB │ gzip:   9.46 kB │ map:   128.17 kB
+dist/assets/AdminAttributes-BJ0UXFS-.js                     48.02 kB │ gzip:  11.43 kB │ map:   132.15 kB
+dist/assets/AdminErrorScanner-BR72V7nb.js                   48.15 kB │ gzip:  12.21 kB │ map:    88.75 kB
+dist/assets/SigeIntegrationModule-OqCCWXq-.js               49.65 kB │ gzip:  10.59 kB │ map:   143.87 kB
+dist/assets/AdminInfrastructure-okSY2nIh.js                 49.70 kB │ gzip:  10.98 kB │ map:   116.82 kB
+dist/assets/AdminMarketing-gTPEW9pk.js                      52.23 kB │ gzip:  10.52 kB │ map:   109.18 kB
+dist/assets/AdminEmailMarketing-Dg5CwP1i.js                 58.30 kB │ gzip:  10.70 kB │ map:   139.09 kB
+dist/assets/AdminPage-DmLd_iiV.js                           59.32 kB │ gzip:  15.65 kB │ map:   143.33 kB
+dist/assets/AdminSettings-CXaYeV7O.js                       63.02 kB │ gzip:  11.44 kB │ map:   152.45 kB
+dist/assets/CheckoutPage-fmxelRN7.js                        69.34 kB │ gzip:  16.35 kB │ map:   201.09 kB
+dist/assets/AdminShipping-C-zchWTI.js                       76.02 kB │ gzip:  17.72 kB │ map:   180.84 kB
+dist/assets/UserAccountPage-z5i8CZyF.js                     78.14 kB │ gzip:  16.27 kB │ map:   213.29 kB
+dist/assets/vendor-router-DAYXZy-F.js                       87.14 kB │ gzip:  29.56 kB │ map:   504.12 kB
+dist/assets/AdminProducts-CDpl0EHO.js                      101.57 kB │ gzip:  21.44 kB │ map:   235.34 kB
+dist/assets/vendor-motion-BKwGhc5c.js                      126.67 kB │ gzip:  41.72 kB │ map:   699.99 kB
+dist/assets/vendor-react-CeZ-fTZM.js                       143.49 kB │ gzip:  46.02 kB │ map:   347.80 kB
+dist/assets/vendor-supabase-B9q_TACa.js                    175.83 kB │ gzip:  46.14 kB │ map:   832.79 kB
+dist/assets/index-B5KqPuc7.js                              268.57 kB │ gzip:  68.58 kB │ map:   817.92 kB
+dist/assets/vendor-recharts-CDlkYCw3.js                    377.03 kB │ gzip: 104.24 kB │ map: 1,633.39 kB
+✓ built in 41.93s
+[autopecascarreta@carretao Catlogodepeas]$

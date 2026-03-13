@@ -21,7 +21,6 @@ var QUICK_LINKS = [
   { label: "Catálogo Completo", path: "/catalogo" },
   { label: "Fale Conosco", path: "/contato" },
   { label: "Perguntas Frequentes", path: "/faq" },
-  { label: "Programa de Afiliados", path: "/afiliados" },
   { label: "Política de Privacidade", path: "/politica-de-privacidade" },
   { label: "Termos de Uso", path: "/termos-de-uso" },
   { label: "Exercício de Direitos (LGPD)", path: "/exercicio-de-direitos" },
