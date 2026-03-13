@@ -1,4 +1,9 @@
 ---
 deployment:
   tasks:
-    - /bin/cp -R /home/autopecascarreta/repositories/Catlogodepeas/*  /home/autopecascarreta/public_html/
+    - export PATH="/opt/cpanel/ea-nodejs22/bin:$PATH"
+    - cd /home/autopecascarreta/repositories/Catlogodepeas
+    - npm install --production=false
+    - npm run build
+    - rm -rf /home/autopecascarreta/public_html/assets
+    - cp -r dist/* /home/autopecascarreta/public_html/
