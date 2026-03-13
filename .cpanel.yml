@@ -1,6 +1,4 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/autopecascarreta/public_html
-    - /bin/rm -rf $DEPLOYPATH/*
-    - /bin/cp -R * $DEPLOYPATH/
+    - /bin/cp -R /home/autopecascarreta/repositories/Catlogodepeas/* /home/autopecascarreta/public_html/
