@@ -1,23 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Award,
-  Plus,
-  Trash2,
-  Edit3,
-  Upload,
-  X,
-  Loader2,
-  Eye,
-  EyeOff,
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Save,
-  Package,
-  Palette,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import Award from "lucide-react/dist/esm/icons/award.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Edit3 from "lucide-react/dist/esm/icons/edit-3.js";
+import Upload from "lucide-react/dist/esm/icons/upload.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import Package from "lucide-react/dist/esm/icons/package.js";
+import Palette from "lucide-react/dist/esm/icons/palette.js";
+import ZoomIn from "lucide-react/dist/esm/icons/zoom-in.js";
+import ZoomOut from "lucide-react/dist/esm/icons/zoom-out.js";
 import * as api from "../../services/api";
 import type { BrandItem, ProdutoDB } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";

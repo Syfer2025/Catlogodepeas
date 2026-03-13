@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router";
 import { getValidAccessToken } from "../services/supabaseClient";
 import { TrackingPageContent } from "../components/TrackingTimeline";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
-import { Loader2, LogIn } from "lucide-react";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import LogIn from "lucide-react/dist/esm/icons/log-in";
 
 export function TrackingPage() {
   var params = useParams<{ orderId: string }>();
@@ -12,7 +13,7 @@ export function TrackingPage() {
   var [loading, setLoading] = useState(true);
 
   useDocumentMeta({
-    title: "Rastreio do Pedido - Carretao Auto Pecas",
+    title: "Rastreio do Pedido - Carretão Auto Peças",
     description: "Acompanhe o status de entrega do seu pedido.",
   });
 
@@ -38,10 +39,10 @@ export function TrackingPage() {
           <LogIn className="w-8 h-8 text-red-500" />
         </div>
         <h1 className="text-gray-900 mb-2" style={{ fontSize: "1.2rem", fontWeight: 700 }}>
-          Faca login para rastrear
+          Faça login para rastrear
         </h1>
         <p className="text-gray-500 mb-6" style={{ fontSize: "0.88rem" }}>
-          Voce precisa estar logado para acompanhar seus pedidos.
+          Você precisa estar logado para acompanhar seus pedidos.
         </p>
         <button
           onClick={function () { navigate("/conta"); }}
@@ -58,7 +59,7 @@ export function TrackingPage() {
   if (!params.orderId) {
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
-        <p className="text-gray-500">Pedido nao especificado.</p>
+        <p className="text-gray-500">Pedido não especificado.</p>
       </div>
     );
   }

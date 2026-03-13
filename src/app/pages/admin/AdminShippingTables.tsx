@@ -1,17 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Upload,
-  Loader2,
-  Trash2,
-  FileSpreadsheet,
-  Check,
-  AlertTriangle,
-  Eye,
-  X,
-  Table2,
-  Info,
-  ChevronUp,
-} from "lucide-react";
+import { Upload, Loader2, Trash2, FileSpreadsheet, Check, AlertTriangle, Eye, X, Table2, Info, ChevronUp } from "lucide-react";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";

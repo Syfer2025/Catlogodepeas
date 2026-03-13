@@ -1,22 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  LayoutGrid,
-  Plus,
-  Trash2,
-  Edit3,
-  Upload,
-  X,
-  Loader2,
-  GripVertical,
-  Eye,
-  EyeOff,
-  Image,
-  ChevronDown,
-  Search,
-  CheckCircle2,
-  AlertCircle,
-  Save,
-} from "lucide-react";
+import { LayoutGrid, Plus, Trash2, Edit3, Upload, X, Loader2, GripVertical, Eye, EyeOff, Image, ChevronDown, Search, CheckCircle2, AlertCircle, Save } from "lucide-react";
 import * as api from "../../services/api";
 import type { HomepageCategoryCard, CategoryNode } from "../../services/api";
 import { defaultCategoryTree } from "../../data/categoryTree";

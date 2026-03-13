@@ -4,29 +4,7 @@ import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { PagHiperConfig, PagHiperTransaction } from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
-import {
-  CreditCard,
-  Save,
-  Check,
-  Loader2,
-  Trash2,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  QrCode,
-  FileText,
-  XCircle,
-  ExternalLink,
-  Copy,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Ban,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  Plus,
-} from "lucide-react";
+import { CreditCard, Save, Check, Loader2, Trash2, Eye, EyeOff, RefreshCw, QrCode, FileText, XCircle, ExternalLink, Copy, AlertCircle, CheckCircle2, Clock, Ban, ChevronDown, ChevronUp, Search, Plus } from "lucide-react";
 
 /* ═══════════════════════════════════════════════
    Helper
@@ -398,8 +376,9 @@ function TransactionsSection() {
   const refreshStatus = async (tx: PagHiperTransaction) => {
     setRefreshingId(tx.transaction_id);
     try {
+      const token = await getToken();
       const statusFn = tx.type === "boleto" ? api.getBoletoStatus : api.getPixStatus;
-      const result = await statusFn(tx.transaction_id);
+      const result = await statusFn(tx.transaction_id, token);
       // Reload all
       await loadTransactions();
     } catch (e: any) {
@@ -736,6 +715,7 @@ function NewChargeSection() {
 
     setCreating(true);
     try {
+      const tk = await getToken();
       const items = [{
         description: itemDesc.trim() || `Pedido ${orderId}`,
         quantity: parseInt(itemQty) || 1,
@@ -752,7 +732,7 @@ function NewChargeSection() {
           payer_phone: payerPhone.trim() || undefined,
           days_due_date: daysDue,
           items,
-        });
+        }, tk);
         setResult({ type: "pix", ...res });
       } else {
         const res = await api.createBoletoCharge({
@@ -769,7 +749,7 @@ function NewChargeSection() {
           payer_zip_code: payerZip.trim() || undefined,
           days_due_date: daysDue,
           items,
-        });
+        }, tk);
         setResult({ type: "boleto", ...res });
       }
     } catch (e: any) {

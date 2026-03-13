@@ -1,10 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import {
-  Loader2, Save, Check, Trash2, Plus, X, Search, Clock,
-  ToggleLeft, ToggleRight, Flame, Tag, Palette, AlertTriangle,
-  Package, ChevronDown, ChevronUp, GripVertical, Calendar,
-  Eye,
-} from "lucide-react";
+import { Loader2, Save, Check, Trash2, Plus, X, Search, Clock, ToggleLeft, ToggleRight, Flame, Tag, Palette, AlertTriangle, Package, ChevronDown, ChevronUp, GripVertical, Calendar, Eye } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";

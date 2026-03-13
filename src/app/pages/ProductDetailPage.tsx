@@ -1,23 +1,5 @@
 import { useParams, Link } from "react-router";
-import {
-  Home,
-  ArrowLeft,
-  Package,
-  Hash,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  Tag,
-  Info,
-  MessageCircle,
-  Copy,
-  Check,
-  Flame,
-  Zap,
-  Share2,
-  ShieldCheck,
-} from "lucide-react";
+import { Home, ArrowLeft, Package, Hash, Loader2, ChevronLeft, ChevronRight, X, Tag, Info, MessageCircle, Copy, Check, Flame, Zap, Share2, ShieldCheck, Play } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as api from "../services/api";
 import type { ProductImage, SuperPromo, ProductBalance, ProductPrice } from "../services/api";
@@ -33,6 +15,7 @@ import { ShippingCalculator } from "../components/ShippingCalculator";
 import { WishlistButton } from "../components/WishlistButton";
 import { copyToClipboard } from "../utils/clipboard";
 import { useGA4 } from "../components/GA4Provider";
+import { useMarketing } from "../components/MarketingPixels";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { OptimizedImage } from "../components/OptimizedImage";
 import { seedProductImageCache } from "../components/ProductImage";
@@ -44,6 +27,7 @@ import { consumeProductDataCache } from "../utils/prefetch";
 import { ProductReviews } from "../components/ProductReviews";
 import { JsonLdBreadcrumb } from "../components/JsonLdBreadcrumb";
 import { ShareButtons } from "../components/ShareButtons";
+import { useProductReels, ProductReelPlayer } from "../components/ProductReels";
 
 function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", {
@@ -132,6 +116,7 @@ export function ProductDetailPage() {
   const [attrsLoading, setAttrsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
 
   // Super Promo state — use HomepageInitContext instead of separate API call
   const { data: initData } = useHomepageInit();
@@ -151,6 +136,10 @@ export function ProductDetailPage() {
 
   // Recently viewed
   var { addItem: addRecentlyViewed } = useRecentlyViewed();
+
+  // Product reels (video on product page)
+  var { reels: productReels } = useProductReels(sku);
+  var [reelPlayerOpen, setReelPlayerOpen] = useState(false);
 
   // Lightbox zoom state
   var [lbZoom, setLbZoom] = useState(1);
@@ -291,6 +280,14 @@ export function ProductDetailPage() {
         trackEvent("view_item", {
           currency: "BRL",
           items: [{ item_id: sku, item_name: prod.titulo }],
+        });
+        // Meta Pixel: ViewContent
+        trackMetaEvent("ViewContent", {
+          content_ids: [sku],
+          content_name: prod.titulo,
+          content_type: "product",
+          value: priceResult && priceResult.found ? priceResult.price : 0,
+          currency: "BRL",
         });
 
         // Save to recently viewed
@@ -794,6 +791,20 @@ export function ProductDetailPage() {
                   </span>
                 </div>
               )}
+              {/* Video badge — top-right of gallery */}
+              {productReels.length > 0 && (
+                <button
+                  onClick={function () { setReelPlayerOpen(true); }}
+                  className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-gray-900/80 hover:bg-red-600 text-white pl-2 pr-2.5 py-1.5 rounded-lg transition-all duration-200 group/vbtn shadow-lg hover:shadow-red-500/30 hover:scale-105 active:scale-95"
+                  style={{ fontSize: "0.72rem", fontWeight: 700, backdropFilter: "blur(6px)" }}
+                  title="Assistir video deste produto"
+                >
+                  <span className="w-5 h-5 rounded-full bg-red-500 group-hover/vbtn:bg-white/20 flex items-center justify-center transition-colors shrink-0">
+                    <Play className="w-2.5 h-2.5 text-white ml-px" fill="currentColor" />
+                  </span>
+                  Video
+                </button>
+              )}
               {/* Main image */}
               <div className="group/gallery relative flex items-center justify-center min-h-[240px] sm:min-h-[300px] lg:min-h-[450px] p-3 sm:p-4">
                 {imagesLoading ? (
@@ -1079,8 +1090,8 @@ export function ProductDetailPage() {
               )}
 
               {/* WhatsApp CTA removed — start dead code */}
-              {false && <a
-                href={`https://wa.me/5544997330202?text=${encodeURIComponent(`Olá! Gostaria de informações sobre a peça:\n\n📦 ${product.titulo}\n🔖 SKU: ${product.sku}\n\n${window.location.href}`)}`}
+              {false && product && <a
+                href={"https://wa.me/5544997330202?text=" + encodeURIComponent("Olá! Gostaria de informações sobre a peça:\n\n📦 " + (product?.titulo ?? "") + "\n🔖 SKU: " + (product?.sku ?? "") + "\n\n" + window.location.href)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 mb-4 sm:mb-5 transition-all group"
@@ -1319,6 +1330,14 @@ export function ProductDetailPage() {
       {/* Footer spacer for promo pages */}
       {isInPromo && (
         <div className="bg-gray-50 h-8" />
+      )}
+
+      {/* Product Reel Player — clean video-only modal */}
+      {reelPlayerOpen && productReels.length > 0 && (
+        <ProductReelPlayer
+          reel={productReels[0]}
+          onClose={function () { setReelPlayerOpen(false); }}
+        />
       )}
 
       {/* Lightbox Modal — with zoom (scroll/click/pinch) + pan */}

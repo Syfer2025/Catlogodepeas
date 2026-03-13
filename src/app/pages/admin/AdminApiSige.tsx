@@ -1,39 +1,9 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
-import {
-  Plug,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Globe,
-  Shield,
-  Key,
-  Clock,
-  Zap,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Save,
-  Wifi,
-  WifiOff,
-  AlertTriangle,
-  LogIn,
-  LogOut,
-  ChevronDown,
-  ChevronRight,
-  Lock,
-  Mail,
-  Link2,
-  Users,
-  UserPlus,
-  Play,
-  User,
-  KeyRound,
-  Hash,
-} from "lucide-react";
+import { Plug, CheckCircle2, XCircle, Loader2, Globe, Shield, Key, Clock, Zap, RefreshCw, Eye, EyeOff, Save, Wifi, WifiOff, AlertTriangle, LogIn, LogOut, ChevronDown, ChevronRight, Lock, Mail, Link2, Users, UserPlus, Play, User, KeyRound, Hash } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
-import { publicAnonKey } from "/utils/supabase/info";
+import { publicAnonKey } from "../../../../utils/supabase/info";
 // ── Lazy-loaded Sige modules (only loaded when their tab is activated) ──
 const SigeDepModule = lazy(function () { return import("./SigeDepModule").then(function (m) { return { default: m.SigeDepModule }; }); });
 const SigeCategoryModule = lazy(function () { return import("./SigeCategoryModule").then(function (m) { return { default: m.SigeCategoryModule }; }); });

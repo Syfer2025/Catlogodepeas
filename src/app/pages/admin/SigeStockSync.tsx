@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  RefreshCw, Loader2, CheckCircle2, AlertCircle, Link2, Link2Off,
-  Search, Package, ChevronDown, ChevronUp, X, ArrowRight, Hash,
-  BarChart3, Zap, Download, AlertTriangle, Eye,
-} from "lucide-react";
+import { RefreshCw, Loader2, CheckCircle2, AlertCircle, Link2, Link2Off, Search, Package, ChevronDown, ChevronUp, X, ArrowRight, Zap } from "lucide-react";
 import * as api from "../../services/api";
 import type { SigeMapping, SigeSyncResult } from "../../services/api";
 import { getValidAdminToken } from "./adminAuth";

@@ -201,7 +201,7 @@ async function checkAdmin(userId: string): Promise<boolean> {
 // Enable logger
 app.use("*", logger(console.log));
 
-// ═══════════════════════════════════════════════════════════════════════
+// ════════════════════════��══════════════════════════════════════════════
 // Security Headers middleware — prevents clickjacking, MIME sniffing, etc.
 // ═══════════════════════════════════════════════════════════════════════
 app.use("*", async function (c: any, next: any) {
@@ -223,7 +223,42 @@ app.use("*", async function (c: any, next: any) {
   // CSP — restrict resource loading to same-origin + known domains
   c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' https://apis.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.supabase.co https://api.mercadopago.com https://api.paghiper.com https://viacep.com.br https://*.sisfrete.com.br https://autopecascarretao.com https://autopecascarretao.com.br; frame-src https://www.google.com https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests");
   // Prevent caching of API responses with sensitive data
-  if (!c.req.path.includes("/banners") && !c.req.path.includes("/homepage")) {
+  // Allow short caching for public, read-only GET endpoints to reduce redundant requests
+  var p = c.req.path;
+  var isCacheablePublic = (
+    p.includes("/banners") ||
+    p.includes("/homepage") ||
+    p.includes("/categories") ||
+    p.includes("/brands") ||
+    p.includes("/homepage-categories") ||
+    p.includes("/products") ||
+    p.includes("/super-promo") ||
+    p.includes("/reels") ||
+    p.includes("/influencers") ||
+    p.includes("/settings") ||
+    p.includes("/price-config") ||
+    p.includes("/footer-badges") ||
+    p.includes("/branches") ||
+    p.includes("/sitemap") ||
+    p.includes("/robots.txt") ||
+    p.includes("/favicon") ||
+    p.includes("/coupons/public")
+  );
+  var isPrivate = (
+    p.includes("/admin") ||
+    p.includes("/user") ||
+    p.includes("/auth") ||
+    p.includes("/signup") ||
+    p.includes("/login") ||
+    p.includes("/checkout") ||
+    p.includes("/orders") ||
+    p.includes("/cart") ||
+    p.includes("/payment") ||
+    c.req.method !== "GET"
+  );
+  if (isCacheablePublic && !isPrivate) {
+    c.header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
+  } else if (!isCacheablePublic) {
     c.header("Cache-Control", "no-store, no-cache, must-revalidate");
     c.header("Pragma", "no-cache");
   }
@@ -269,13 +304,54 @@ app.use(
   })
 );
 
-// ══════════════════════════════��════════════════════════════════════════
+// ══════════════════════════════��════��═══════════════════════════════════
 // Rate Limiter — in-memory sliding window per IP
 // ═══════════════════════════════════════════════════════════════════════
 var _rateLimitMap: Map<string, number[]> = new Map();
 var RATE_LIMIT_WINDOW_MS = 60000;
 var RATE_LIMIT_MAX_PUBLIC = 120;
 var RATE_LIMIT_CLEANUP_INTERVAL = 300000;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Mutex — in-memory per-key lock for read-modify-write atomicity
+// Prevents race conditions on concurrent KV operations (coupons, reviews, orders)
+// ═══════════════════════════════════════════════════════════════════════
+var _mutexMap: Map<string, Promise<void>> = new Map();
+var MUTEX_TIMEOUT_MS = 30000; // 30s max wait — prevents deadlocks
+async function withMutex<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  var existing = _mutexMap.get(key);
+  var _resolve: () => void;
+  var newLock = new Promise<void>(function (r) { _resolve = r; });
+  _mutexMap.set(key, (existing || Promise.resolve()).then(function () { return newLock; }));
+  if (existing) {
+    // Race between existing lock and timeout — prevents infinite wait on crashed locks
+    var timedOut = false;
+    await Promise.race([
+      existing,
+      new Promise<void>(function (r) {
+        setTimeout(function () { timedOut = true; r(); }, MUTEX_TIMEOUT_MS);
+      }),
+    ]);
+    if (timedOut) {
+      console.warn("[Mutex] Timeout waiting for lock: " + key + " — proceeding anyway");
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    _resolve!();
+    if (_mutexMap.get(key) === newLock) _mutexMap.delete(key);
+  }
+}
+
+// Cleanup stale mutex entries every 5 min (safety net against memory leaks)
+setInterval(function () {
+  // If map grows abnormally large, clear it (locks should be transient)
+  if (_mutexMap.size > 500) {
+    console.warn("[Mutex] Clearing " + _mutexMap.size + " stale entries");
+    _mutexMap.clear();
+  }
+}, 300000);
 
 setInterval(function () {
   var now = Date.now();
@@ -414,7 +490,7 @@ function _checkAuthRateLimit(c: any, action: string): Response | null {
 
 // ═══════════════════════════════════════════════════════════════════════
 // HTML Sanitization helper
-// ═══════════════════════════════════════════════════════���═══════════════
+// ══════════════════════════════════���════════════════════���═══════════════
 function sanitizeInput(input: string): string {
   if (!input) return "";
   var clean = input.replace(/<[^>]*>/g, "");
@@ -521,7 +597,7 @@ async function _listAllAuthUsersPaginated(): Promise<any[]> {
 
 // ═══════════════════════════════════════════════════════════════════════
 // Safe error helper — logs full error server-side, returns generic msg
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════���═══════════════════════════════
 function _safeError(prefix: string, e: any): string {
   console.error("[SafeError] " + prefix + ": " + String(e));
   return prefix;
@@ -788,6 +864,28 @@ app.use(BASE + "/ga4/config", async (c: any, next: any) => {
   if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
   return adminGuard(c, next);
 });
+// Marketing config: GET is needed by frontend MarketingPixels, PUT requires admin
+app.use(BASE + "/marketing/config", async (c: any, next: any) => {
+  if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
+  return adminGuard(c, next);
+});
+// Exit intent config: GET is public (frontend needs it), PUT requires admin
+app.use(BASE + "/exit-intent-config", async (c: any, next: any) => {
+  if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
+  return adminGuard(c, next);
+});
+// Google Reviews config: PUT requires admin
+app.use(BASE + "/google-reviews-config", async (c: any, next: any) => {
+  if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
+  return adminGuard(c, next);
+});
+// Admin exit intent leads
+app.use(BASE + "/admin/exit-intent-leads", adminGuard);
+// WhatsApp admin routes
+app.use(BASE + "/admin/whatsapp-config", adminGuard);
+app.use(BASE + "/admin/whatsapp-process-abandoned", adminGuard);
+app.use(BASE + "/admin/whatsapp-abandoned-carts", adminGuard);
+app.use(BASE + "/admin/whatsapp-test", adminGuard);
 // Price config: all write ops require admin
 app.use(BASE + "/price-config", async (c: any, next: any) => {
   if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
@@ -908,6 +1006,29 @@ app.get(BASE + "/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// ── Admin health-check with monitoring data ──
+app.get(BASE + "/health/detailed", async (c) => {
+  try {
+    var userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    var isAdm = await _isAdmin(userId);
+    if (!isAdm) return c.json({ error: "Acesso negado." }, 403);
+
+    return c.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime_seconds: Math.floor(performance.now() / 1000),
+      internals: {
+        mutex_active_locks: _mutexMap.size,
+        rate_limit_tracked_keys: _rateLimitMap.size,
+      },
+    });
+  } catch (e) {
+    console.error("[Health] detailed check error:", e);
+    return c.json({ status: "ok", error: "Erro ao coletar metricas." });
+  }
+});
+
 // ─── Seed (rate-limited + idempotent — safe to be public) ───
 app.post(BASE + "/seed", async (c) => {
   try {
@@ -926,7 +1047,7 @@ app.post(BASE + "/seed", async (c) => {
 
 // ═══════════════════════════════════════
 // ─── AUTH ─────────────────────────────
-// ═══════════════════════════════════════
+// ═══════════════��═══════════════════════
 
 // Pre-login validation — rate limit + honeypot + email lockout check
 // Frontend calls this BEFORE attempting signInWithPassword
@@ -1252,7 +1373,7 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
     var body = await c.req.json();
     // Input validation
     var awValid = validate(body, {
-      action: { required: true, type: "string", maxLen: 20, oneOf: ["add", "remove"] },
+      action: { required: true, type: "string", maxLen: 20, oneOf: ["add", "remove", "resend-invite"] },
       email: { required: true, type: "string", maxLen: 254, custom: validators.email },
       permissions: { type: "array", maxItems: 50 },
     });
@@ -1273,27 +1394,100 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
     var currentList = await _getAdminWhitelist();
 
     if (action === "add") {
+      var userCreated = false;
+      var userAlreadyExisted = false;
+      var emailSent = false;
+      var emailError = "";
       if (currentList.indexOf(emailLower) === -1) {
         currentList.push(emailLower);
         await _saveAdminWhitelist(currentList);
-        // Update metadata if user exists
+        // Update metadata if user exists, otherwise create the account
         try {
           var found = await _findUserByEmail(emailLower);
           if (found) {
+            userAlreadyExisted = true;
             await supabaseAdmin.auth.admin.updateUserById(found.id, {
               user_metadata: Object.assign({}, found.user_metadata, { role: "admin" }),
             });
+          } else {
+            // User does NOT exist — create account + send password reset
+            var tempPw = "AdminTemp!" + crypto.randomUUID().replace(/-/g, "").substring(0, 16);
+            var createRes = await supabaseAdmin.auth.admin.createUser({
+              email: emailLower,
+              password: tempPw,
+              email_confirm: true,
+              user_metadata: { role: "admin", name: emailLower.split("@")[0] },
+            });
+            if (createRes.error) {
+              console.error("[AdminWhitelist] Create user error:", createRes.error.message);
+            } else {
+              userCreated = true;
+              console.log("[AdminWhitelist] Created new user for admin: " + emailLower);
+              // Generate recovery link so the new admin can set their own password
+              try {
+                var sUrl = Deno.env.get("SUPABASE_URL") || "";
+                var rlRes = await supabaseAdmin.auth.admin.generateLink({
+                  type: "recovery",
+                  email: emailLower,
+                });
+                if (rlRes.error) {
+                  console.error("[AdminWhitelist] Generate recovery link error:", rlRes.error.message);
+                } else {
+                  var recoveryLink = rlRes.data?.properties?.action_link || "";
+                  if (recoveryLink) {
+                    // Send welcome email with password reset link via SMTP (uses emkt_config)
+                    try {
+                      var smtpCfg = await _getSmtpConfig();
+                      if (smtpCfg) {
+                        var tr = _createSmtpTransport(smtpCfg);
+                        var fromAddr = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser || "";
+                        var fromName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+                        await tr.sendMail({
+                          from: fromName + " <" + fromAddr + ">",
+                          to: emailLower,
+                          subject: "Voce foi adicionado como Administrador - Carretao Auto Pecas",
+                          html: "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>"
+                            + "<h2 style='color:#b91c1c'>Bem-vindo ao Painel Admin!</h2>"
+                            + "<p>Voce foi adicionado como administrador do <strong>Carretao Auto Pecas</strong>.</p>"
+                            + "<p>Para definir sua senha e acessar o painel, clique no botao abaixo:</p>"
+                            + "<p style='text-align:center;margin:30px 0'>"
+                            + "<a href='" + recoveryLink + "' style='background:#b91c1c;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block'>Definir minha senha</a>"
+                            + "</p>"
+                            + "<p style='color:#666;font-size:13px'>Apos definir sua senha, acesse o painel admin.</p>"
+                            + "<p style='color:#999;font-size:11px'>Se voce nao esperava este email, ignore-o.</p>"
+                            + "</div>",
+                        });
+                        emailSent = true;
+                        console.log("[AdminWhitelist] Welcome email sent to " + emailLower);
+                      } else {
+                        emailError = "SMTP nao configurado. Configure na aba Email Marketing.";
+                        console.log("[AdminWhitelist] No SMTP configured (configure in Email Marketing tab). Recovery link for " + emailLower + ": " + recoveryLink);
+                      }
+                    } catch (emailErr: any) {
+                      emailError = "Erro ao enviar email: " + (emailErr.code || "") + " " + (emailErr.message || String(emailErr)).substring(0, 300);
+                      console.error("[AdminWhitelist] Email send error:", emailErr);
+                    }
+                  }
+                }
+              } catch (resetErr) {
+                console.error("[AdminWhitelist] Password reset error:", resetErr);
+              }
+            }
           }
         } catch (updateErr) {
           console.error("[AdminWhitelist] Update user metadata error:", updateErr);
         }
+      } else {
+        userAlreadyExisted = true;
       }
       // Save permissions if provided
       if (Array.isArray(permissions)) {
         await _setAdminPermissions(emailLower, permissions);
       }
       var perms = await _getAdminPermissions(emailLower);
-      return c.json({ ok: true, list: currentList, permissions: perms });
+      var hasSmtp = false;
+      try { var _sc = await _getSmtpConfig(); hasSmtp = !!_sc; } catch {}
+      return c.json({ ok: true, list: currentList, permissions: perms, userCreated: userCreated, userAlreadyExisted: userAlreadyExisted, smtpConfigured: hasSmtp, emailSent: emailSent, emailError: emailError });
     } else if (action === "remove") {
       var filtered = currentList.filter(function(e: string) { return e !== emailLower; });
       await _saveAdminWhitelist(filtered);
@@ -1313,8 +1507,61 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
         console.error("[AdminWhitelist] Downgrade user metadata error:", updateErr2);
       }
       return c.json({ ok: true, list: filtered });
+    } else if (action === "resend-invite") {
+      // Resend recovery/password-reset email to an existing admin
+      if (currentList.indexOf(emailLower) === -1) {
+        return c.json({ error: "Este email nao esta na lista de admins." }, 400);
+      }
+      var targetUser = await _findUserByEmail(emailLower);
+      if (!targetUser) {
+        return c.json({ error: "Conta nao encontrada no Supabase para " + emailLower + ". Remova e readicione este admin." }, 404);
+      }
+      var rlRes2 = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email: emailLower,
+      });
+      if (rlRes2.error) {
+        console.error("[AdminWhitelist] Resend invite - generate link error:", rlRes2.error.message);
+        return c.json({ error: "Erro ao gerar link de recuperacao: " + rlRes2.error.message }, 500);
+      }
+      var recoveryLink2 = rlRes2.data?.properties?.action_link || "";
+      if (!recoveryLink2) {
+        return c.json({ error: "Nao foi possivel gerar o link de recuperacao." }, 500);
+      }
+      var smtpCfg2 = await _getSmtpConfig();
+      if (!smtpCfg2) {
+        return c.json({ error: "SMTP nao configurado. Configure na aba Email Marketing primeiro.", recoveryLink: recoveryLink2 }, 400);
+      }
+      if (smtpCfg2.smtpHost) smtpCfg2.smtpHost = String(smtpCfg2.smtpHost).trim();
+      console.log("[AdminWhitelist] Resend invite - SMTP host: " + smtpCfg2.smtpHost + ":" + smtpCfg2.smtpPort + " user: " + smtpCfg2.smtpUser);
+      try {
+        var tr2 = _createSmtpTransport(smtpCfg2);
+        var fromAddr2 = smtpCfg2.defaultSenderEmail || smtpCfg2.smtpUser || "";
+        var fromName2 = smtpCfg2.defaultSenderName || "Carretao Auto Pecas";
+        await tr2.sendMail({
+          from: fromName2 + " <" + fromAddr2 + ">",
+          to: emailLower,
+          subject: "Defina sua senha - Painel Admin Carretao Auto Pecas",
+          html: "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>"
+            + "<h2 style='color:#b91c1c'>Defina sua Senha de Administrador</h2>"
+            + "<p>Voce recebeu acesso ao painel administrativo do <strong>Carretao Auto Pecas</strong>.</p>"
+            + "<p>Para definir (ou redefinir) sua senha, clique no botao abaixo:</p>"
+            + "<p style='text-align:center;margin:30px 0'>"
+            + "<a href='" + recoveryLink2 + "' style='background:#b91c1c;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block'>Definir minha senha</a>"
+            + "</p>"
+            + "<p style='color:#666;font-size:13px'>Apos definir sua senha, acesse o painel admin em <a href='https://www.autopecascarretao.com.br/admin'>autopecascarretao.com.br/admin</a>.</p>"
+            + "<p style='color:#999;font-size:11px'>Este link e valido por tempo limitado. Se voce nao solicitou, ignore este email.</p>"
+            + "</div>",
+        });
+        console.log("[AdminWhitelist] Resend invite email sent to " + emailLower);
+        return c.json({ ok: true, message: "Email de convite reenviado com sucesso para " + emailLower + "!" });
+      } catch (emailErr2: any) {
+        var errMsg2 = "Erro ao enviar email via " + (smtpCfg2.smtpHost || "?") + ":" + (smtpCfg2.smtpPort || "?") + " — " + (emailErr2.code || "") + " " + (emailErr2.message || String(emailErr2)).substring(0, 300) + ". Verifique o hostname SMTP na aba Email Marketing (o correto e mail.autopecascarretao.com.br).";
+        console.error("[AdminWhitelist] Resend invite email error:", emailErr2);
+        return c.json({ error: errMsg2, recoveryLink: recoveryLink2 }, 500);
+      }
     } else {
-      return c.json({ error: "Action inválida. Use 'add' ou 'remove'." }, 400);
+      return c.json({ error: "Action inválida. Use 'add', 'remove' ou 'resend-invite'." }, 400);
     }
   } catch (e) {
     console.error("Admin-whitelist error:", e);
@@ -2741,37 +2988,39 @@ app.post(BASE + "/auth/user/favorites", async (c) => {
       return c.json({ error: "SKU obrigatorio." }, 400);
     }
 
-    let favorites: any[] = [];
-    try {
-      const raw = await kv.get("user_favorites:" + userId);
-      if (raw) {
-        favorites = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // ATOMICITY: Mutex prevents duplicate favorites from rapid double-clicks
+    return await withMutex("favorites:" + userId, async function () {
+      let favorites: any[] = [];
+      try {
+        const raw = await kv.get("user_favorites:" + userId);
+        if (raw) {
+          favorites = typeof raw === "string" ? JSON.parse(raw) : raw;
+        }
+      } catch {}
+
+      // Check if already exists
+      var exists = false;
+      for (var i = 0; i < favorites.length; i++) {
+        if (favorites[i].sku === sku) { exists = true; break; }
       }
-    } catch {}
+      if (exists) {
+        return c.json({ ok: true, favorites: favorites, message: "Já está nos favoritos." });
+      }
 
-    // Check if already exists
-    var exists = false;
-    for (var i = 0; i < favorites.length; i++) {
-      if (favorites[i].sku === sku) { exists = true; break; }
-    }
-    if (exists) {
-      return c.json({ ok: true, favorites: favorites, message: "Já está nos favoritos." });
-    }
+      // Limit to 50 favorites
+      if (favorites.length >= 50) {
+        return c.json({ error: "Limite de 50 favoritos atingido." }, 400);
+      }
 
-    // Limit to 50 favorites
-    if (favorites.length >= 50) {
-      return c.json({ error: "Limite de 50 favoritos atingido." }, 400);
-    }
+      favorites.push({
+        sku: sku,
+        titulo: titulo,
+        addedAt: new Date().toISOString(),
+      });
 
-    favorites.push({
-      sku: sku,
-      titulo: titulo,
-      addedAt: new Date().toISOString(),
+      await kv.set("user_favorites:" + userId, JSON.stringify(favorites));
+      return c.json({ ok: true, favorites: favorites });
     });
-
-    await kv.set("user_favorites:" + userId, JSON.stringify(favorites));
-    // Favorite added
-    return c.json({ ok: true, favorites: favorites });
   } catch (e) {
     console.error("Add favorite exception:", e);
     return c.json({ error: _safeError("Erro ao adicionar favorito", e) }, 500);
@@ -2788,22 +3037,24 @@ app.delete(BASE + "/auth/user/favorites/:sku", async (c) => {
     var sku = decodeURIComponent(c.req.param("sku")).substring(0, 100);
     if (!sku) return c.json({ error: "SKU invalido." }, 400);
 
-    let favorites: any[] = [];
-    try {
-      const raw = await kv.get("user_favorites:" + userId);
-      if (raw) {
-        favorites = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // ATOMICITY: Mutex prevents race conditions on concurrent add/remove
+    return await withMutex("favorites:" + userId, async function () {
+      let favorites: any[] = [];
+      try {
+        const raw = await kv.get("user_favorites:" + userId);
+        if (raw) {
+          favorites = typeof raw === "string" ? JSON.parse(raw) : raw;
+        }
+      } catch {}
+
+      var filtered = [];
+      for (var i = 0; i < favorites.length; i++) {
+        if (favorites[i].sku !== sku) filtered.push(favorites[i]);
       }
-    } catch {}
 
-    var filtered = [];
-    for (var i = 0; i < favorites.length; i++) {
-      if (favorites[i].sku !== sku) filtered.push(favorites[i]);
-    }
-
-    await kv.set("user_favorites:" + userId, JSON.stringify(filtered));
-    // Favorite removed
-    return c.json({ ok: true, favorites: filtered });
+      await kv.set("user_favorites:" + userId, JSON.stringify(filtered));
+      return c.json({ ok: true, favorites: filtered });
+    });
   } catch (e) {
     console.error("Remove favorite exception:", e);
     return c.json({ error: _safeError("Erro ao remover favorito", e) }, 500);
@@ -3429,6 +3680,76 @@ app.put(BASE + "/ga4/config", async (c) => {
   } catch (e) {
     console.error("Error updating GA4 config:", e);
     return c.json({ error: "Erro ao atualizar configuracao GA4." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── MARKETING PIXELS (Meta Pixel, Google Ads, Clarity)
+// ═══════════════════════════════════════════════════════
+
+var DEFAULT_MARKETING_CONFIG = {
+  gtmId: "",
+  gtmEnabled: false,
+  metaPixelId: "",
+  metaPixelEnabled: false,
+  googleAdsId: "",
+  googleAdsConversionLabel: "",
+  googleAdsEnabled: false,
+  clarityProjectId: "",
+  clarityEnabled: false,
+  tiktokPixelId: "",
+  tiktokPixelEnabled: false,
+};
+
+app.get(BASE + "/marketing/config", async (c) => {
+  try {
+    var config = await kv.get("marketing_config");
+    return c.json(config || DEFAULT_MARKETING_CONFIG);
+  } catch (e) {
+    console.error("Error fetching marketing config:", e);
+    return c.json({ error: "Erro ao buscar configuracao de marketing." }, 500);
+  }
+});
+
+app.put(BASE + "/marketing/config", async (c) => {
+  try {
+    var body = await c.req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
+    }
+    var mktValid = validate(body, {
+      gtmId: { type: "string", maxLen: 30 },
+      gtmEnabled: { type: "boolean" },
+      metaPixelId: { type: "string", maxLen: 30 },
+      metaPixelEnabled: { type: "boolean" },
+      googleAdsId: { type: "string", maxLen: 30 },
+      googleAdsConversionLabel: { type: "string", maxLen: 50 },
+      googleAdsEnabled: { type: "boolean" },
+      clarityProjectId: { type: "string", maxLen: 30 },
+      clarityEnabled: { type: "boolean" },
+      tiktokPixelId: { type: "string", maxLen: 30 },
+      tiktokPixelEnabled: { type: "boolean" },
+    });
+    if (!mktValid.ok) {
+      return c.json({ error: mktValid.errors[0] || "Dados invalidos." }, 400);
+    }
+    var mktAllowed = ["gtmId","gtmEnabled","metaPixelId","metaPixelEnabled","googleAdsId","googleAdsConversionLabel","googleAdsEnabled","clarityProjectId","clarityEnabled","tiktokPixelId","tiktokPixelEnabled"];
+    var mktSafe: Record<string, any> = {};
+    for (var mk of mktAllowed) {
+      if (body[mk] !== undefined) {
+        if (mk === "gtmEnabled" || mk === "metaPixelEnabled" || mk === "googleAdsEnabled" || mk === "clarityEnabled" || mk === "tiktokPixelEnabled") {
+          mktSafe[mk] = !!body[mk];
+        } else {
+          mktSafe[mk] = String(body[mk] || "").trim().substring(0, 50);
+        }
+      }
+    }
+    await kv.set("marketing_config", mktSafe);
+    invalidateHomepageCache();
+    return c.json(mktSafe);
+  } catch (e) {
+    console.error("Error updating marketing config:", e);
+    return c.json({ error: "Erro ao atualizar configuracao de marketing." }, 500);
   }
 });
 
@@ -5271,14 +5592,16 @@ function buildSearchConditions(
   }
 
   // ── SKU-specific patterns (always included) ──
+  // IMPORTANT: commas are PostgREST delimiters inside or=() — replace with wildcard
   const skuConditions: string[] = [];
   const normNoSpaces = norm.replace(/\s+/g, "");
   if (normNoSpaces.length >= 2) {
     skuConditions.push(`sku.ilike.*${normNoSpaces}*`);
-    // Original with wildcards between words
-    skuConditions.push(`sku.ilike.*${original.replace(/\s+/g, "*")}*`);
+    // Original with wildcards between words (commas → wildcards)
+    const origSafe = original.replace(/,/g, "*").replace(/\*+/g, "*");
+    skuConditions.push(`sku.ilike.*${origSafe.replace(/\s+/g, "*").replace(/\*+/g, "*")}*`);
     // With separators stripped (user typed ABC-12 → match ABC1234)
-    const origClean = original.replace(/[-_.\s\/\\]/g, "");
+    const origClean = original.replace(/[-_.,\s\/\\]/g, "");
     if (origClean !== normNoSpaces && origClean.length >= 2) {
       skuConditions.push(`sku.ilike.*${origClean}*`);
     }
@@ -5301,7 +5624,7 @@ function buildSearchConditions(
 
   // ── Multi-token: AND between token groups ─
   // Each token must appear somewhere in the titulo (with accent tolerance).
-  // This is the key change: "filtro oleo" → product must match BOTH "filtro" AND "oleo".
+  // This is the key change: "filtro oleo" ��� product must match BOTH "filtro" AND "oleo".
   const tokenGroups = effectiveTokens.slice(0, 4).map((token) => {
     const patterns = generateTokenPatterns(token);
     let conditions: string[];
@@ -6415,7 +6738,7 @@ function buildCategoryBreadcrumb(nodes: any[], targetSlug: string, path: string[
     console.error("Error in catalog endpoint:", e);
 REMOVED - END */
 
-// ═══════════════════════════════════════════════
+// ═══════════════════��═══════════════════════════
 // ─── PRODUTOS (Supabase REST API Proxy) ───────
 // ═══════════════════════════════════════════════
 
@@ -9491,7 +9814,7 @@ app.get(BASE + "/sige/product/:id/balance", async (c) => {
   }
 });
 
-// ═══════════════════════════════════════
+// ═════════════════════════���═════════════
 // ─── SIGE: PRODUTO PCP ───────────────
 // ═══════════════════════════════════════
 
@@ -10178,8 +10501,9 @@ app.get(BASE + "/sige/dep/:endpoint{.+}", async (c) => {
 // Caches in KV for 5 minutes to avoid hammering the SIGE API
 // Strategy: try direct balance call with SKU as codProduto, fall back to search
 app.get(BASE + "/produtos/saldo/:sku", async (c) => {
+  const skuParam = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
   try {
-    const sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
+    const sku = skuParam;
     if (!sku) return c.json({ error: "SKU obrigatório.", sku: "", found: false, sige: false, quantidade: 0 });
 
     const reqUrl = new URL(c.req.url);
@@ -10500,8 +10824,8 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
     await kv.set(cacheKey, JSON.stringify(notFound));
     return c.json({ ...notFound, cached: false, ...(debugMode ? { _debug: debugLog, _sigeResponses: sigeResponses } : {}) });
   } catch (e: any) {
-    console.error("[Saldo] Exception for SKU " + sku + ":", e);
-    return c.json({ error: "Erro ao consultar saldo.", sku: sku, found: false, sige: false, quantidade: 0 });
+    console.error("[Saldo] Exception for SKU " + skuParam + ":", e);
+    return c.json({ error: "Erro ao consultar saldo.", sku: skuParam, found: false, sige: false, quantidade: 0 });
   }
 });
 
@@ -10862,22 +11186,22 @@ app.post(BASE + "/produtos/saldos", async (c) => {
         results.push(fr);
       }
 
-      // Batch-write KV entries in small chunks to avoid PostgreSQL deadlocks
+      // Write KV entries one-by-one (fire-and-forget) to avoid PostgreSQL deadlocks.
+      // Individual kv.set calls don't open multi-row transactions, so they can't deadlock
+      // even when multiple concurrent requests write at the same time.
       if (kvWritesBatch.length > 0) {
-        var KV_CHUNK = 5;
         (async function() {
-          for (var ci = 0; ci < kvWritesBatch.length; ci += KV_CHUNK) {
-            var chunk = kvWritesBatch.slice(ci, ci + KV_CHUNK);
-            var chunkKeys: string[] = [];
-            var chunkVals: string[] = [];
-            for (var entry of chunk) {
-              chunkKeys.push(entry.key);
-              chunkVals.push(entry.value);
-            }
+          for (var wi = 0; wi < kvWritesBatch.length; wi++) {
             try {
-              await kv.mset(chunkKeys, chunkVals);
-            } catch (e) {
-              console.error("[Saldo bulk] mset chunk error:", e);
+              await kv.set(kvWritesBatch[wi].key, kvWritesBatch[wi].value);
+            } catch (e: any) {
+              // Retry once after a small random delay on any transient error
+              try {
+                await new Promise(function(r) { setTimeout(r, 50 + Math.random() * 150); });
+                await kv.set(kvWritesBatch[wi].key, kvWritesBatch[wi].value);
+              } catch (e2) {
+                console.error("[Saldo bulk] kv.set retry failed for " + kvWritesBatch[wi].key + ":", e2);
+              }
             }
           }
         })();
@@ -12227,22 +12551,19 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
           results.push({ ...fr, cached: false });
         }
 
-        // Batch write KV entries in small chunks to avoid PostgreSQL deadlocks
+        // Write KV entries one-by-one (fire-and-forget) to avoid PostgreSQL deadlocks.
         if (kvWritesBatch.length > 0) {
-          var KV_CHUNK_P = 5;
           (async function() {
-            for (var ci = 0; ci < kvWritesBatch.length; ci += KV_CHUNK_P) {
-              var chunk = kvWritesBatch.slice(ci, ci + KV_CHUNK_P);
-              var chunkKeys: string[] = [];
-              var chunkVals: string[] = [];
-              for (var entry of chunk) {
-                chunkKeys.push(entry.key);
-                chunkVals.push(entry.value);
-              }
+            for (var wi = 0; wi < kvWritesBatch.length; wi++) {
               try {
-                await kv.mset(chunkKeys, chunkVals);
-              } catch (e) {
-                console.error("[PriceBulk] mset chunk error:", e);
+                await kv.set(kvWritesBatch[wi].key, kvWritesBatch[wi].value);
+              } catch (e: any) {
+                try {
+                  await new Promise(function(r) { setTimeout(r, 50 + Math.random() * 150); });
+                  await kv.set(kvWritesBatch[wi].key, kvWritesBatch[wi].value);
+                } catch (e2) {
+                  console.error("[PriceBulk] kv.set retry failed for " + kvWritesBatch[wi].key + ":", e2);
+                }
               }
             }
           })();
@@ -13535,6 +13856,10 @@ app.post(BASE + "/sige/create-sale", async (c) => {
     var csRlResult = _checkRateLimit(csRl, 5);
     if (!csRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", csRlResult);
 
+    // ATOMICITY: Mutex prevents duplicate orders from double-clicks or network retries
+    // Serializes order creation per user — second request waits for first to complete
+    return await withMutex("create_sale:" + userId, async function () {
+
     const body = await c.req.json();
     // Input validation for create-sale
     var csValid = validate(body, {
@@ -14237,6 +14562,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       success: true,
       orderId,
     });
+    }); // end withMutex("create_sale:" + userId)
   } catch (e: any) {
     console.error("SIGE create-sale exception:", e);
     return c.json({ error: "Erro interno ao criar pedido." }, 500);
@@ -14954,6 +15280,15 @@ app.post(BASE + "/admin/update-order-status", async (c) => {
 
     await kv.set(kvKey, JSON.stringify(order));
     // Admin update-order-status: done
+
+    // Fire-and-forget: send transactional email based on new status
+    try {
+      if (statusLower === "paid" || statusLower === "pago") {
+        _sendPaymentApprovedEmail(order).catch(function (e2: any) { console.error("[Email] payment approved fire-forget err:", e2); });
+      } else if (statusLower === "enviado" || statusLower === "shipped" || statusLower === "em_transporte") {
+        _sendShippingNotificationEmail(order).catch(function (e2: any) { console.error("[Email] shipping notification fire-forget err:", e2); });
+      }
+    } catch (_emailErr) { /* non-fatal */ }
 
     return c.json({ success: true });
   } catch (e: any) {
@@ -16288,12 +16623,15 @@ async function getMPCredentials(): Promise<{ accessToken: string; publicKey: str
 }
 
 // Helper: make authenticated request to MP API
-async function mpApiFetch(path: string, accessToken: string, options?: { method?: string; body?: any }) {
+async function mpApiFetch(path: string, accessToken: string, options?: { method?: string; body?: any; idempotencyKey?: string }) {
   const url = MP_API_BASE + path;
+  // SECURITY: Idempotency key should be deterministic for payment-creating requests
+  // so that network retries reuse the same key instead of creating duplicate payments.
+  // Falls back to random UUID for non-critical requests (queries, etc.)
   const fetchHeaders: Record<string, string> = {
     "Authorization": "Bearer " + accessToken,
     "Content-Type": "application/json",
-    "X-Idempotency-Key": crypto.randomUUID(),
+    "X-Idempotency-Key": options?.idempotencyKey || crypto.randomUUID(),
   };
   const fetchOptions: any = {
     method: options?.method || "GET",
@@ -16540,9 +16878,12 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
       if (Object.keys(validBackUrls).length > 0) preference.back_urls = validBackUrls;
     }
 
+    // SECURITY: Deterministic idempotency key based on order_id prevents duplicate
+    // payment preferences on network retries. Falls back to random UUID if no order_id.
     const result = await mpApiFetch("/checkout/preferences", creds.accessToken, {
       method: "POST",
       body: preference,
+      idempotencyKey: order_id ? ("mp_pref_" + order_id) : undefined,
     });
 
     if (!result.ok) {
@@ -17539,7 +17880,10 @@ app.get(BASE + "/homepage-init", async (c) => {
       "ga4_config",
       "category_tree",
       "super_promo",
-      "price_config"
+      "price_config",
+      "marketing_config",
+      "exit_intent_config",
+      "google_reviews_config"
     ];
 
     var kvPromise = supabaseAdmin
@@ -17587,6 +17931,9 @@ app.get(BASE + "/homepage-init", async (c) => {
     var categoryTreeRaw = kvMap["category_tree"] || null;
     var superPromoRaw = kvMap["super_promo"] || null;
     var priceConfigRaw = kvMap["price_config"] || null;
+    var marketingConfigRaw = kvMap["marketing_config"] || null;
+    var exitIntentConfigRaw = kvMap["exit_intent_config"] || null;
+    var googleReviewsConfigRaw = kvMap["google_reviews_config"] || null;
 
     // ── Logo signed URL ──
     var logoResult = { hasLogo: false, url: null as string | null };
@@ -17856,6 +18203,9 @@ app.get(BASE + "/homepage-init", async (c) => {
       midBanners: midBanners,
       footerBadges: footerBadges,
       brands: brandCards,
+      marketingConfig: marketingConfigRaw || DEFAULT_MARKETING_CONFIG,
+      exitIntentConfig: exitIntentConfigRaw || DEFAULT_EXIT_INTENT_CONFIG,
+      googleReviewsConfig: googleReviewsConfigRaw || { enabled: false, merchantId: "", badgePosition: "BOTTOM_RIGHT" },
     };
 
     // Cache the full response for subsequent requests
@@ -18543,7 +18893,7 @@ async function _getSmtpConfig(): Promise<any> {
 
 function _createSmtpTransport(cfg: any) {
   return nodemailer.createTransport({
-    host: String(cfg.smtpHost),
+    host: String(cfg.smtpHost).trim(),
     port: Number(cfg.smtpPort) || 587,
     secure: Boolean(cfg.smtpSecure),
     auth: {
@@ -18856,6 +19206,154 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
   }
 }
 
+// ─── SHIPPING NOTIFICATION EMAIL ───
+
+function _buildShippingNotificationHtml(order: any): string {
+  var siteUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(".supabase.co", ".vercel.app");
+  var trackingCode = order.trackingCode || order.codigoRastreio || "";
+  var trackingLink = order.trackingLink || "";
+  if (!trackingLink && trackingCode) {
+    trackingLink = "https://www.linkcorreios.com.br/?id=" + encodeURIComponent(trackingCode);
+  }
+
+  var trackingSection = "";
+  if (trackingCode) {
+    trackingSection = '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-bottom:16px;">'
+      + '<div style="font-size:11px;color:#1e40af;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:6px;">Codigo de Rastreio</div>'
+      + '<div style="font-size:18px;color:#1e3a8a;font-weight:700;font-family:monospace;letter-spacing:0.1em;">' + trackingCode + '</div>'
+      + (trackingLink ? '<a href="' + trackingLink + '" style="display:inline-block;margin-top:8px;font-size:12px;color:#2563eb;text-decoration:underline;">Rastrear encomenda</a>' : '')
+      + '</div>';
+  }
+
+  var shippingInfo = "";
+  if (order.shippingOption) {
+    var so = order.shippingOption;
+    shippingInfo = '<div style="font-size:13px;color:#6b7280;margin-bottom:12px;">Transportadora: <strong>' + (so.carrierName || "N/A") + '</strong>'
+      + (so.deliveryDays ? ' | Prazo estimado: <strong>' + so.deliveryDays + ' dias uteis</strong>' : '')
+      + '</div>';
+  }
+
+  var body = ''
+    + '<div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:24px 20px;text-align:center;">'
+    + '<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Seu Pedido Foi Enviado!</h1>'
+    + '<p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">Pedido #' + (order.localOrderId || order.sigeOrderId || "N/A") + '</p>'
+    + '</div>'
+    + '<div style="padding:20px 16px;">'
+    + '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin-bottom:16px;">'
+    + '<div style="font-size:14px;color:#166534;font-weight:600;">Boa noticia! Seu pedido saiu para entrega.</div>'
+    + '</div>'
+    + trackingSection
+    + shippingInfo
+    + '<div style="font-size:13px;color:#6b7280;line-height:1.6;">'
+    + '<p style="margin:0 0 12px;">Voce pode acompanhar o status da entrega a qualquer momento pela sua conta.</p>'
+    + '</div>'
+    + '<div style="text-align:center;margin-top:20px;">'
+    + '<a href="' + siteUrl + '/minha-conta?tab=pedidos" '
+    + 'style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">Acompanhar Pedido</a>'
+    + '</div>'
+    + '</div>';
+
+  return _emailBaseWrapper(body);
+}
+
+async function _sendShippingNotificationEmail(order: any) {
+  try {
+    var smtpCfg = await _getSmtpConfig();
+    if (!smtpCfg) {
+      console.warn("[Email] Shipping notification: SMTP not configured, skipping.");
+      return;
+    }
+    var userEmail = order.userEmail || null;
+    if (!userEmail && order.createdBy) {
+      userEmail = await _getUserEmailById(order.createdBy);
+    }
+    if (!userEmail) {
+      console.warn("[Email] Shipping notification: no user email found, skipping.");
+      return;
+    }
+    var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
+    var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+    var from = senderName + " <" + senderEmail + ">";
+    var orderId = order.localOrderId || order.sigeOrderId || "N/A";
+    await _sendSmtpEmail(smtpCfg, {
+      from: from,
+      to: userEmail,
+      subject: "Pedido #" + orderId + " enviado! - Carretao Auto Pecas",
+      html: _buildShippingNotificationHtml(order),
+    });
+  } catch (err) {
+    console.error("[Email] Shipping notification error (non-fatal): " + err);
+  }
+}
+
+// ─── ABANDONED CART EMAIL ───
+
+function _buildAbandonedCartEmailHtml(cart: any): string {
+  var siteUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(".supabase.co", ".vercel.app");
+  var itemsHtml = "";
+  var items = cart.items || [];
+  for (var aci = 0; aci < items.length && aci < 5; aci++) {
+    var acit = items[aci];
+    itemsHtml += '<tr><td style="padding:8px 16px;border-bottom:1px solid #f3f4f6;font-size:13px;color:#374151;">'
+      + (acit.titulo || acit.sku || "Produto")
+      + (acit.quantidade > 1 ? ' <span style="color:#9ca3af;">(x' + acit.quantidade + ')</span>' : '')
+      + '</td><td style="padding:8px 16px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:13px;font-weight:600;color:#374151;white-space:nowrap;">'
+      + 'R$ ' + Number(acit.precoUnitario || 0).toFixed(2).replace(".", ",")
+      + '</td></tr>';
+  }
+  if (items.length > 5) {
+    itemsHtml += '<tr><td colspan="2" style="padding:8px 16px;font-size:12px;color:#9ca3af;">... e mais ' + (items.length - 5) + ' item(ns)</td></tr>';
+  }
+
+  var body = ''
+    + '<div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:24px 20px;text-align:center;">'
+    + '<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Voce esqueceu algo!</h1>'
+    + '<p style="margin:8px 0 0;color:#fecaca;font-size:14px;">Seus itens ainda estao esperando por voce</p>'
+    + '</div>'
+    + '<div style="padding:20px 16px;">'
+    + '<div style="font-size:14px;color:#374151;line-height:1.6;margin-bottom:16px;">'
+    + '<p style="margin:0;">Oi' + (cart.name ? ', <strong>' + cart.name + '</strong>' : '') + '!</p>'
+    + '<p style="margin:8px 0 0;">Notamos que voce deixou alguns itens no carrinho. Nao perca — finalize sua compra antes que acabem!</p>'
+    + '</div>'
+    + '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;border-collapse:collapse;">'
+    + '<thead><tr><th style="text-align:left;padding:8px 16px;font-size:11px;color:#9ca3af;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Produto</th>'
+    + '<th style="text-align:right;padding:8px 16px;font-size:11px;color:#9ca3af;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Valor</th></tr></thead>'
+    + '<tbody>' + itemsHtml + '</tbody>'
+    + '</table>'
+    + '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;">'
+    + '<div style="font-size:14px;color:#92400e;font-weight:600;">Total: R$ ' + Number(cart.totalPrice || 0).toFixed(2).replace(".", ",") + '</div>'
+    + '</div>'
+    + '<div style="text-align:center;margin-top:20px;">'
+    + '<a href="' + siteUrl + '/checkout" '
+    + 'style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:700;">Finalizar Compra</a>'
+    + '</div>'
+    + '</div>';
+
+  return _emailBaseWrapper(body);
+}
+
+async function _sendAbandonedCartEmail(cart: any): Promise<boolean> {
+  try {
+    var smtpCfg = await _getSmtpConfig();
+    if (!smtpCfg) return false;
+    var email = cart.email;
+    if (!email) return false;
+    var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
+    var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+    var from = senderName + " <" + senderEmail + ">";
+    await _sendSmtpEmail(smtpCfg, {
+      from: from,
+      to: email,
+      subject: "Voce esqueceu itens no carrinho! - Carretao Auto Pecas",
+      html: _buildAbandonedCartEmailHtml(cart),
+    });
+    return true;
+  } catch (err) {
+    console.error("[Email] Abandoned cart email error (non-fatal): " + err);
+    return false;
+  }
+}
+
 // POST /admin/email-marketing/smtp-test — test SMTP connection
 app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
   try {
@@ -18890,7 +19388,58 @@ app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
     return c.json({ ok: true, message: "Conexão SMTP bem-sucedida!" });
   } catch (e: any) {
     console.error("[EmailMarketing] SMTP connection test failed:", e);
-    return c.json({ error: "Falha na conexao SMTP." }, 400);
+    var smtpErrMsg = "Falha na conexao SMTP.";
+    var errCode = e.code || "";
+    var errMsg = e.message || "";
+    if (errCode === "EDNS" || errCode === "ENOTFOUND" || errMsg.indexOf("ENOTFOUND") >= 0 || errMsg.indexOf("getaddrinfo") >= 0) {
+      var badHost = e.hostname || "";
+      smtpErrMsg = "Servidor SMTP nao encontrado" + (badHost ? " ('" + badHost + "')" : "") + ". O hostname nao existe no DNS. Verifique se o endereco esta correto. Exemplos comuns: smtp.gmail.com, smtp.hostinger.com, smtp.titan.email, smtp.zoho.com";
+    } else if (errCode === "ECONNREFUSED") {
+      smtpErrMsg = "Conexao recusada pelo servidor SMTP. Verifique se a porta esta correta (587 para TLS, 465 para SSL, 25 para sem criptografia).";
+    } else if (errCode === "ETIMEDOUT" || errCode === "ESOCKET" || errMsg.indexOf("timeout") >= 0) {
+      smtpErrMsg = "Tempo limite esgotado ao conectar ao servidor SMTP. Verifique o hostname e a porta. Algumas portas (ex: 25) podem estar bloqueadas pelo provedor.";
+    } else if (errCode === "EAUTH" || errMsg.indexOf("auth") >= 0 || errMsg.indexOf("535") >= 0 || errMsg.indexOf("534") >= 0) {
+      smtpErrMsg = "Autenticacao SMTP falhou. Verifique usuario e senha. Se usa Gmail, pode precisar de uma 'Senha de App' em vez da senha normal.";
+    } else if (errMsg) {
+      smtpErrMsg = "Falha na conexao SMTP: " + errMsg.substring(0, 200);
+    }
+    return c.json({ error: smtpErrMsg }, 400);
+  }
+});
+
+// POST /admin/email-marketing/smtp-send-test — send a real test email using saved config
+app.post(BASE + "/admin/email-marketing/smtp-send-test", async (c) => {
+  try {
+    var body = await c.req.json();
+    var toEmail = String(body.to || "").trim().toLowerCase();
+    if (!toEmail || toEmail.indexOf("@") < 1) {
+      return c.json({ error: "Informe um email de destino valido." }, 400);
+    }
+    var smtpCfg = await _getSmtpConfig();
+    if (!smtpCfg) {
+      return c.json({ error: "SMTP nao configurado. Salve as configuracoes SMTP na aba Email Marketing primeiro." }, 400);
+    }
+    var fromAddr = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser || "";
+    var fromName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+    console.log("[SMTP-SendTest] Sending test email to " + toEmail + " from " + fromAddr + " via " + smtpCfg.smtpHost + ":" + smtpCfg.smtpPort);
+    var transport = _createSmtpTransport(smtpCfg);
+    var info = await transport.sendMail({
+      from: fromName + " <" + fromAddr + ">",
+      to: toEmail,
+      subject: "Teste de Email - Carretao Auto Pecas",
+      html: "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px'>"
+        + "<h2 style='color:#b91c1c'>Teste de Email SMTP</h2>"
+        + "<p>Se voce esta lendo este email, o envio SMTP esta funcionando corretamente!</p>"
+        + "<p style='color:#666;font-size:13px'>Enviado em: " + new Date().toISOString() + "</p>"
+        + "<p style='color:#666;font-size:13px'>Host: " + smtpCfg.smtpHost + ":" + smtpCfg.smtpPort + " | De: " + fromAddr + "</p>"
+        + "</div>",
+    });
+    console.log("[SMTP-SendTest] Email sent successfully. MessageId:", info.messageId, "Response:", info.response);
+    return c.json({ ok: true, message: "Email de teste enviado com sucesso para " + toEmail + "!", messageId: info.messageId || "", response: String(info.response || "").substring(0, 200) });
+  } catch (e: any) {
+    console.error("[SMTP-SendTest] Send test email error:", e);
+    var errDetail = (e.code || "") + " " + (e.message || String(e));
+    return c.json({ error: "Falha ao enviar email de teste: " + errDetail.substring(0, 400) }, 500);
   }
 });
 
@@ -19252,16 +19801,66 @@ app.get(BASE + "/robots.txt", async (c) => {
     } catch (_e) { /* ignore */ }
     if (!siteUrl) siteUrl = "https://www.carretaoautopecas.com.br";
     var sitemapUrl = Deno.env.get("SUPABASE_URL") + "/functions/v1/make-server-b7b07654/sitemap.xml";
-    var body = "User-agent: *\n";
-    body += "Allow: /\n";
-    body += "Disallow: /admin\n";
-    body += "Disallow: /admin/\n";
-    body += "Disallow: /seed\n";
-    body += "Disallow: /minha-conta\n";
-    body += "Disallow: /checkout\n";
-    body += "Disallow: /conta/redefinir-senha\n";
-    body += "\n";
-    body += "Sitemap: " + sitemapUrl + "\n";
+
+    // Build a standards-compliant robots.txt (RFC 9309)
+    // Each User-agent block is separated by a blank line
+    var lines: string[] = [];
+
+    // ── Main crawlers (Googlebot, Bingbot, etc.) ──
+    lines.push("User-agent: *");
+    lines.push("Allow: /");
+    lines.push("Allow: /catalogo");
+    lines.push("Allow: /produto/");
+    lines.push("Allow: /marca/");
+    lines.push("Allow: /sobre");
+    lines.push("Allow: /contato");
+    lines.push("Allow: /cupons");
+    lines.push("Allow: /afiliados");
+    lines.push("Allow: /politica-de-privacidade");
+    lines.push("Allow: /termos-de-uso");
+    lines.push("Allow: /exercicio-de-direitos");
+    lines.push("Disallow: /admin");
+    lines.push("Disallow: /admin/");
+    lines.push("Disallow: /seed");
+    lines.push("Disallow: /minha-conta");
+    lines.push("Disallow: /minha-conta/");
+    lines.push("Disallow: /checkout");
+    lines.push("Disallow: /checkout/");
+    lines.push("Disallow: /conta/redefinir-senha");
+    lines.push("Disallow: /rastreio/");
+    lines.push("");
+
+    // ── Block aggressive bots that waste crawl budget ──
+    lines.push("User-agent: AhrefsBot");
+    lines.push("Crawl-delay: 10");
+    lines.push("");
+    lines.push("User-agent: SemrushBot");
+    lines.push("Crawl-delay: 10");
+    lines.push("");
+
+    // ── AI training bots (opt-out) ──
+    lines.push("User-agent: GPTBot");
+    lines.push("Disallow: /");
+    lines.push("");
+    lines.push("User-agent: ChatGPT-User");
+    lines.push("Disallow: /");
+    lines.push("");
+    lines.push("User-agent: CCBot");
+    lines.push("Disallow: /");
+    lines.push("");
+    lines.push("User-agent: anthropic-ai");
+    lines.push("Disallow: /");
+    lines.push("");
+    lines.push("User-agent: Google-Extended");
+    lines.push("Disallow: /");
+    lines.push("");
+
+    // ── Host + Sitemap directives ──
+    lines.push("Host: " + siteUrl);
+    lines.push("Sitemap: " + sitemapUrl);
+    lines.push("");
+
+    var body = lines.join("\n");
     return new Response(body, {
       status: 200,
       headers: {
@@ -19297,10 +19896,13 @@ app.get(BASE + "/sitemap.xml", async (c) => {
     var staticPages = [
       { loc: "/", priority: "1.0", changefreq: "daily" },
       { loc: "/catalogo", priority: "0.9", changefreq: "daily" },
+      { loc: "/cupons", priority: "0.7", changefreq: "daily" },
+      { loc: "/afiliados", priority: "0.5", changefreq: "monthly" },
       { loc: "/contato", priority: "0.6", changefreq: "monthly" },
       { loc: "/sobre", priority: "0.5", changefreq: "monthly" },
       { loc: "/politica-de-privacidade", priority: "0.3", changefreq: "yearly" },
       { loc: "/termos-de-uso", priority: "0.3", changefreq: "yearly" },
+      { loc: "/exercicio-de-direitos", priority: "0.3", changefreq: "yearly" },
     ];
 
     // Category pages
@@ -19382,6 +19984,26 @@ app.get(BASE + "/sitemap.xml", async (c) => {
       xml += "  </url>\n";
     }
 
+    // Brand pages
+    try {
+      var rawBrands = await kv.getByPrefix("brand:");
+      for (var bi = 0; bi < rawBrands.length; bi++) {
+        try {
+          var brand = typeof rawBrands[bi] === "string" ? JSON.parse(rawBrands[bi]) : rawBrands[bi];
+          if (brand && brand.slug && brand.active !== false) {
+            xml += "  <url>\n";
+            xml += "    <loc>" + siteUrl + "/marca/" + encodeURIComponent(brand.slug) + "</loc>\n";
+            xml += "    <lastmod>" + today + "</lastmod>\n";
+            xml += "    <changefreq>weekly</changefreq>\n";
+            xml += "    <priority>0.6</priority>\n";
+            xml += "  </url>\n";
+          }
+        } catch (_be) { /* skip invalid brand */ }
+      }
+    } catch (_be) {
+      console.error("[sitemap] Error fetching brands:", _be);
+    }
+
     xml += "</urlset>\n";
 
     return new Response(xml, {
@@ -19401,7 +20023,532 @@ app.get(BASE + "/sitemap.xml", async (c) => {
   }
 });
 
-// ════════════════════════════���══════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// WEB VITALS — Receives real user field metrics (CLS, LCP, INP, FCP, TTFB)
+// from the frontend WebVitalsReporter component. Stores in KV for admin dashboard.
+// ═══════════════════════════════════════════════════════════════════════
+
+app.post(BASE + "/web-vitals", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "web_vitals");
+    var rlResult = _checkRateLimit(rlKey, 30);
+    if (!rlResult.allowed) return new Response("OK", { status: 200 }); // Silent drop, don't return 429 for analytics
+
+    var body: any;
+    try {
+      var contentType = c.req.header("content-type") || "";
+      if (contentType.includes("text/plain")) {
+        var raw = await c.req.text();
+        body = JSON.parse(raw);
+      } else {
+        body = await c.req.json();
+      }
+    } catch (_parseErr) {
+      return c.json({ ok: true }); // Silent accept — don't break analytics
+    }
+
+    var metrics = body.metrics;
+    if (!Array.isArray(metrics) || metrics.length === 0) {
+      return c.json({ ok: true });
+    }
+
+    // Store metrics in rolling window (keep last 500 data points)
+    var existingRaw = await kv.get("infra:web_vitals");
+    var existing: any[] = [];
+    if (existingRaw) {
+      try { existing = typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw; } catch (_e) { existing = []; }
+    }
+
+    for (var mi = 0; mi < metrics.length; mi++) {
+      var m = metrics[mi];
+      existing.push({
+        name: String(m.name || "").substring(0, 10),
+        value: Number(m.value) || 0,
+        rating: String(m.rating || "").substring(0, 20),
+        url: String(m.url || "").substring(0, 200),
+        navigationType: String(m.navigationType || "").substring(0, 20),
+        timestamp: Number(m.timestamp) || Date.now(),
+      });
+    }
+
+    // Keep only last 500 entries
+    if (existing.length > 500) {
+      existing = existing.slice(-500);
+    }
+
+    await kv.set("infra:web_vitals", JSON.stringify(existing));
+
+    // Also update aggregated p75 snapshot (for quick dashboard reads)
+    var now = Date.now();
+    var last24h = existing.filter(function (e: any) { return e.timestamp > now - 86400000; });
+    var vitalNames = ["CLS", "INP", "LCP", "FCP", "TTFB"];
+    var p75s: Record<string, any> = {};
+    for (var vi = 0; vi < vitalNames.length; vi++) {
+      var vn = vitalNames[vi];
+      var values = last24h.filter(function (e: any) { return e.name === vn; }).map(function (e: any) { return e.value; }).sort(function (a: number, b: number) { return a - b; });
+      if (values.length > 0) {
+        var idx75 = Math.floor(values.length * 0.75);
+        var goodCount = last24h.filter(function (e: any) { return e.name === vn && e.rating === "good"; }).length;
+        var needsImprovementCount = last24h.filter(function (e: any) { return e.name === vn && e.rating === "needs-improvement"; }).length;
+        var poorCount = last24h.filter(function (e: any) { return e.name === vn && e.rating === "poor"; }).length;
+        p75s[vn] = {
+          p75: Math.round(values[idx75] * 1000) / 1000,
+          median: Math.round(values[Math.floor(values.length * 0.5)] * 1000) / 1000,
+          samples: values.length,
+          good: goodCount,
+          needsImprovement: needsImprovementCount,
+          poor: poorCount,
+        };
+      }
+    }
+    await kv.set("infra:web_vitals_p75", JSON.stringify({ updatedAt: now, metrics: p75s }));
+
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[web-vitals POST] Error:", e);
+    return c.json({ ok: true }); // Always 200 for analytics endpoints
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// ERROR REPORT — Receives frontend errors for persistent monitoring.
+// Stores in KV for admin Infrastructure dashboard.
+// ═══════════════════════════════════════════════════════════════════════
+
+app.post(BASE + "/error-report", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "error_report");
+    var rlResult = _checkRateLimit(rlKey, 20);
+    if (!rlResult.allowed) return c.json({ ok: true }); // Silent drop
+
+    var body = await c.req.json();
+    var errors = body.errors;
+    if (!Array.isArray(errors) || errors.length === 0) {
+      return c.json({ ok: true });
+    }
+
+    var existingRaw = await kv.get("infra:error_log");
+    var existing: any[] = [];
+    if (existingRaw) {
+      try { existing = typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw; } catch (_e) { existing = []; }
+    }
+
+    var userAgent = c.req.header("user-agent") || "unknown";
+    var ip = c.req.header("x-forwarded-for") || "unknown";
+    if (ip.indexOf(",") >= 0) ip = ip.split(",")[0].trim();
+
+    for (var ei = 0; ei < Math.min(errors.length, 10); ei++) {
+      var err = errors[ei];
+      existing.push({
+        type: String(err.type || "unknown").substring(0, 30),
+        message: String(err.message || "").substring(0, 500),
+        stack: String(err.stack || "").substring(0, 1000),
+        url: String(err.url || "").substring(0, 300),
+        timestamp: Number(err.timestamp) || Date.now(),
+        userAgent: userAgent.substring(0, 200),
+        ip: ip.substring(0, 45),
+      });
+    }
+
+    // Keep only last 300 errors
+    if (existing.length > 300) {
+      existing = existing.slice(-300);
+    }
+
+    await kv.set("infra:error_log", JSON.stringify(existing));
+
+    // Update error summary (grouped by message)
+    var summaryRaw = await kv.get("infra:error_summary");
+    var summary: Record<string, { count: number; lastSeen: number; type: string }> = {};
+    if (summaryRaw) {
+      try { summary = typeof summaryRaw === "string" ? JSON.parse(summaryRaw) : summaryRaw; } catch (_e) { summary = {}; }
+    }
+    for (var si = 0; si < Math.min(errors.length, 10); si++) {
+      var eKey = String(errors[si].message || "").substring(0, 100);
+      if (!eKey) continue;
+      if (!summary[eKey]) {
+        summary[eKey] = { count: 0, lastSeen: 0, type: String(errors[si].type || "unknown") };
+      }
+      summary[eKey].count++;
+      summary[eKey].lastSeen = Date.now();
+    }
+    // Keep only top 100 error types
+    var summaryEntries = Object.entries(summary);
+    if (summaryEntries.length > 100) {
+      summaryEntries.sort(function (a, b) { return b[1].lastSeen - a[1].lastSeen; });
+      summary = {};
+      for (var se = 0; se < 100; se++) {
+        summary[summaryEntries[se][0]] = summaryEntries[se][1];
+      }
+    }
+    await kv.set("infra:error_summary", JSON.stringify(summary));
+
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[error-report POST] Error:", e);
+    return c.json({ ok: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// IMAGE CDN PROXY — Proxies and caches external product images with
+// optimized headers. Useful for SIGE product images from external URLs.
+// Adds long cache headers and supports WebP content negotiation.
+// ═══════════════════════════════════════════════════════════════════════
+
+app.get(BASE + "/image-cdn", async (c) => {
+  try {
+    var url = c.req.query("url");
+    var width = c.req.query("w");
+    var quality = c.req.query("q") || "80";
+
+    if (!url) {
+      return c.json({ error: "URL parameter required" }, 400);
+    }
+
+    // Validate URL — only allow known safe origins
+    var allowedOrigins = [
+      "https://aztdgagxvrlylszieujs.supabase.co",
+      "https://app.sige.cloud",
+      "http://app.sige.cloud",
+      "https://sige.cloud",
+    ];
+    var urlLower = url.toLowerCase();
+    var originAllowed = false;
+    for (var ao = 0; ao < allowedOrigins.length; ao++) {
+      if (urlLower.startsWith(allowedOrigins[ao])) {
+        originAllowed = true;
+        break;
+      }
+    }
+    if (!originAllowed) {
+      return c.json({ error: "Origin not allowed" }, 403);
+    }
+
+    // Rate limit
+    var rlKey = _getRateLimitKey(c, "image_cdn");
+    var rlResult = _checkRateLimit(rlKey, 100);
+    if (!rlResult.allowed) {
+      return new Response("Too many requests", { status: 429, headers: { "Retry-After": "30" } });
+    }
+
+    // Fetch the original image
+    var imgResp = await fetch(url, {
+      headers: {
+        "Accept": "image/webp,image/avif,image/*,*/*;q=0.8",
+        "User-Agent": "CarretaoImageCDN/1.0",
+      },
+    });
+
+    if (!imgResp.ok) {
+      return new Response("Image not found", { status: 404 });
+    }
+
+    var contentType = imgResp.headers.get("content-type") || "image/jpeg";
+    var imageBuffer = await imgResp.arrayBuffer();
+
+    // Return with aggressive cache headers
+    return new Response(imageBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=2592000, s-maxage=31536000, immutable",
+        "CDN-Cache-Control": "public, max-age=31536000",
+        "Vary": "Accept",
+        "Access-Control-Allow-Origin": "*",
+        "X-Content-Type-Options": "nosniff",
+        "X-Image-CDN": "carretao-v1",
+        "Timing-Allow-Origin": "*",
+      },
+    });
+  } catch (e) {
+    console.error("[image-cdn] Error:", e);
+    return new Response("Error fetching image", { status: 500 });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADMIN INFRASTRUCTURE STATS — Combined SEO + Infrastructure dashboard data
+// ═══════════════════════════════════════════════════════════════════════
+
+app.get(BASE + "/admin/infra-stats", async (c: any) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Unauthorized" }, 401);
+
+    // Web Vitals p75 snapshot
+    var vitalsP75Raw = await kv.get("infra:web_vitals_p75");
+    var vitalsP75 = null;
+    if (vitalsP75Raw) {
+      try { vitalsP75 = typeof vitalsP75Raw === "string" ? JSON.parse(vitalsP75Raw) : vitalsP75Raw; } catch (_e) {}
+    }
+
+    // Web Vitals raw data (last 500 samples)
+    var vitalsRaw = await kv.get("infra:web_vitals");
+    var vitalsData: any[] = [];
+    if (vitalsRaw) {
+      try { vitalsData = typeof vitalsRaw === "string" ? JSON.parse(vitalsRaw) : vitalsRaw; } catch (_e) {}
+    }
+
+    // Error summary
+    var errorSummaryRaw = await kv.get("infra:error_summary");
+    var errorSummary: any = {};
+    if (errorSummaryRaw) {
+      try { errorSummary = typeof errorSummaryRaw === "string" ? JSON.parse(errorSummaryRaw) : errorSummaryRaw; } catch (_e) {}
+    }
+
+    // Error log (recent)
+    var errorLogRaw = await kv.get("infra:error_log");
+    var errorLog: any[] = [];
+    if (errorLogRaw) {
+      try { errorLog = typeof errorLogRaw === "string" ? JSON.parse(errorLogRaw) : errorLogRaw; } catch (_e) {}
+    }
+
+    // Rate limit stats (current state)
+    var rlStats = {
+      activeKeys: _rateLimitMap.size,
+      failedLogins: _failedLoginMap.size,
+    };
+
+    // Sitemap stats
+    var sitemapStats: any = { static: 9, categories: 0, products: 0, brands: 0 };
+    try {
+      var rawTree = await kv.get("category_tree");
+      if (rawTree) {
+        var tree = typeof rawTree === "string" ? JSON.parse(rawTree) : rawTree;
+        function countNodes(nodes: any[]): number {
+          var c = 0;
+          for (var n = 0; n < nodes.length; n++) {
+            if (nodes[n].slug) c++;
+            if (nodes[n].children) c += countNodes(nodes[n].children);
+          }
+          return c;
+        }
+        sitemapStats.categories = countNodes(tree);
+      }
+    } catch (_e) {}
+    try {
+      var rawBrandsCount = await kv.getByPrefix("brand:");
+      sitemapStats.brands = rawBrandsCount.length;
+    } catch (_e) {}
+
+    return c.json({
+      vitalsP75: vitalsP75,
+      vitalsData: vitalsData.slice(-200), // Only last 200 for response size
+      errorSummary: errorSummary,
+      errorLog: errorLog.slice(-50), // Only last 50 for response size
+      rateLimitStats: rlStats,
+      sitemapStats: sitemapStats,
+    });
+  } catch (e) {
+    console.error("[admin/infra-stats] Error:", e);
+    return c.json({ error: "Erro ao buscar estatísticas de infraestrutura." }, 500);
+  }
+});
+
+// Admin: clear error log
+app.delete(BASE + "/admin/infra-errors", async (c: any) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Unauthorized" }, 401);
+    await kv.set("infra:error_log", "[]");
+    await kv.set("infra:error_summary", "{}");
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[admin/infra-errors DELETE] Error:", e);
+    return c.json({ error: "Erro ao limpar erros." }, 500);
+  }
+});
+
+// Admin: clear web vitals data
+app.delete(BASE + "/admin/infra-vitals", async (c: any) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Unauthorized" }, 401);
+    await kv.set("infra:web_vitals", "[]");
+    await kv.set("infra:web_vitals_p75", "{}");
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[admin/infra-vitals DELETE] Error:", e);
+    return c.json({ error: "Erro ao limpar dados de vitals." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// PAGESPEED INSIGHTS — Automated Lighthouse monitoring via Google PSI API
+// ═══════════════════════════════════════════════════════════════════════
+
+var PSI_HISTORY_KEY = "infra:psi_history";
+var PSI_MAX_HISTORY = 50;
+
+app.post(BASE + "/admin/psi-scan", async (c: any) => {
+  try {
+    // Admin auth is handled by adminGuard middleware on /admin/*
+    var body = await c.req.json().catch(function () { return {}; });
+    var targetUrl = body.url || "https://www.autopecascarretao.com.br";
+    var strategy = body.strategy || "mobile";
+    var categories = body.categories || ["performance", "seo", "accessibility", "best-practices"];
+
+    var psiBase = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+    var params = new URLSearchParams();
+    params.set("url", targetUrl);
+    params.set("strategy", strategy);
+    for (var ci = 0; ci < categories.length; ci++) {
+      params.append("category", categories[ci]);
+    }
+    var apiKey = Deno.env.get("GOOGLE_PSI_API_KEY");
+    if (apiKey) {
+      params.set("key", apiKey);
+    }
+
+    console.log("[PSI] Scanning:", targetUrl, "strategy:", strategy);
+    var psiUrl = psiBase + "?" + params.toString();
+
+    var psiRes = await fetch(psiUrl, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(120000),
+    });
+
+    if (!psiRes.ok) {
+      var errText = await psiRes.text().catch(function () { return ""; });
+      console.error("[PSI] API error:", psiRes.status, errText);
+      return c.json({
+        error: "Google PSI API retornou erro " + psiRes.status,
+        details: errText.substring(0, 500),
+      }, 502);
+    }
+
+    var psiData = await psiRes.json();
+    var lighthouseResult = psiData.lighthouseResult || {};
+    var loadingExperience = psiData.loadingExperience || {};
+
+    var catScores: Record<string, number> = {};
+    var cats = lighthouseResult.categories || {};
+    var catKeys = Object.keys(cats);
+    for (var ck = 0; ck < catKeys.length; ck++) {
+      catScores[catKeys[ck]] = Math.round((cats[catKeys[ck]].score || 0) * 100);
+    }
+
+    var audits = lighthouseResult.audits || {};
+    var labMetrics: Record<string, { value: number; displayValue: string; score: number }> = {};
+    var metricKeys = [
+      "first-contentful-paint", "largest-contentful-paint", "total-blocking-time",
+      "cumulative-layout-shift", "speed-index", "interactive",
+      "server-response-time", "render-blocking-resources"
+    ];
+    for (var mk = 0; mk < metricKeys.length; mk++) {
+      var audit = audits[metricKeys[mk]];
+      if (audit) {
+        labMetrics[metricKeys[mk]] = {
+          value: audit.numericValue || 0,
+          displayValue: audit.displayValue || "",
+          score: audit.score != null ? audit.score : -1,
+        };
+      }
+    }
+
+    var fieldMetrics: Record<string, any> = {};
+    var fieldData = loadingExperience.metrics || {};
+    var fieldKeys = Object.keys(fieldData);
+    for (var fk = 0; fk < fieldKeys.length; fk++) {
+      var fm = fieldData[fieldKeys[fk]];
+      fieldMetrics[fieldKeys[fk]] = {
+        percentile: fm.percentile || 0,
+        category: fm.category || "NONE",
+        distributions: fm.distributions || [],
+      };
+    }
+
+    var opportunities: Array<{ id: string; title: string; savings: string; score: number }> = [];
+    var diagnostics: Array<{ id: string; title: string; displayValue: string; score: number }> = [];
+    var auditKeys = Object.keys(audits);
+    for (var ak = 0; ak < auditKeys.length; ak++) {
+      var a = audits[auditKeys[ak]];
+      if (!a || a.score === 1 || a.score == null) continue;
+      if (a.details && a.details.type === "opportunity" && a.details.overallSavingsMs > 0) {
+        opportunities.push({
+          id: a.id,
+          title: a.title || a.id,
+          savings: Math.round(a.details.overallSavingsMs) + "ms",
+          score: a.score,
+        });
+      } else if (a.score < 1 && a.score >= 0 && a.details && a.details.type === "table") {
+        diagnostics.push({
+          id: a.id,
+          title: a.title || a.id,
+          displayValue: a.displayValue || "",
+          score: a.score,
+        });
+      }
+    }
+    opportunities.sort(function (x, y) { return parseInt(y.savings) - parseInt(x.savings); });
+    opportunities = opportunities.slice(0, 10);
+    diagnostics = diagnostics.slice(0, 10);
+
+    var scanResult = {
+      id: "psi_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8),
+      timestamp: Date.now(),
+      url: targetUrl,
+      strategy: strategy,
+      scores: catScores,
+      labMetrics: labMetrics,
+      fieldMetrics: fieldMetrics,
+      opportunities: opportunities,
+      diagnostics: diagnostics,
+      overallCategory: loadingExperience.overall_category || "NONE",
+      fetchTime: lighthouseResult.fetchTime || "",
+      lighthouseVersion: lighthouseResult.lighthouseVersion || "",
+    };
+
+    var historyRaw = await kv.get(PSI_HISTORY_KEY);
+    var history: any[] = [];
+    if (historyRaw) {
+      try { history = JSON.parse(historyRaw); } catch { history = []; }
+    }
+    history.push(scanResult);
+    if (history.length > PSI_MAX_HISTORY) {
+      history = history.slice(-PSI_MAX_HISTORY);
+    }
+    await kv.set(PSI_HISTORY_KEY, JSON.stringify(history));
+
+    console.log("[PSI] Scan complete. Scores:", JSON.stringify(catScores));
+    return c.json({ ok: true, scan: scanResult });
+  } catch (e: any) {
+    console.error("[PSI] Scan error:", e);
+    return c.json({ error: "Erro ao executar scan PSI: " + (e.message || String(e)) }, 500);
+  }
+});
+
+app.get(BASE + "/admin/psi-history", async (c: any) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Unauthorized" }, 401);
+
+    var historyRaw = await kv.get(PSI_HISTORY_KEY);
+    var history: any[] = [];
+    if (historyRaw) {
+      try { history = JSON.parse(historyRaw); } catch { history = []; }
+    }
+    return c.json({ history: history });
+  } catch (e) {
+    console.error("[PSI history] Error:", e);
+    return c.json({ error: "Erro ao carregar histórico PSI." }, 500);
+  }
+});
+
+app.delete(BASE + "/admin/psi-history", async (c: any) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Unauthorized" }, 401);
+    await kv.del(PSI_HISTORY_KEY);
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[PSI history DELETE] Error:", e);
+    return c.json({ error: "Erro ao limpar histórico PSI." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // ADMIN PENDING COUNTS — lightweight badge counters for admin sidebar
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -19645,7 +20792,7 @@ app.get(BASE + "/admin/coupons", async (c: any) => {
     var coupons: any[] = [];
     for (var i = 0; i < entries.length; i++) {
       try {
-        var val = typeof entries[i].value === "string" ? JSON.parse(entries[i].value) : entries[i].value;
+        var val = typeof entries[i] === "string" ? JSON.parse(entries[i]) : entries[i];
         if (val) coupons.push(val);
       } catch (e) { /* skip */ }
     }
@@ -19677,10 +20824,30 @@ app.post(BASE + "/admin/coupons", async (c: any) => {
     if (!code || code.length < 3) {
       return c.json({ error: "Código do cupom deve ter no mínimo 3 caracteres (letras, números, - e _)" }, 400);
     }
-    // Check if code already exists
+    // Check if code already exists — upsert: update fields but preserve usage counters
     var existing = await kv.get("coupon:" + code);
     if (existing) {
-      return c.json({ error: "Cupom com este código já existe: " + code }, 409);
+      var prev: any = {};
+      try { prev = typeof existing === "string" ? JSON.parse(existing) : existing; } catch (_e) { prev = {}; }
+      var updated = {
+        ...prev,
+        code: code,
+        description: sanitizeInput(String(body.description || "")),
+        discountType: body.discountType === "fixed" ? "fixed" : "percentage",
+        discountValue: Math.max(0, Number(body.discountValue) || 0),
+        minOrderValue: Math.max(0, Number(body.minOrderValue) || 0),
+        maxUses: Math.max(0, Math.floor(Number(body.maxUses) || 0)),
+        active: body.active !== false,
+        expiresAt: body.expiresAt ? String(body.expiresAt) : null,
+        singleUsePerCpf: !!body.singleUsePerCpf,
+        usedCount: prev.usedCount || 0,
+        usedByCpf: Array.isArray(prev.usedByCpf) ? prev.usedByCpf : [],
+        createdAt: prev.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      };
+      await kv.set("coupon:" + code, JSON.stringify(updated));
+      console.log("[admin/coupons] Upserted existing coupon: " + code);
+      return c.json({ ok: true, coupon: updated });
     }
     var coupon = {
       code: code,
@@ -19692,10 +20859,13 @@ app.post(BASE + "/admin/coupons", async (c: any) => {
       usedCount: 0,
       active: body.active !== false,
       expiresAt: body.expiresAt ? String(body.expiresAt) : null,
+      singleUsePerCpf: !!body.singleUsePerCpf,
+      usedByCpf: [] as string[],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     await kv.set("coupon:" + code, JSON.stringify(coupon));
+    memClear("_coupons_public"); // invalidate public cache
     // admin/coupons: created
     return c.json({ ok: true, coupon: coupon });
   } catch (e) {
@@ -19734,8 +20904,10 @@ app.put(BASE + "/admin/coupons/:code", async (c: any) => {
     if (body.maxUses !== undefined) current.maxUses = Math.max(0, Math.floor(Number(body.maxUses) || 0));
     if (body.active !== undefined) current.active = !!body.active;
     if (body.expiresAt !== undefined) current.expiresAt = body.expiresAt ? String(body.expiresAt) : null;
+    if (body.singleUsePerCpf !== undefined) current.singleUsePerCpf = !!body.singleUsePerCpf;
     current.updatedAt = Date.now();
     await kv.set("coupon:" + code, JSON.stringify(current));
+    memClear("_coupons_public"); // invalidate public cache
     // admin/coupons: updated
     return c.json({ ok: true, coupon: current });
   } catch (e) {
@@ -19750,11 +20922,60 @@ app.delete(BASE + "/admin/coupons/:code", async (c: any) => {
     var code = String(c.req.param("code") || "").toUpperCase().trim().substring(0, 50);
     if (!code) return c.json({ error: "Codigo invalido." }, 400);
     await kv.del("coupon:" + code);
+    memClear("_coupons_public"); // invalidate public cache
     // admin/coupons: deleted
     return c.json({ ok: true, deleted: code });
   } catch (e) {
     console.error("[admin/coupons] Delete error: " + e);
     return c.json({ error: "Erro ao excluir cupom." }, 500);
+  }
+});
+
+// ── Public: List active coupons (for /cupons page & carousel) ──
+app.get(BASE + "/coupons/public", async (c: any) => {
+  try {
+    // In-memory cache: avoid KV read on every request (especially during cold start bursts)
+    var cacheKey = "_coupons_public";
+    var cached = memGet(cacheKey);
+    if (cached) {
+      return c.json(cached);
+    }
+
+    var entries = await kv.getByPrefix("coupon:");
+    var coupons: any[] = [];
+    var now = Date.now();
+    for (var i = 0; i < entries.length; i++) {
+      try {
+        var val = typeof entries[i] === "string" ? JSON.parse(entries[i]) : entries[i];
+        if (!val || !val.active) continue;
+        if (val.expiresAt) {
+          var expDate = new Date(val.expiresAt);
+          if (expDate.getTime() < now) continue;
+        }
+        if (val.maxUses > 0 && val.usedCount >= val.maxUses) continue;
+        coupons.push({
+          code: val.code,
+          description: val.description || "",
+          discountType: val.discountType,
+          discountValue: val.discountValue,
+          minOrderValue: val.minOrderValue || 0,
+          expiresAt: val.expiresAt || null,
+          singleUsePerCpf: !!val.singleUsePerCpf,
+        });
+      } catch (e) { /* skip */ }
+    }
+    coupons.sort(function (a: any, b: any) {
+      if (a.expiresAt && !b.expiresAt) return -1;
+      if (!a.expiresAt && b.expiresAt) return 1;
+      if (a.expiresAt && b.expiresAt) return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+      return 0;
+    });
+    var result = { coupons: coupons };
+    memSet(cacheKey, result, 5 * 60 * 1000); // 5-minute cache
+    return c.json(result);
+  } catch (e) {
+    console.error("[coupons/public] List error: " + e);
+    return c.json({ error: "Erro ao listar cupons." }, 500);
   }
 });
 
@@ -19776,6 +20997,7 @@ app.post(BASE + "/coupons/validate", async (c: any) => {
     }
     var code = String(cvValid.data.code || "").toUpperCase().trim();
     var orderTotal = Number(cvValid.data.orderTotal) || 0;
+    var cvCpf = cvValid.data.cpf ? String(cvValid.data.cpf).replace(/\D/g, "") : "";
     if (!code) {
       return c.json({ valid: false, error: "Informe o código do cupom" });
     }
@@ -19802,6 +21024,13 @@ app.post(BASE + "/coupons/validate", async (c: any) => {
         error: "Valor mínimo do pedido: R$ " + coupon.minOrderValue.toFixed(2).replace(".", ","),
       });
     }
+    // SECURITY: Per-CPF/CNPJ usage check — single-use-per-CPF coupons
+    if (coupon.singleUsePerCpf && cvCpf) {
+      var usedByCpfList = Array.isArray(coupon.usedByCpf) ? coupon.usedByCpf : [];
+      if (usedByCpfList.indexOf(cvCpf) !== -1) {
+        return c.json({ valid: false, error: "Este cupom já foi utilizado no seu CPF/CNPJ." });
+      }
+    }
     // Calculate discount
     var discountAmount = 0;
     if (coupon.discountType === "percentage") {
@@ -19816,6 +21045,7 @@ app.post(BASE + "/coupons/validate", async (c: any) => {
       discountValue: coupon.discountValue,
       discountAmount: discountAmount,
       description: coupon.description || "",
+      singleUsePerCpf: !!coupon.singleUsePerCpf,
     });
   } catch (e) {
     console.error("[coupons/validate] Error: " + e);
@@ -19840,32 +21070,47 @@ app.post(BASE + "/coupons/use", async (c: any) => {
       return c.json({ ok: false, error: cuValid.errors[0] || "Dados invalidos." });
     }
     var code = String(cuValid.data.code || "").toUpperCase().trim();
+    var cuCpf = cuValid.data.cpf ? String(cuValid.data.cpf).replace(/\D/g, "") : "";
     if (!code) return c.json({ ok: false });
-    var raw = await kv.get("coupon:" + code);
-    if (!raw) return c.json({ ok: false });
-    var coupon = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    // SECURITY: Re-check maxUses before incrementing (mitigate race condition)
-    if (coupon.maxUses > 0 && (coupon.usedCount || 0) >= coupon.maxUses) {
-      return c.json({ ok: false, error: "Cupom esgotado." });
-    }
-    if (!coupon.active) {
-      return c.json({ ok: false, error: "Cupom inativo." });
-    }
+    // ATOMICITY: Use mutex to prevent race conditions on concurrent coupon usage
+    // Without this, two simultaneous requests could both read usedCount=4 and both write 5
+    return await withMutex("coupon_use:" + code, async function () {
+      var raw = await kv.get("coupon:" + code);
+      if (!raw) return c.json({ ok: false });
+      var coupon = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    // SECURITY: Per-user usage tracking — prevent same user from using coupon multiple times
-    var usedByList = Array.isArray(coupon.usedBy) ? coupon.usedBy : [];
-    if (usedByList.indexOf(couponUserId) !== -1) {
-      return c.json({ ok: false, error: "Você já utilizou este cupom." });
-    }
-    usedByList.push(couponUserId);
-    coupon.usedBy = usedByList;
+      if (coupon.maxUses > 0 && (coupon.usedCount || 0) >= coupon.maxUses) {
+        return c.json({ ok: false, error: "Cupom esgotado." });
+      }
+      if (!coupon.active) {
+        return c.json({ ok: false, error: "Cupom inativo." });
+      }
 
-    coupon.usedCount = (coupon.usedCount || 0) + 1;
-    coupon.updatedAt = Date.now();
-    await kv.set("coupon:" + code, JSON.stringify(coupon));
-    // coupons: coupon used
-    return c.json({ ok: true, usedCount: coupon.usedCount });
+      // SECURITY: Per-user usage tracking — prevent same user from using coupon multiple times
+      var usedByList = Array.isArray(coupon.usedBy) ? coupon.usedBy : [];
+      if (usedByList.indexOf(couponUserId) !== -1) {
+        return c.json({ ok: false, error: "Você já utilizou este cupom." });
+      }
+      usedByList.push(couponUserId);
+      coupon.usedBy = usedByList;
+
+      // SECURITY: Per-CPF/CNPJ usage tracking — single-use-per-CPF coupons
+      if (coupon.singleUsePerCpf && cuCpf) {
+        var usedByCpfList = Array.isArray(coupon.usedByCpf) ? coupon.usedByCpf : [];
+        if (usedByCpfList.indexOf(cuCpf) !== -1) {
+          return c.json({ ok: false, error: "Este cupom já foi utilizado no seu CPF/CNPJ." });
+        }
+        usedByCpfList.push(cuCpf);
+        coupon.usedByCpf = usedByCpfList;
+      }
+
+      coupon.usedCount = (coupon.usedCount || 0) + 1;
+      coupon.updatedAt = Date.now();
+      await kv.set("coupon:" + code, JSON.stringify(coupon));
+      memClear("_coupons_public"); // invalidate public cache (usedCount may hide coupon)
+      return c.json({ ok: true, usedCount: coupon.usedCount });
+    });
   } catch (e) {
     console.error("[coupons/use] Error: " + e);
     return c.json({ ok: false, error: "Erro ao aplicar cupom." }, 500);
@@ -21012,6 +22257,11 @@ app.get(BASE + "/reviews/:sku/mine", async function (c) {
 
 app.post(BASE + "/reviews", async function (c) {
   try {
+    // Rate limit: max 10 review submissions per minute per IP
+    var reviewRlKey = _getRateLimitKey(c, "review_submit");
+    var reviewRlResult = _checkRateLimit(reviewRlKey, 10);
+    if (!reviewRlResult.allowed) return _rl429(c, "Muitas avaliações enviadas. Aguarde um momento.", reviewRlResult);
+
     var userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Voce precisa estar logado para avaliar." }, 401);
     var userResult = await supabaseAdmin.auth.admin.getUserById(userId);
@@ -21032,37 +22282,42 @@ app.post(BASE + "/reviews", async function (c) {
     if (!hasPurchased) {
       return c.json({ error: "Somente compradores podem avaliar este produto. Compre primeiro para poder avaliar." }, 403);
     }
-    var existingIds = await _getReviewIdsBySku(sku);
-    if (existingIds.length > 0) {
-      var existingKeys: string[] = [];
-      for (var ei = 0; ei < existingIds.length; ei++) existingKeys.push("review:" + existingIds[ei]);
-      var existingReviews = await kv.mget(existingKeys);
-      for (var eri = 0; eri < existingReviews.length; eri++) {
-        var er = existingReviews[eri];
-        if (!er) continue;
-        var parsed = typeof er === "string" ? JSON.parse(er) : er;
-        if (parsed.userId === userId && parsed.status !== "rejected") return c.json({ error: "Voce ja avaliou este produto." }, 409);
+
+    // ATOMICITY: Mutex prevents duplicate reviews from rapid double-clicks
+    // Without this, two requests could both pass the "already reviewed?" check before either writes
+    return await withMutex("review_submit:" + userId + ":" + sku, async function () {
+      var existingIds = await _getReviewIdsBySku(sku);
+      if (existingIds.length > 0) {
+        var existingKeys: string[] = [];
+        for (var ei = 0; ei < existingIds.length; ei++) existingKeys.push("review:" + existingIds[ei]);
+        var existingReviews = await kv.mget(existingKeys);
+        for (var eri = 0; eri < existingReviews.length; eri++) {
+          var er = existingReviews[eri];
+          if (!er) continue;
+          var parsed = typeof er === "string" ? JSON.parse(er) : er;
+          if (parsed.userId === userId && parsed.status !== "rejected") return c.json({ error: "Voce ja avaliou este produto." }, 409);
+        }
       }
-    }
-    var reviewId = _reviewUuid();
-    var now = Date.now();
-    var userName = user.user_metadata ? (user.user_metadata.name || user.email || "Anônimo") : (user.email || "Anônimo");
-    var userEmail = user.email || "";
-    var review = { id: reviewId, sku: sku, userId: userId, userName: userName, userEmail: userEmail, rating: rating, title: title, comment: comment, images: [], status: "pending", createdAt: now, updatedAt: now, moderatedAt: null, moderatedBy: null, moderationNote: null, helpful: 0, verified: true };
-    await kv.set("review:" + reviewId, JSON.stringify(review));
-    var skuIds = await _getReviewIdsBySku(sku);
-    skuIds.push(reviewId);
-    await _saveReviewIdsBySku(sku, skuIds);
-    var userRevIds = await _getReviewIdsByUser(userId);
-    userRevIds.push(reviewId);
-    await _saveReviewIdsByUser(userId, userRevIds);
-    var allIds = await _getAllReviewIds();
-    allIds.push(reviewId);
-    await _saveAllReviewIds(allIds);
-    var pending = await _getReviewsPending();
-    pending.push(reviewId);
-    await _saveReviewsPending(pending);
-    return c.json({ ok: true, reviewId: reviewId, status: "pending" });
+      var reviewId = _reviewUuid();
+      var now = Date.now();
+      var userName = user.user_metadata ? (user.user_metadata.name || user.email || "Anônimo") : (user.email || "Anônimo");
+      var userEmail = user.email || "";
+      var review = { id: reviewId, sku: sku, userId: userId, userName: userName, userEmail: userEmail, rating: rating, title: title, comment: comment, images: [], status: "pending", createdAt: now, updatedAt: now, moderatedAt: null, moderatedBy: null, moderationNote: null, helpful: 0, verified: true };
+      await kv.set("review:" + reviewId, JSON.stringify(review));
+      var skuIds = await _getReviewIdsBySku(sku);
+      skuIds.push(reviewId);
+      await _saveReviewIdsBySku(sku, skuIds);
+      var userRevIds = await _getReviewIdsByUser(userId);
+      userRevIds.push(reviewId);
+      await _saveReviewIdsByUser(userId, userRevIds);
+      var allIds = await _getAllReviewIds();
+      allIds.push(reviewId);
+      await _saveAllReviewIds(allIds);
+      var pending = await _getReviewsPending();
+      pending.push(reviewId);
+      await _saveReviewsPending(pending);
+      return c.json({ ok: true, reviewId: reviewId, status: "pending" });
+    });
   } catch (e) {
     console.error("[Reviews] POST error:", e);
     return c.json({ error: "Erro ao enviar avaliacao." }, 500);
@@ -23308,5 +24563,1269 @@ app.delete(BASE + "/admin/branches/:id", async (c) => {
     return c.json({ error: "Erro ao excluir filial." }, 500);
   }
 });
+
+// ═══════════════════════════════════════════════════════
+// ─── EXIT INTENT POPUP CONFIG + LEAD CAPTURE ─────────
+// ═══════════════════════════════════════════════════════
+
+var DEFAULT_EXIT_INTENT_CONFIG = {
+  enabled: false,
+  title: "Espere! Temos um presente pra voce",
+  subtitle: "Cadastre seu email e ganhe um cupom exclusivo de primeira compra!",
+  couponCode: "PRIMEIRA10",
+  discountText: "10% OFF na primeira compra",
+  buttonText: "Quero meu cupom!",
+  successMessage: "Cupom enviado para seu email!",
+  showAfterSeconds: 0,
+  showOnMobile: false,
+};
+
+app.get(BASE + "/exit-intent-config", async (c) => {
+  try {
+    var config = await kv.get("exit_intent_config");
+    return c.json(config || DEFAULT_EXIT_INTENT_CONFIG);
+  } catch (e) {
+    console.error("[exit-intent-config GET] Error:", e);
+    return c.json(DEFAULT_EXIT_INTENT_CONFIG);
+  }
+});
+
+app.put(BASE + "/exit-intent-config", async (c) => {
+  try {
+    var body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Body invalido." }, 400);
+    }
+    var safe: Record<string, any> = {};
+    var strFields = ["title", "subtitle", "couponCode", "discountText", "buttonText", "successMessage"];
+    var boolFields = ["enabled", "showOnMobile"];
+    for (var sf of strFields) {
+      if (body[sf] !== undefined) safe[sf] = String(body[sf] || "").trim().substring(0, 200);
+    }
+    for (var bf of boolFields) {
+      if (body[bf] !== undefined) safe[bf] = !!body[bf];
+    }
+    if (body.showAfterSeconds !== undefined) {
+      safe.showAfterSeconds = Math.max(0, Math.min(120, Number(body.showAfterSeconds) || 0));
+    }
+    // Merge with existing
+    var existing = await kv.get("exit_intent_config") || DEFAULT_EXIT_INTENT_CONFIG;
+    var merged = { ...existing, ...safe };
+    await kv.set("exit_intent_config", merged);
+    invalidateHomepageCache();
+    return c.json(merged);
+  } catch (e) {
+    console.error("[exit-intent-config PUT] Error:", e);
+    return c.json({ error: "Erro ao salvar config exit intent." }, 500);
+  }
+});
+
+// Public: capture exit intent lead (email)
+app.post(BASE + "/exit-intent-lead", async (c) => {
+  try {
+    // Rate limit: max 5 exit intent captures per minute per IP
+    var eiRlKey = _getRateLimitKey(c, "exit_intent_lead");
+    var eiRlResult = _checkRateLimit(eiRlKey, 5);
+    if (!eiRlResult.allowed) return c.json({ ok: true }); // Silent accept to not reveal rate limit
+
+    var body = await c.req.json();
+    var email = String(body.email || "").trim().toLowerCase().substring(0, 200);
+    var name = String(body.name || "").trim().substring(0, 100);
+    if (!email || !email.includes("@")) {
+      return c.json({ error: "Email invalido." }, 400);
+    }
+    // Store lead in KV with prefix
+    var leadId = "exitlead:" + email.replace(/[^a-z0-9@._-]/g, "");
+    var lead = {
+      email: email,
+      name: name,
+      source: "exit_intent_popup",
+      capturedAt: Date.now(),
+      page: String(body.page || "/").substring(0, 500),
+    };
+    await kv.set(leadId, lead);
+
+    // Also add to email marketing subscribers if not exists
+    var existingSub = await kv.get("emkt_sub:" + email);
+    if (!existingSub) {
+      var subData = {
+        id: email,
+        email: email,
+        name: name,
+        tags: ["exit-intent", "primeira-compra"],
+        active: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await kv.set("emkt_sub:" + email, subData);
+    }
+
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[exit-intent-lead POST] Error:", e);
+    return c.json({ error: "Erro ao capturar lead." }, 500);
+  }
+});
+
+// Admin: list exit intent leads
+app.get(BASE + "/admin/exit-intent-leads", async (c) => {
+  try {
+    var leads = await kv.getByPrefix("exitlead:");
+    var arr = Array.isArray(leads) ? leads : [];
+    arr.sort(function(a: any, b: any) { return (b.capturedAt || 0) - (a.capturedAt || 0); });
+    return c.json({ leads: arr });
+  } catch (e) {
+    console.error("[admin/exit-intent-leads GET] Error:", e);
+    return c.json({ leads: [] });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── GOOGLE MERCHANT CENTER FEED (XML) ───────────────
+// ═══════════════════════════════════════════════════════
+
+app.get(BASE + "/feed/google-merchant.xml", async (c) => {
+  try {
+    var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    var supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    var siteUrl = "https://www.autopecascarretao.com.br";
+
+    // Fetch products from Supabase DB (visible ones with price)
+    var apiUrl = supabaseUrl + "/rest/v1/produtos?select=sku,titulo,preco,preco_promocional,estoque,marca,ncm,descricao,imagem_url&order=titulo.asc&limit=5000";
+    var res = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        apikey: supabaseKey,
+        Authorization: "Bearer " + supabaseKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    var products: any[] = [];
+    if (res.ok) {
+      products = await res.json();
+    }
+
+    // Also get product metas for visibility
+    var allMetas = await kv.getByPrefix("produto_meta:");
+    var metaMap: Record<string, any> = {};
+    if (Array.isArray(allMetas)) {
+      for (var pm of allMetas) {
+        if (pm && pm.sku) metaMap[pm.sku] = pm;
+      }
+    }
+
+    // Get price config for discount rules
+    var priceConfig = await kv.get("price_config");
+    var pixDiscount = priceConfig && priceConfig.pixDiscountPercent ? Number(priceConfig.pixDiscountPercent) : 0;
+
+    var xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    xml += '<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">\n';
+    xml += '<channel>\n';
+    xml += '<title>Carretao Auto Pecas</title>\n';
+    xml += '<link>' + siteUrl + '</link>\n';
+    xml += '<description>Pecas automotivas para caminhoes - Carretao Auto Pecas</description>\n';
+
+    for (var pi = 0; pi < products.length; pi++) {
+      var p = products[pi];
+      if (!p || !p.sku || !p.titulo) continue;
+
+      // Skip hidden products
+      var meta = metaMap[p.sku];
+      if (meta && meta.visible === false) continue;
+
+      var price = p.preco_promocional && p.preco_promocional > 0 ? p.preco_promocional : (p.preco || 0);
+      if (price <= 0) continue;
+
+      var availability = (p.estoque && p.estoque > 0) ? "in_stock" : "out_of_stock";
+      var productUrl = siteUrl + "/produto/" + encodeURIComponent(p.sku);
+      var imageUrl = p.imagem_url || "";
+
+      // Escape XML entities
+      var escTitle = String(p.titulo || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      var escDesc = String(p.descricao || p.titulo || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").substring(0, 5000);
+      var escBrand = String(p.marca || "Carretao").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      xml += '<item>\n';
+      xml += '  <g:id>' + p.sku + '</g:id>\n';
+      xml += '  <g:title>' + escTitle + '</g:title>\n';
+      xml += '  <g:description>' + escDesc + '</g:description>\n';
+      xml += '  <g:link>' + productUrl + '</g:link>\n';
+      if (imageUrl) {
+        xml += '  <g:image_link>' + imageUrl.replace(/&/g, "&amp;") + '</g:image_link>\n';
+      }
+      xml += '  <g:availability>' + availability + '</g:availability>\n';
+      xml += '  <g:price>' + price.toFixed(2) + ' BRL</g:price>\n';
+
+      // Sale price (with PIX discount if applicable)
+      if (pixDiscount > 0) {
+        var salePrice = price * (1 - pixDiscount / 100);
+        xml += '  <g:sale_price>' + salePrice.toFixed(2) + ' BRL</g:sale_price>\n';
+      } else if (p.preco_promocional && p.preco_promocional > 0 && p.preco && p.preco > p.preco_promocional) {
+        xml += '  <g:sale_price>' + p.preco_promocional.toFixed(2) + ' BRL</g:sale_price>\n';
+      }
+
+      xml += '  <g:brand>' + escBrand + '</g:brand>\n';
+      xml += '  <g:condition>new</g:condition>\n';
+      xml += '  <g:identifier_exists>false</g:identifier_exists>\n';
+      xml += '  <g:product_type>Pecas Automotivas</g:product_type>\n';
+      xml += '  <g:shipping>\n';
+      xml += '    <g:country>BR</g:country>\n';
+      xml += '  </g:shipping>\n';
+      xml += '</item>\n';
+    }
+
+    xml += '</channel>\n';
+    xml += '</rss>';
+
+    return new Response(xml, {
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch (e) {
+    console.error("[feed/google-merchant.xml] Error:", e);
+    return new Response('<error>Erro ao gerar feed</error>', {
+      status: 500,
+      headers: { "Content-Type": "application/xml" },
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── GOOGLE CUSTOMER REVIEWS CONFIG ──────────────────
+// ═══════════════════════════════════════════════════════
+
+app.get(BASE + "/google-reviews-config", async (c) => {
+  try {
+    var config = await kv.get("google_reviews_config");
+    return c.json(config || { enabled: false, merchantId: "", badgePosition: "BOTTOM_RIGHT" });
+  } catch (e) {
+    console.error("[google-reviews-config GET] Error:", e);
+    return c.json({ enabled: false, merchantId: "", badgePosition: "BOTTOM_RIGHT" });
+  }
+});
+
+app.put(BASE + "/google-reviews-config", async (c) => {
+  try {
+    var body = await c.req.json();
+    var safe = {
+      enabled: !!body.enabled,
+      merchantId: String(body.merchantId || "").trim().substring(0, 30),
+      badgePosition: ["BOTTOM_RIGHT", "BOTTOM_LEFT", "INLINE"].includes(body.badgePosition) ? body.badgePosition : "BOTTOM_RIGHT",
+    };
+    await kv.set("google_reviews_config", safe);
+    return c.json(safe);
+  } catch (e) {
+    console.error("[google-reviews-config PUT] Error:", e);
+    return c.json({ error: "Erro ao salvar config Google Reviews." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── WHATSAPP ABANDONED CART (Zenvia / Take Blip) ��───────────────
+// ═══════════════════════════════════════════════════════════════════
+
+var DEFAULT_WHATSAPP_CONFIG = {
+  enabled: false,
+  provider: "zenvia" as "zenvia" | "blip",
+  zenviaApiToken: "",
+  zenviaSender: "",
+  blipBotKey: "",
+  storePhone: "5544997330202",
+  templates: {
+    reminder1h: {
+      enabled: true,
+      delayMinutes: 60,
+      message: "Oi {{nome}}! Voce deixou itens no carrinho da Carretao Auto Pecas. Seus produtos estao reservados por tempo limitado! Finalize sua compra: {{link}}",
+    },
+    reminder24h: {
+      enabled: true,
+      delayMinutes: 1440,
+      message: "{{nome}}, ainda temos suas pecas separadas! Nao deixe escapar — estoque limitado. Volte e conclua seu pedido: {{link}}",
+    },
+    reminder72h: {
+      enabled: true,
+      delayMinutes: 4320,
+      message: "Ultima chance, {{nome}}! Use o cupom VOLTE5 para 5% OFF e finalize sua compra na Carretao Auto Pecas: {{link}}",
+    },
+  },
+};
+
+app.get(BASE + "/admin/whatsapp-config", async (c) => {
+  try {
+    var config = await kv.get("whatsapp_config");
+    var merged = { ...DEFAULT_WHATSAPP_CONFIG, ...config };
+    if (merged.zenviaApiToken) merged.zenviaApiToken = "****" + merged.zenviaApiToken.slice(-6);
+    if (merged.blipBotKey) merged.blipBotKey = "****" + merged.blipBotKey.slice(-6);
+    return c.json(merged);
+  } catch (e) {
+    console.error("[admin/whatsapp-config GET] Error:", e);
+    return c.json(DEFAULT_WHATSAPP_CONFIG);
+  }
+});
+
+app.put(BASE + "/admin/whatsapp-config", async (c) => {
+  try {
+    var body = await c.req.json();
+    var existing = await kv.get("whatsapp_config") || DEFAULT_WHATSAPP_CONFIG;
+    var safe: Record<string, any> = {
+      enabled: !!body.enabled,
+      provider: body.provider === "blip" ? "blip" : "zenvia",
+      storePhone: String(body.storePhone || "").replace(/\D/g, "").substring(0, 20),
+    };
+    if (body.zenviaApiToken && !body.zenviaApiToken.startsWith("****")) {
+      safe.zenviaApiToken = String(body.zenviaApiToken).trim().substring(0, 200);
+    } else { safe.zenviaApiToken = existing.zenviaApiToken || ""; }
+    if (body.zenviaSender) {
+      safe.zenviaSender = String(body.zenviaSender).trim().substring(0, 100);
+    } else { safe.zenviaSender = existing.zenviaSender || ""; }
+    if (body.blipBotKey && !body.blipBotKey.startsWith("****")) {
+      safe.blipBotKey = String(body.blipBotKey).trim().substring(0, 200);
+    } else { safe.blipBotKey = existing.blipBotKey || ""; }
+    if (body.templates && typeof body.templates === "object") {
+      safe.templates = {};
+      for (var tKey of ["reminder1h", "reminder24h", "reminder72h"]) {
+        var tpl = body.templates[tKey];
+        if (tpl && typeof tpl === "object") {
+          safe.templates[tKey] = {
+            enabled: !!tpl.enabled,
+            delayMinutes: Math.max(1, Math.min(10080, Number(tpl.delayMinutes) || 60)),
+            message: String(tpl.message || "").substring(0, 1000),
+          };
+        } else {
+          safe.templates[tKey] = (existing.templates && (existing.templates as any)[tKey]) || (DEFAULT_WHATSAPP_CONFIG.templates as any)[tKey];
+        }
+      }
+    } else { safe.templates = existing.templates || DEFAULT_WHATSAPP_CONFIG.templates; }
+    await kv.set("whatsapp_config", safe);
+    var masked = { ...safe };
+    if (masked.zenviaApiToken) masked.zenviaApiToken = "****" + masked.zenviaApiToken.slice(-6);
+    if (masked.blipBotKey) masked.blipBotKey = "****" + masked.blipBotKey.slice(-6);
+    return c.json(masked);
+  } catch (e) {
+    console.error("[admin/whatsapp-config PUT] Error:", e);
+    return c.json({ error: "Erro ao salvar config WhatsApp." }, 500);
+  }
+});
+
+app.post(BASE + "/whatsapp/cart-snapshot", async (c) => {
+  try {
+    var body = await c.req.json();
+    var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
+    var email = String(body.email || "").trim().toLowerCase().substring(0, 200);
+    var name = String(body.name || "").trim().substring(0, 100);
+    if (!phone && !email) return c.json({ error: "Telefone ou email necessario." }, 400);
+    var items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
+    var totalPrice = Number(body.totalPrice) || 0;
+    var key = "wa_cart:" + (phone || email);
+    var snapshot = { phone, email, name, items, totalPrice, createdAt: Date.now(), updatedAt: Date.now(), completed: false, remindersSent: [] as string[] };
+    var existingCart = await kv.get(key);
+    if (existingCart && existingCart.completed) return c.json({ ok: true, note: "Cart already completed" });
+    if (existingCart) { snapshot.createdAt = existingCart.createdAt || Date.now(); snapshot.remindersSent = existingCart.remindersSent || []; }
+    await kv.set(key, snapshot);
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[whatsapp/cart-snapshot POST] Error:", e);
+    return c.json({ error: "Erro ao salvar snapshot do carrinho." }, 500);
+  }
+});
+
+app.post(BASE + "/whatsapp/cart-completed", async (c) => {
+  try {
+    var body = await c.req.json();
+    var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
+    var email = String(body.email || "").trim().toLowerCase().substring(0, 200);
+    var key = "wa_cart:" + (phone || email);
+    var existingCart2 = await kv.get(key);
+    if (existingCart2) { existingCart2.completed = true; existingCart2.completedAt = Date.now(); await kv.set(key, existingCart2); }
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error("[whatsapp/cart-completed POST] Error:", e);
+    return c.json({ ok: false });
+  }
+});
+
+async function sendWhatsAppMessage(waConfig: any, phone: string, message: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (waConfig.provider === "zenvia") {
+      var zenviaRes = await fetch("https://api.zenvia.com/v2/channels/whatsapp/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-TOKEN": waConfig.zenviaApiToken },
+        body: JSON.stringify({ from: waConfig.zenviaSender, to: phone, contents: [{ type: "text", text: message }] }),
+      });
+      if (!zenviaRes.ok) { var zErr = await zenviaRes.text().catch(() => ""); return { ok: false, error: "Zenvia HTTP " + zenviaRes.status + ": " + zErr }; }
+      return { ok: true };
+    } else if (waConfig.provider === "blip") {
+      var blipRes = await fetch("https://msging.net/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Key " + waConfig.blipBotKey },
+        body: JSON.stringify({ id: crypto.randomUUID(), to: phone + "@wa.gw.msging.net", type: "text/plain", content: message }),
+      });
+      if (!blipRes.ok) { var bErr = await blipRes.text().catch(() => ""); return { ok: false, error: "Blip HTTP " + blipRes.status + ": " + bErr }; }
+      return { ok: true };
+    }
+    return { ok: false, error: "Provider desconhecido: " + waConfig.provider };
+  } catch (e: any) { return { ok: false, error: String(e.message || e) }; }
+}
+
+app.post(BASE + "/admin/whatsapp-process-abandoned", async (c) => {
+  try {
+    var waConf = await kv.get("whatsapp_config");
+    if (!waConf || !waConf.enabled) return c.json({ processed: 0, message: "WhatsApp nao esta habilitado." });
+    var carts = await kv.getByPrefix("wa_cart:");
+    if (!Array.isArray(carts) || carts.length === 0) return c.json({ processed: 0, sent: 0 });
+    var now = Date.now(); var processed = 0; var sent = 0; var errors: string[] = [];
+    var siteUrl = "https://www.autopecascarretao.com.br";
+    var templates = waConf.templates || DEFAULT_WHATSAPP_CONFIG.templates;
+    for (var cart of carts) {
+      if (!cart || cart.completed || !cart.phone || !cart.items || cart.items.length === 0) continue;
+      var ageMinutes = (now - (cart.createdAt || now)) / 60000;
+      var sentList: string[] = cart.remindersSent || [];
+      var changed = false;
+      for (var [tplKey, tpl] of Object.entries(templates) as [string, any][]) {
+        if (!tpl.enabled || sentList.includes(tplKey) || ageMinutes < tpl.delayMinutes) continue;
+        var msg = tpl.message.replace(/\{\{nome\}\}/g, cart.name || "Cliente").replace(/\{\{link\}\}/g, siteUrl + "/checkout").replace(/\{\{total\}\}/g, "R$ " + (cart.totalPrice || 0).toFixed(2).replace(".", ",")).replace(/\{\{itens\}\}/g, (cart.items || []).map((i: any) => i.titulo || i.sku).join(", ").substring(0, 200));
+        var result = await sendWhatsAppMessage(waConf, cart.phone, msg);
+        if (result.ok) { sentList.push(tplKey); changed = true; sent++; }
+        else { errors.push("Cart " + cart.phone + " tpl " + tplKey + ": " + (result.error || "unknown")); }
+      }
+      if (changed) { cart.remindersSent = sentList; cart.updatedAt = now; await kv.set("wa_cart:" + (cart.phone || cart.email), cart); }
+      processed++;
+      if (sent >= 20) break;
+    }
+    return c.json({ processed, sent, errors: errors.slice(0, 10) });
+  } catch (e: any) {
+    console.error("[admin/whatsapp-process-abandoned POST] Error:", e);
+    return c.json({ error: "Erro ao processar carrinhos abandonados: " + String(e) }, 500);
+  }
+});
+
+app.get(BASE + "/admin/whatsapp-abandoned-carts", async (c) => {
+  try {
+    var carts = await kv.getByPrefix("wa_cart:");
+    var arr = Array.isArray(carts) ? carts : [];
+    arr.sort(function(a: any, b: any) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    return c.json({ carts: arr.slice(0, 200) });
+  } catch (e) {
+    console.error("[admin/whatsapp-abandoned-carts GET] Error:", e);
+    return c.json({ carts: [] });
+  }
+});
+
+app.post(BASE + "/admin/whatsapp-test", async (c) => {
+  try {
+    var waConf2 = await kv.get("whatsapp_config");
+    if (!waConf2) return c.json({ error: "WhatsApp nao configurado." }, 400);
+    var body = await c.req.json();
+    var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
+    if (!phone) return c.json({ error: "Telefone obrigatorio." }, 400);
+    var message = String(body.message || "Teste de integracao WhatsApp — Carretao Auto Pecas").substring(0, 500);
+    var result = await sendWhatsAppMessage(waConf2, phone, message);
+    if (result.ok) return c.json({ ok: true, message: "Mensagem de teste enviada com sucesso!" });
+    return c.json({ ok: false, error: result.error || "Erro ao enviar" }, 400);
+  } catch (e: any) {
+    console.error("[admin/whatsapp-test POST] Error:", e);
+    return c.json({ error: "Erro: " + String(e) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── REELS / SHORT VIDEOS (TikTok-style product videos) ──────────
+// Supports showOnProduct field for product page video badges
+// ═══════════════════════════════════════════════════════════════════
+
+var REELS_BUCKET = "make-b7b07654-reels";
+
+(async function () {
+  try {
+    var bkts = await supabaseAdmin.storage.listBuckets();
+    var exists = bkts.data?.some(function (b: any) { return b.name === REELS_BUCKET; });
+    if (!exists) {
+      await supabaseAdmin.storage.createBucket(REELS_BUCKET, { public: false });
+    }
+  } catch (e) {
+    console.error("[Reels] Error ensuring bucket:", e);
+  }
+})();
+
+app.get(BASE + "/reels", async (c) => {
+  try {
+    var raw = await kv.get("reels_list");
+    var ids: string[] = Array.isArray(raw) ? raw : [];
+    if (ids.length === 0) return c.json({ reels: [] });
+
+    // Collect all reel IDs that belong to influencers so we can exclude them
+    var influencerReelIdSet: Record<string, boolean> = {};
+    try {
+      var infRaw = await kv.get("influencers_list");
+      var infIds: string[] = Array.isArray(infRaw) ? infRaw : [];
+      if (infIds.length > 0) {
+        var infKeys = infIds.map(function (id) { return "influencer:" + id; });
+        var infEntries = await kv.mget(infKeys);
+        for (var ii = 0; ii < infEntries.length; ii++) {
+          var inf = infEntries[ii];
+          if (!inf) continue;
+          var rids: string[] = Array.isArray(inf.reelIds) ? inf.reelIds : [];
+          for (var ri = 0; ri < rids.length; ri++) {
+            influencerReelIdSet[rids[ri]] = true;
+          }
+        }
+      }
+    } catch (_infErr) {
+      console.error("[Reels GET] Error loading influencer reel IDs:", _infErr);
+    }
+
+    var keys = ids.map(function (id) { return "reel:" + id; });
+    var entries = await kv.mget(keys);
+    var reels: any[] = [];
+    for (var i = 0; i < entries.length; i++) {
+      var r = entries[i];
+      if (!r || !r.active) continue;
+      // Skip reels that belong to influencers — those appear only in the influencer carousel
+      // Check both the influencerId field (new approach) and the cross-reference set (fallback for old reels)
+      if (r.influencerId) continue;
+      if (influencerReelIdSet[r.id]) continue;
+      // Layer 3: skip reels with NO products linked — they are NOT product reels
+      var hasProducts = (Array.isArray(r.products) && r.products.length > 0) || (r.productSku && String(r.productSku).trim() !== "");
+      if (!hasProducts) continue;
+      var videoUrl = r.videoUrl || "";
+      var thumbnailUrl = r.thumbnailUrl || "";
+      if (r.videoFilename) {
+        try { var vSig = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(r.videoFilename, 3600); if (vSig.data?.signedUrl) videoUrl = vSig.data.signedUrl; } catch (_e) {}
+      }
+      if (r.thumbnailFilename) {
+        try { var tSig = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(r.thumbnailFilename, 3600); if (tSig.data?.signedUrl) thumbnailUrl = tSig.data.signedUrl; } catch (_e) {}
+      }
+      var products = Array.isArray(r.products) && r.products.length > 0 ? r.products : (r.productSku ? [{ sku: r.productSku, title: r.productTitle || r.productSku, imageUrl: r.productImageUrl || "" }] : []);
+      reels.push({ id: r.id, title: r.title || "", videoUrl, thumbnailUrl, productSku: r.productSku || "", productTitle: r.productTitle || "", productPrice: r.productPrice || null, productImageUrl: r.productImageUrl || "", productSlug: r.productSlug || "", products, active: r.active !== false, showOnProduct: r.showOnProduct === true, order: r.order || 0 });
+    }
+    reels.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ reels });
+  } catch (e: any) {
+    console.error("[Reels GET] Error:", e);
+    return c.json({ error: "Erro ao carregar reels." }, 500);
+  }
+});
+
+app.get(BASE + "/admin/reels", async (c) => {
+  try {
+    var _ar1 = await isAdminUser(c.req.raw);
+    if (!_ar1.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var raw2 = await kv.get("reels_list");
+    var ids2: string[] = Array.isArray(raw2) ? raw2 : [];
+    if (ids2.length === 0) return c.json({ reels: [] });
+    var keys2 = ids2.map(function (id) { return "reel:" + id; });
+    var entries2 = await kv.mget(keys2);
+    var reels2: any[] = [];
+    for (var j = 0; j < entries2.length; j++) {
+      var rr = entries2[j];
+      if (!rr) continue;
+      var vUrl = rr.videoUrl || "";
+      var tUrl = rr.thumbnailUrl || "";
+      if (rr.videoFilename) { try { var vs = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rr.videoFilename, 3600); if (vs.data?.signedUrl) vUrl = vs.data.signedUrl; } catch (_e) {} }
+      if (rr.thumbnailFilename) { try { var ts = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rr.thumbnailFilename, 3600); if (ts.data?.signedUrl) tUrl = ts.data.signedUrl; } catch (_e) {} }
+      reels2.push({ ...rr, videoUrl: vUrl, thumbnailUrl: tUrl });
+    }
+    reels2.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ reels: reels2 });
+  } catch (e: any) {
+    console.error("[Admin Reels GET] Error:", e);
+    return c.json({ error: "Erro ao listar reels." }, 500);
+  }
+});
+
+// Generate signed upload URLs so frontend uploads directly to Storage (avoids edge function body size limits)
+app.post(BASE + "/admin/reels/upload-url", async (c) => {
+  try {
+    var _arU = await isAdminUser(c.req.raw);
+    if (!_arU.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var body = await c.req.json();
+    var videoExt = String(body.videoExt || "mp4").replace(/[^a-z0-9]/gi, "").substring(0, 10) || "mp4";
+    var thumbExt = body.thumbExt ? String(body.thumbExt).replace(/[^a-z0-9]/gi, "").substring(0, 10) : "";
+    var reelId = "r_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+    var videoPath = "videos/" + reelId + "." + videoExt;
+    var videoSigned = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUploadUrl(videoPath);
+    if (videoSigned.error || !videoSigned.data) {
+      console.error("[Reels] Signed video URL error:", videoSigned.error);
+      return c.json({ error: "Erro ao gerar URL de upload do video: " + String(videoSigned.error?.message || videoSigned.error) }, 500);
+    }
+    var result: any = { reelId, videoPath, videoUploadUrl: videoSigned.data.signedUrl, videoToken: videoSigned.data.token, thumbPath: "", thumbUploadUrl: "", thumbToken: "" };
+    if (thumbExt) {
+      var thumbPath = "thumbnails/" + reelId + "." + thumbExt;
+      var thumbSigned = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUploadUrl(thumbPath);
+      if (thumbSigned.data) {
+        result.thumbPath = thumbPath;
+        result.thumbUploadUrl = thumbSigned.data.signedUrl;
+        result.thumbToken = thumbSigned.data.token;
+      }
+    }
+    return c.json(result);
+  } catch (e: any) {
+    console.error("[Admin Reels upload-url] Error:", e);
+    return c.json({ error: "Erro ao gerar URLs de upload: " + String(e) }, 500);
+  }
+});
+
+// Create reel — receives JSON metadata (files already uploaded via signed URLs above)
+app.post(BASE + "/admin/reels", async (c) => {
+  try {
+    var _ar2 = await isAdminUser(c.req.raw);
+    if (!_ar2.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var body = await c.req.json();
+    var reelId = String(body.reelId || "").substring(0, 100);
+    var title = String(body.title || "").substring(0, 200);
+    var videoFilename = String(body.videoFilename || "").substring(0, 300);
+    var thumbnailFilename = String(body.thumbnailFilename || "").substring(0, 300);
+    var pSku = String(body.productSku || "").substring(0, 100);
+    var pTitle = String(body.productTitle || "").substring(0, 200);
+    var pImg = String(body.productImageUrl || "").substring(0, 500);
+    var pSlug = String(body.productSlug || "").substring(0, 200);
+    var products = Array.isArray(body.products) ? body.products.slice(0, 20).map(function (p: any) { return { sku: String(p.sku || "").substring(0, 100), title: String(p.title || "").substring(0, 200), imageUrl: String(p.imageUrl || "").substring(0, 500) }; }) : [];
+    var active = body.active !== false;
+    var showOnProduct = body.showOnProduct === true || body.showOnProduct === "true";
+    var influencerId = body.influencerId ? String(body.influencerId).substring(0, 100) : "";
+    if (!reelId || !videoFilename) return c.json({ error: "reelId e videoFilename obrigatorios." }, 400);
+    var existList = await kv.get("reels_list");
+    var idList: string[] = Array.isArray(existList) ? existList : [];
+    var rData: any = { id: reelId, title, videoFilename, thumbnailFilename, videoUrl: "", thumbnailUrl: "", productSku: pSku, productTitle: pTitle, productPrice: null, productImageUrl: pImg, productSlug: pSlug, products, active, showOnProduct, order: idList.length, createdAt: Date.now() };
+    if (influencerId) rData.influencerId = influencerId;
+    idList.push(reelId);
+    await kv.mset(["reel:" + reelId, "reels_list"], [rData, idList]);
+    return c.json({ ok: true, reel: rData });
+  } catch (e: any) {
+    console.error("[Admin Reels POST] Error:", e);
+    return c.json({ error: "Erro ao criar reel: " + String(e) }, 500);
+  }
+});
+
+// Update reel — JSON metadata. If new files were uploaded via signed URL, pass new filenames.
+app.put(BASE + "/admin/reels/:id", async (c) => {
+  try {
+    var _ar3 = await isAdminUser(c.req.raw);
+    if (!_ar3.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var rId = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    var ex = await kv.get("reel:" + rId);
+    if (!ex) return c.json({ error: "Reel nao encontrado." }, 404);
+    var body = await c.req.json();
+    if (body.title !== undefined) ex.title = String(body.title).substring(0, 200);
+    if (body.productSku !== undefined) ex.productSku = String(body.productSku).substring(0, 100);
+    if (body.productTitle !== undefined) ex.productTitle = String(body.productTitle).substring(0, 200);
+    if (body.productImageUrl !== undefined) ex.productImageUrl = String(body.productImageUrl).substring(0, 500);
+    if (body.productSlug !== undefined) ex.productSlug = String(body.productSlug).substring(0, 200);
+    if (body.products !== undefined) ex.products = Array.isArray(body.products) ? body.products.slice(0, 20).map(function (p: any) { return { sku: String(p.sku || "").substring(0, 100), title: String(p.title || "").substring(0, 200), imageUrl: String(p.imageUrl || "").substring(0, 500) }; }) : [];
+    if (body.active !== undefined) ex.active = body.active !== false && body.active !== "false";
+    if (body.showOnProduct !== undefined) ex.showOnProduct = body.showOnProduct === true || body.showOnProduct === "true";
+    if (body.order !== undefined) ex.order = parseInt(String(body.order), 10) || 0;
+    if (body.influencerId !== undefined) ex.influencerId = body.influencerId ? String(body.influencerId).substring(0, 100) : "";
+    // If new video was uploaded via signed URL, update filename and remove old file
+    if (body.videoFilename && body.videoFilename !== ex.videoFilename) {
+      if (ex.videoFilename) await supabaseAdmin.storage.from(REELS_BUCKET).remove([ex.videoFilename]).catch(function () {});
+      ex.videoFilename = String(body.videoFilename).substring(0, 300);
+    }
+    if (body.thumbnailFilename && body.thumbnailFilename !== ex.thumbnailFilename) {
+      if (ex.thumbnailFilename) await supabaseAdmin.storage.from(REELS_BUCKET).remove([ex.thumbnailFilename]).catch(function () {});
+      ex.thumbnailFilename = String(body.thumbnailFilename).substring(0, 300);
+    }
+    ex.updatedAt = Date.now();
+    await kv.set("reel:" + rId, ex);
+    return c.json({ ok: true, reel: ex });
+  } catch (e: any) {
+    console.error("[Admin Reels PUT] Error:", e);
+    return c.json({ error: "Erro ao atualizar reel: " + String(e) }, 500);
+  }
+});
+
+app.delete(BASE + "/admin/reels/:id", async (c) => {
+  try {
+    var _ar4 = await isAdminUser(c.req.raw);
+    if (!_ar4.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var rId2 = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    var ex2 = await kv.get("reel:" + rId2);
+    if (ex2) {
+      var toDel: string[] = [];
+      if (ex2.videoFilename) toDel.push(ex2.videoFilename);
+      if (ex2.thumbnailFilename) toDel.push(ex2.thumbnailFilename);
+      if (toDel.length > 0) await supabaseAdmin.storage.from(REELS_BUCKET).remove(toDel).catch(function () {});
+    }
+    await kv.del("reel:" + rId2);
+    var list3 = await kv.get("reels_list");
+    var idList3: string[] = Array.isArray(list3) ? list3 : [];
+    await kv.set("reels_list", idList3.filter(function (id) { return id !== rId2; }));
+    return c.json({ ok: true, deleted: rId2 });
+  } catch (e: any) {
+    console.error("[Admin Reels DELETE] Error:", e);
+    return c.json({ error: "Erro ao deletar reel." }, 500);
+  }
+});
+
+app.put(BASE + "/admin/reels-order", async (c) => {
+  try {
+    var _ar5 = await isAdminUser(c.req.raw);
+    if (!_ar5.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var body5 = await c.req.json();
+    var orderedIds: string[] = body5.ids;
+    if (!Array.isArray(orderedIds)) return c.json({ error: "ids deve ser um array." }, 400);
+    // Batch-read all reels at once instead of N individual reads
+    var reelKeys = orderedIds.map(function (id) { return "reel:" + id; });
+    var reelEntries = reelKeys.length > 0 ? await kv.mget(reelKeys) : [];
+    var uKeys: string[] = [];
+    var uVals: any[] = [];
+    for (var oi = 0; oi < orderedIds.length; oi++) {
+      var rd = reelEntries[oi];
+      if (rd) { rd.order = oi; uKeys.push("reel:" + orderedIds[oi]); uVals.push(rd); }
+    }
+    uKeys.push("reels_list"); uVals.push(orderedIds);
+    if (uKeys.length > 0) await kv.mset(uKeys, uVals);
+    return c.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Admin Reels Order] Error:", e);
+    return c.json({ error: "Erro ao reordenar." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── INFLUENCERS (Instagram Stories-style carousel with reels) ────
+// Each influencer has a name, photo, and list of associated reel IDs.
+// ═══════════════════════════════════════════════════════════════════
+
+var INFLUENCERS_BUCKET = REELS_BUCKET; // reuse same bucket, subfolder influencer-photos/
+
+// Public: list active influencers with their reels
+app.get(BASE + "/influencers", async (c) => {
+  try {
+    var raw = await kv.get("influencers_list");
+    var ids: string[] = Array.isArray(raw) ? raw : [];
+    if (ids.length === 0) return c.json({ influencers: [] });
+    var keys = ids.map(function (id) { return "influencer:" + id; });
+    var entries = await kv.mget(keys);
+    var influencers: any[] = [];
+    for (var i = 0; i < entries.length; i++) {
+      var inf = entries[i];
+      if (!inf || inf.active === false) continue;
+      var photoUrl = inf.photoUrl || "";
+      if (inf.photoFilename) {
+        try { var pSig = await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).createSignedUrl(inf.photoFilename, 3600); if (pSig.data?.signedUrl) photoUrl = pSig.data.signedUrl; } catch (_e) {}
+      }
+      var reelIds: string[] = Array.isArray(inf.reelIds) ? inf.reelIds : [];
+      var reelItems: any[] = [];
+      if (reelIds.length > 0) {
+        var rKeys = reelIds.map(function (rid) { return "reel:" + rid; });
+        var rEntries = await kv.mget(rKeys);
+        for (var j = 0; j < rEntries.length; j++) {
+          var r = rEntries[j];
+          if (!r || !r.active) continue;
+          var videoUrl = r.videoUrl || "";
+          var thumbnailUrl = r.thumbnailUrl || "";
+          if (r.videoFilename) {
+            try { var vSig = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(r.videoFilename, 3600); if (vSig.data?.signedUrl) videoUrl = vSig.data.signedUrl; } catch (_e) {}
+          }
+          if (r.thumbnailFilename) {
+            try { var tSig = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(r.thumbnailFilename, 3600); if (tSig.data?.signedUrl) thumbnailUrl = tSig.data.signedUrl; } catch (_e) {}
+          }
+          var products = Array.isArray(r.products) && r.products.length > 0 ? r.products : (r.productSku ? [{ sku: r.productSku, title: r.productTitle || r.productSku, imageUrl: r.productImageUrl || "" }] : []);
+          reelItems.push({ id: r.id, title: r.title || "", videoUrl, thumbnailUrl, productSku: r.productSku || "", productTitle: r.productTitle || "", productPrice: r.productPrice || null, productImageUrl: r.productImageUrl || "", productSlug: r.productSlug || "", products, active: true, showOnProduct: r.showOnProduct === true, order: r.order || 0 });
+        }
+        reelItems.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+      }
+      influencers.push({ id: inf.id, name: inf.name || "", photoUrl, reelIds, reels: reelItems, order: inf.order || 0 });
+    }
+    influencers.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ influencers });
+  } catch (e: any) {
+    console.error("[Influencers GET] Error:", e);
+    return c.json({ error: "Erro ao carregar influencers." }, 500);
+  }
+});
+
+// Admin: list all influencers
+app.get(BASE + "/admin/influencers", async (c) => {
+  try {
+    var _ai1 = await isAdminUser(c.req.raw);
+    if (!_ai1.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var raw2 = await kv.get("influencers_list");
+    var ids2: string[] = Array.isArray(raw2) ? raw2 : [];
+    if (ids2.length === 0) return c.json({ influencers: [] });
+    var keys2 = ids2.map(function (id) { return "influencer:" + id; });
+    var entries2 = await kv.mget(keys2);
+    var infs2: any[] = [];
+    for (var k = 0; k < entries2.length; k++) {
+      var inf2 = entries2[k];
+      if (!inf2) continue;
+      var pUrl = inf2.photoUrl || "";
+      if (inf2.photoFilename) {
+        try { var ps = await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).createSignedUrl(inf2.photoFilename, 3600); if (ps.data?.signedUrl) pUrl = ps.data.signedUrl; } catch (_e) {}
+      }
+      infs2.push({ ...inf2, photoUrl: pUrl });
+    }
+    infs2.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ influencers: infs2 });
+  } catch (e: any) {
+    console.error("[Admin Influencers GET] Error:", e);
+    return c.json({ error: "Erro ao listar influencers." }, 500);
+  }
+});
+
+// Admin: signed upload URL for influencer photo
+app.post(BASE + "/admin/influencers/upload-photo", async (c) => {
+  try {
+    var _aiU = await isAdminUser(c.req.raw);
+    if (!_aiU.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var bodyU = await c.req.json();
+    var ext = String(bodyU.ext || "jpg").replace(/[^a-z0-9]/gi, "").substring(0, 10) || "jpg";
+    var infId = "inf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+    var photoPath = "influencer-photos/" + infId + "." + ext;
+    var signed = await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).createSignedUploadUrl(photoPath);
+    if (signed.error || !signed.data) {
+      return c.json({ error: "Erro ao gerar URL de upload: " + String(signed.error?.message || signed.error) }, 500);
+    }
+    return c.json({ influencerId: infId, photoPath, uploadUrl: signed.data.signedUrl, token: signed.data.token });
+  } catch (e: any) {
+    console.error("[Admin Influencers upload-photo] Error:", e);
+    return c.json({ error: "Erro ao gerar URL de upload: " + String(e) }, 500);
+  }
+});
+
+// Admin: create influencer
+app.post(BASE + "/admin/influencers", async (c) => {
+  try {
+    var _ai2 = await isAdminUser(c.req.raw);
+    if (!_ai2.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var bodyC = await c.req.json();
+    var infIdC = String(bodyC.influencerId || "").substring(0, 100);
+    var nameC = String(bodyC.name || "").substring(0, 200);
+    var photoFilenameC = String(bodyC.photoFilename || "").substring(0, 300);
+    var reelIdsC = Array.isArray(bodyC.reelIds) ? bodyC.reelIds.slice(0, 50).map(function (id: any) { return String(id).substring(0, 100); }) : [];
+    var activeC = bodyC.active !== false;
+    if (!infIdC || !nameC) return c.json({ error: "influencerId e name obrigatorios." }, 400);
+    var existList = await kv.get("influencers_list");
+    var idList: string[] = Array.isArray(existList) ? existList : [];
+    var infData = { id: infIdC, name: nameC, photoFilename: photoFilenameC, photoUrl: "", reelIds: reelIdsC, active: activeC, order: idList.length, createdAt: Date.now() };
+    idList.push(infIdC);
+    await kv.mset(["influencer:" + infIdC, "influencers_list"], [infData, idList]);
+    // Stamp influencerId on each linked reel record so GET /reels can filter them
+    if (reelIdsC.length > 0) {
+      try {
+        var stampKeys = reelIdsC.map(function (rid: string) { return "reel:" + rid; });
+        var stampReels = await kv.mget(stampKeys);
+        for (var si = 0; si < stampReels.length; si++) {
+          if (stampReels[si]) { stampReels[si].influencerId = infIdC; await kv.set(stampKeys[si], stampReels[si]); }
+        }
+      } catch (_stampErr) { console.error("[Influencer POST] Error stamping influencerId on reels:", _stampErr); }
+    }
+    return c.json({ ok: true, influencer: infData });
+  } catch (e: any) {
+    console.error("[Admin Influencers POST] Error:", e);
+    return c.json({ error: "Erro ao criar influencer: " + String(e) }, 500);
+  }
+});
+
+// Admin: update influencer
+app.put(BASE + "/admin/influencers/:id", async (c) => {
+  try {
+    var _ai3 = await isAdminUser(c.req.raw);
+    if (!_ai3.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var infId3 = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    var exInf = await kv.get("influencer:" + infId3);
+    if (!exInf) return c.json({ error: "Influencer nao encontrado." }, 404);
+    var bodyUpd = await c.req.json();
+    if (bodyUpd.name !== undefined) exInf.name = String(bodyUpd.name).substring(0, 200);
+    // Track old reelIds to un-stamp influencerId from removed reels
+    var oldReelIds: string[] = Array.isArray(exInf.reelIds) ? exInf.reelIds : [];
+    if (bodyUpd.reelIds !== undefined) exInf.reelIds = Array.isArray(bodyUpd.reelIds) ? bodyUpd.reelIds.slice(0, 50).map(function (id: any) { return String(id).substring(0, 100); }) : [];
+    if (bodyUpd.active !== undefined) exInf.active = bodyUpd.active !== false && bodyUpd.active !== "false";
+    if (bodyUpd.order !== undefined) exInf.order = parseInt(String(bodyUpd.order), 10) || 0;
+    if (bodyUpd.photoFilename && bodyUpd.photoFilename !== exInf.photoFilename) {
+      if (exInf.photoFilename) await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).remove([exInf.photoFilename]).catch(function () {});
+      exInf.photoFilename = String(bodyUpd.photoFilename).substring(0, 300);
+    }
+    exInf.updatedAt = Date.now();
+    await kv.set("influencer:" + infId3, exInf);
+    // Stamp influencerId on NEW reel records, un-stamp from REMOVED ones
+    if (bodyUpd.reelIds !== undefined) {
+      try {
+        var newReelIds: string[] = exInf.reelIds;
+        // Stamp new reels
+        if (newReelIds.length > 0) {
+          var sKeys2 = newReelIds.map(function (rid: string) { return "reel:" + rid; });
+          var sReels2 = await kv.mget(sKeys2);
+          for (var si2 = 0; si2 < sReels2.length; si2++) {
+            if (sReels2[si2] && sReels2[si2].influencerId !== infId3) { sReels2[si2].influencerId = infId3; await kv.set(sKeys2[si2], sReels2[si2]); }
+          }
+        }
+        // Un-stamp removed reels (were in old list but not in new list)
+        var removedReels = oldReelIds.filter(function (rid: string) { return newReelIds.indexOf(rid) === -1; });
+        if (removedReels.length > 0) {
+          var rKeys2 = removedReels.map(function (rid: string) { return "reel:" + rid; });
+          var rReels2 = await kv.mget(rKeys2);
+          for (var ri2 = 0; ri2 < rReels2.length; ri2++) {
+            if (rReels2[ri2] && rReels2[ri2].influencerId === infId3) { rReels2[ri2].influencerId = ""; await kv.set(rKeys2[ri2], rReels2[ri2]); }
+          }
+        }
+      } catch (_stampErr2) { console.error("[Influencer PUT] Error stamping/unstamping influencerId on reels:", _stampErr2); }
+    }
+    return c.json({ ok: true, influencer: exInf });
+  } catch (e: any) {
+    console.error("[Admin Influencers PUT] Error:", e);
+    return c.json({ error: "Erro ao atualizar influencer: " + String(e) }, 500);
+  }
+});
+
+// Admin: one-shot fix — stamp influencerId on ALL existing influencer reels
+app.post(BASE + "/admin/influencers/fix-reel-stamps", async (c) => {
+  try {
+    var _aiFix = await isAdminUser(c.req.raw);
+    if (!_aiFix.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var infRaw = await kv.get("influencers_list");
+    var infIds: string[] = Array.isArray(infRaw) ? infRaw : [];
+    var stamped = 0;
+    for (var fi = 0; fi < infIds.length; fi++) {
+      var inf = await kv.get("influencer:" + infIds[fi]);
+      if (!inf || !Array.isArray(inf.reelIds)) continue;
+      for (var fj = 0; fj < inf.reelIds.length; fj++) {
+        var reel = await kv.get("reel:" + inf.reelIds[fj]);
+        if (reel && reel.influencerId !== infIds[fi]) {
+          reel.influencerId = infIds[fi];
+          await kv.set("reel:" + inf.reelIds[fj], reel);
+          stamped++;
+        }
+      }
+    }
+    console.log("[Fix reel stamps] Stamped influencerId on " + stamped + " reels");
+    return c.json({ ok: true, stamped });
+  } catch (e: any) {
+    console.error("[Fix reel stamps] Error:", e);
+    return c.json({ error: "Erro: " + String(e) }, 500);
+  }
+});
+
+// Admin: delete influencer
+app.delete(BASE + "/admin/influencers/:id", async (c) => {
+  try {
+    var _ai4 = await isAdminUser(c.req.raw);
+    if (!_ai4.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var infId4 = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    var ex4 = await kv.get("influencer:" + infId4);
+    if (ex4 && ex4.photoFilename) {
+      await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).remove([ex4.photoFilename]).catch(function () {});
+    }
+    await kv.del("influencer:" + infId4);
+    var list4 = await kv.get("influencers_list");
+    var idList4: string[] = Array.isArray(list4) ? list4 : [];
+    await kv.set("influencers_list", idList4.filter(function (id) { return id !== infId4; }));
+    return c.json({ ok: true, deleted: infId4 });
+  } catch (e: any) {
+    console.error("[Admin Influencers DELETE] Error:", e);
+    return c.json({ error: "Erro ao deletar influencer." }, 500);
+  }
+});
+
+// Admin: reorder influencers
+app.put(BASE + "/admin/influencers-order", async (c) => {
+  try {
+    var _ai5 = await isAdminUser(c.req.raw);
+    if (!_ai5.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var bodyOrd = await c.req.json();
+    var ordIds: string[] = bodyOrd.ids;
+    if (!Array.isArray(ordIds)) return c.json({ error: "ids deve ser um array." }, 400);
+    var uKeys5: string[] = [];
+    var uVals5: any[] = [];
+    for (var oi5 = 0; oi5 < ordIds.length; oi5++) {
+      var infOrd = await kv.get("influencer:" + ordIds[oi5]);
+      if (infOrd) { infOrd.order = oi5; uKeys5.push("influencer:" + ordIds[oi5]); uVals5.push(infOrd); }
+    }
+    uKeys5.push("influencers_list"); uVals5.push(ordIds);
+    if (uKeys5.length > 0) await kv.mset(uKeys5, uVals5);
+    return c.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Admin Influencers Order] Error:", e);
+    return c.json({ error: "Erro ao reordenar." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── FAQ (Perguntas Frequentes) ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+
+// GET /faq — public: list active FAQ items
+app.get(BASE + "/faq", async (c) => {
+  try {
+    var list = await kv.get("faq_list");
+    var ids: string[] = Array.isArray(list) ? list : [];
+    if (ids.length === 0) return c.json({ items: [] });
+    var keys = ids.map(function (id) { return "faq:" + id; });
+    var rawItems = await kv.mget(keys);
+    var items: any[] = [];
+    for (var fi = 0; fi < rawItems.length; fi++) {
+      var item = rawItems[fi];
+      if (item && item.active !== false) {
+        items.push({
+          id: item.id,
+          question: item.question,
+          answer: item.answer,
+          category: item.category || "Geral",
+          order: item.order || 0,
+        });
+      }
+    }
+    items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ items: items });
+  } catch (e: any) {
+    console.error("[FAQ] GET error:", e);
+    return c.json({ error: "Erro ao buscar FAQ." }, 500);
+  }
+});
+
+// GET /admin/faq — admin: list all FAQ items (including inactive)
+app.get(BASE + "/admin/faq", async (c) => {
+  try {
+    var adm = await isAdminUser(c.req.raw);
+    if (!adm.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var list = await kv.get("faq_list");
+    var ids: string[] = Array.isArray(list) ? list : [];
+    if (ids.length === 0) return c.json({ items: [], total: 0 });
+    var keys = ids.map(function (id) { return "faq:" + id; });
+    var rawItems = await kv.mget(keys);
+    var items: any[] = [];
+    for (var fi2 = 0; fi2 < rawItems.length; fi2++) {
+      if (rawItems[fi2]) items.push(rawItems[fi2]);
+    }
+    items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    return c.json({ items: items, total: items.length });
+  } catch (e: any) {
+    console.error("[FAQ] Admin GET error:", e);
+    return c.json({ error: "Erro ao buscar FAQ." }, 500);
+  }
+});
+
+// POST /admin/faq — admin: create FAQ item
+app.post(BASE + "/admin/faq", async (c) => {
+  try {
+    var adm2 = await isAdminUser(c.req.raw);
+    if (!adm2.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var body = await c.req.json();
+    var question = String(body.question || "").substring(0, 500).trim();
+    var answer = String(body.answer || "").substring(0, 5000).trim();
+    var category = String(body.category || "Geral").substring(0, 100).trim();
+    if (!question || !answer) return c.json({ error: "Pergunta e resposta sao obrigatorias." }, 400);
+    var id = "faq_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+    var list = await kv.get("faq_list");
+    var ids: string[] = Array.isArray(list) ? list : [];
+    var item = {
+      id: id,
+      question: question,
+      answer: answer,
+      category: category,
+      active: body.active !== false,
+      order: ids.length,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    ids.push(id);
+    await kv.mset(["faq:" + id, "faq_list"], [item, ids]);
+    return c.json({ ok: true, item: item });
+  } catch (e: any) {
+    console.error("[FAQ] POST error:", e);
+    return c.json({ error: "Erro ao criar FAQ." }, 500);
+  }
+});
+
+// PUT /admin/faq/:id — admin: update FAQ item
+app.put(BASE + "/admin/faq/:id", async (c) => {
+  try {
+    var adm3 = await isAdminUser(c.req.raw);
+    if (!adm3.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var faqId = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    var existing = await kv.get("faq:" + faqId);
+    if (!existing) return c.json({ error: "FAQ nao encontrado." }, 404);
+    var body = await c.req.json();
+    if (body.question !== undefined) existing.question = String(body.question).substring(0, 500).trim();
+    if (body.answer !== undefined) existing.answer = String(body.answer).substring(0, 5000).trim();
+    if (body.category !== undefined) existing.category = String(body.category).substring(0, 100).trim();
+    if (body.active !== undefined) existing.active = Boolean(body.active);
+    if (body.order !== undefined) existing.order = Number(body.order) || 0;
+    existing.updatedAt = Date.now();
+    await kv.set("faq:" + faqId, existing);
+    return c.json({ ok: true, item: existing });
+  } catch (e: any) {
+    console.error("[FAQ] PUT error:", e);
+    return c.json({ error: "Erro ao atualizar FAQ." }, 500);
+  }
+});
+
+// DELETE /admin/faq/:id — admin: delete FAQ item
+app.delete(BASE + "/admin/faq/:id", async (c) => {
+  try {
+    var adm4 = await isAdminUser(c.req.raw);
+    if (!adm4.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var faqId2 = decodeURIComponent(c.req.param("id")).substring(0, 100);
+    await kv.del("faq:" + faqId2);
+    var list = await kv.get("faq_list");
+    var ids: string[] = Array.isArray(list) ? list : [];
+    await kv.set("faq_list", ids.filter(function (id) { return id !== faqId2; }));
+    return c.json({ ok: true, deleted: faqId2 });
+  } catch (e: any) {
+    console.error("[FAQ] DELETE error:", e);
+    return c.json({ error: "Erro ao deletar FAQ." }, 500);
+  }
+});
+
+// PUT /admin/faq-order — admin: reorder FAQ items
+app.put(BASE + "/admin/faq-order", async (c) => {
+  try {
+    var adm5 = await isAdminUser(c.req.raw);
+    if (!adm5.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
+    var body = await c.req.json();
+    var ordIds: string[] = body.ids;
+    if (!Array.isArray(ordIds)) return c.json({ error: "ids deve ser um array." }, 400);
+    var uKeys: string[] = [];
+    var uVals: any[] = [];
+    for (var oi = 0; oi < ordIds.length; oi++) {
+      var fItem = await kv.get("faq:" + ordIds[oi]);
+      if (fItem) { fItem.order = oi; uKeys.push("faq:" + ordIds[oi]); uVals.push(fItem); }
+    }
+    uKeys.push("faq_list"); uVals.push(ordIds);
+    if (uKeys.length > 0) await kv.mset(uKeys, uVals);
+    return c.json({ ok: true });
+  } catch (e: any) {
+    console.error("[FAQ] Order error:", e);
+    return c.json({ error: "Erro ao reordenar FAQ." }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ─── CRON: Abandoned Cart Processing (every 30 minutes) ──────────
+// ═══════════════════════════════════════════════════════════════════
+// Runs inside the edge function process. No external cron needed.
+// Processes abandoned carts and sends WhatsApp reminders via the
+// configured provider (Zenvia or Take Blip).
+
+var ABANDONED_CART_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+// Retry helper for transient network errors (connection reset, timeout, etc.)
+async function _kvGetWithRetry(key: string, retries = 3, delayMs = 2000): Promise<any> {
+  for (var attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await kv.get(key);
+    } catch (err: any) {
+      var msg = String(err?.message || err || "");
+      var isTransient = msg.indexOf("reset by peer") >= 0 || msg.indexOf("os error 104") >= 0
+        || msg.indexOf("ECONNRESET") >= 0 || msg.indexOf("timeout") >= 0
+        || msg.indexOf("ETIMEDOUT") >= 0 || msg.indexOf("Connection reset") >= 0
+        || msg.indexOf("fetch failed") >= 0;
+      if (isTransient && attempt < retries) {
+        console.warn("[KV Retry] " + key + " attempt " + attempt + "/" + retries + " failed: " + msg.substring(0, 120) + ". Retrying in " + delayMs + "ms...");
+        await new Promise(r => setTimeout(r, delayMs * attempt));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+async function _kvGetByPrefixWithRetry(prefix: string, retries = 3, delayMs = 2000): Promise<any[]> {
+  for (var attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await kv.getByPrefix(prefix);
+    } catch (err: any) {
+      var msg = String(err?.message || err || "");
+      var isTransient = msg.indexOf("reset by peer") >= 0 || msg.indexOf("os error 104") >= 0
+        || msg.indexOf("ECONNRESET") >= 0 || msg.indexOf("timeout") >= 0
+        || msg.indexOf("ETIMEDOUT") >= 0 || msg.indexOf("Connection reset") >= 0
+        || msg.indexOf("fetch failed") >= 0;
+      if (isTransient && attempt < retries) {
+        console.warn("[KV Retry] prefix=" + prefix + " attempt " + attempt + "/" + retries + " failed: " + msg.substring(0, 120) + ". Retrying in " + delayMs + "ms...");
+        await new Promise(r => setTimeout(r, delayMs * attempt));
+      } else {
+        throw err;
+      }
+    }
+  }
+  return [];
+}
+
+async function _processAbandonedCartsCron() {
+  try {
+    var waConf = await _kvGetWithRetry("whatsapp_config");
+    if (!waConf || !waConf.enabled) return; // WhatsApp not enabled — skip
+
+    var carts = await _kvGetByPrefixWithRetry("wa_cart:");
+    if (!Array.isArray(carts) || carts.length === 0) return;
+
+    var now = Date.now();
+    var sent = 0;
+    var siteUrl = "https://www.autopecascarretao.com.br";
+    var templates = waConf.templates || DEFAULT_WHATSAPP_CONFIG.templates;
+
+    for (var cart of carts) {
+      if (!cart || cart.completed || !cart.phone || !cart.items || cart.items.length === 0) continue;
+
+      // Auto-expire carts older than 7 days — stop trying
+      var ageDays = (now - (cart.createdAt || now)) / 86400000;
+      if (ageDays > 7) continue;
+
+      var ageMinutes = (now - (cart.createdAt || now)) / 60000;
+      var sentList: string[] = cart.remindersSent || [];
+      var changed = false;
+
+      for (var [tplKey, tpl] of Object.entries(templates) as [string, any][]) {
+        if (!tpl.enabled || sentList.includes(tplKey) || ageMinutes < tpl.delayMinutes) continue;
+
+        var msg = tpl.message
+          .replace(/\{\{nome\}\}/g, cart.name || "Cliente")
+          .replace(/\{\{link\}\}/g, siteUrl + "/checkout")
+          .replace(/\{\{total\}\}/g, "R$ " + (cart.totalPrice || 0).toFixed(2).replace(".", ","))
+          .replace(/\{\{itens\}\}/g, (cart.items || []).map((i: any) => i.titulo || i.sku).join(", ").substring(0, 200));
+
+        var result = await sendWhatsAppMessage(waConf, cart.phone, msg);
+        if (result.ok) {
+          sentList.push(tplKey);
+          changed = true;
+          sent++;
+        } else {
+          console.error("[CRON:AbandonedCart] Send failed for " + cart.phone + " tpl " + tplKey + ": " + (result.error || ""));
+        }
+      }
+
+      // Also send abandoned cart email (once, after 60 min of cart age)
+      if (cart.email && !sentList.includes("email_reminder") && ageMinutes >= 60) {
+        try {
+          var emailSent = await _sendAbandonedCartEmail(cart);
+          if (emailSent) {
+            sentList.push("email_reminder");
+            changed = true;
+          }
+        } catch (_eErr) { /* non-fatal */ }
+      }
+
+      if (changed) {
+        cart.remindersSent = sentList;
+        cart.updatedAt = now;
+        try {
+          await kv.set("wa_cart:" + (cart.phone || cart.email), cart);
+        } catch (kvSetErr: any) {
+          console.warn("[CRON:AbandonedCart] KV set failed (transient?): " + String(kvSetErr?.message || kvSetErr).substring(0, 150));
+        }
+      }
+
+      // Rate limit: max 20 messages per cron cycle
+      if (sent >= 20) break;
+    }
+
+    if (sent > 0) {
+      console.log("[CRON:AbandonedCart] Processed. Sent " + sent + " WhatsApp reminder(s).");
+    }
+  } catch (e) {
+    console.error("[CRON:AbandonedCart] Error:", e);
+  }
+}
+
+// Start cron after a 2-minute warm-up delay, then every 30 minutes
+setTimeout(function () {
+  _processAbandonedCartsCron(); // First run
+  setInterval(_processAbandonedCartsCron, ABANDONED_CART_INTERVAL_MS);
+}, 120000);
 
 Deno.serve(app.fetch);

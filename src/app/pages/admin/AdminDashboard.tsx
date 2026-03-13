@@ -1,19 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import React from "react";
-import {
-  ShoppingCart,
-  DollarSign,
-  Package,
-  Users,
-  TrendingUp,
-  Loader2,
-  AlertTriangle,
-  RefreshCw,
-  Ticket,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
-} from "lucide-react";
+import ShoppingCart from "lucide-react/dist/esm/icons/shopping-cart.js";
+import DollarSign from "lucide-react/dist/esm/icons/dollar-sign.js";
+import Package from "lucide-react/dist/esm/icons/package.js";
+import Users from "lucide-react/dist/esm/icons/users.js";
+import TrendingUp from "lucide-react/dist/esm/icons/trending-up.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Ticket from "lucide-react/dist/esm/icons/ticket.js";
+import ArrowUpRight from "lucide-react/dist/esm/icons/arrow-up-right.js";
+import ArrowDownRight from "lucide-react/dist/esm/icons/arrow-down-right.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
 import * as api from "../../services/api";
 import { getValidAdminToken } from "./adminAuth";
 import {
@@ -23,7 +21,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
 } from "recharts";
 
@@ -69,6 +66,37 @@ export function AdminDashboard() {
   const [stats, setStats] = useState<api.DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  const chartObserverRef = useRef<ResizeObserver | null>(null);
+  const chartContainerRef = useCallback((node: HTMLDivElement | null) => {
+    // Cleanup previous observer
+    if (chartObserverRef.current) {
+      chartObserverRef.current.disconnect();
+      chartObserverRef.current = null;
+    }
+    if (!node) return;
+    // Immediately measure
+    const rect = node.getBoundingClientRect();
+    if (rect.width > 0) setChartWidth(Math.floor(rect.width));
+    // Observe future resizes
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.floor(entry.contentRect.width);
+        if (w > 0) setChartWidth(w);
+      }
+    });
+    observer.observe(node);
+    chartObserverRef.current = observer;
+  }, []);
+
+  // Cleanup observer on unmount
+  useEffect(() => {
+    return () => {
+      if (chartObserverRef.current) {
+        chartObserverRef.current.disconnect();
+      }
+    };
+  }, []);
 
   const fetchStats = async () => {
     setLoading(true);
@@ -232,27 +260,31 @@ export function AdminDashboard() {
 
       {/* Chart */}
       {stats.chartData && stats.chartData.length > 0 && (() => {
-        // Deduplicate chartData by month to avoid recharts duplicate-key warnings
+        // Deduplicate chartData by month and filter out null/undefined months
+        // to avoid recharts duplicate-key warnings
         var seen: Record<string, boolean> = {};
         var uniqueChartData = stats.chartData.filter(function (entry: any) {
-          var k = entry.month || "";
+          if (!entry || !entry.month) return false;
+          var k = String(entry.month);
           if (seen[k]) return false;
           seen[k] = true;
           return true;
         });
+        if (uniqueChartData.length === 0) return null;
         return (
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <h3 className="text-gray-900 mb-4" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
             Vendas nos Ultimos 6 Meses
           </h3>
-          <div style={{ width: "100%", height: 280 }}>
-            <ResponsiveContainer>
-              <BarChart data={uniqueChartData} barCategoryGap="20%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} tickFormatter={(v) => "R$" + (v / 1000).toFixed(0) + "k"} />
+          <div ref={chartContainerRef} style={{ width: "100%", minWidth: 0, overflowX: "auto" }}>
+            {chartWidth > 0 && (
+              <BarChart width={chartWidth} height={280} data={uniqueChartData} barCategoryGap="20%">
+                <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis key="xaxis" dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis key="yaxis-left" yAxisId="left" tick={{ fontSize: 12 }} />
+                <YAxis key="yaxis-right" yAxisId="right" orientation="right" tick={{ fontSize: 12 }} tickFormatter={(v) => "R$" + (v / 1000).toFixed(0) + "k"} />
                 <Tooltip
+                  key="tooltip"
                   formatter={(value: number, name: string) => {
                     if (name === "revenue") return [formatPrice(value), "Receita"];
                     return [value, "Pedidos"];
@@ -260,13 +292,14 @@ export function AdminDashboard() {
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
                 <Legend
+                  key="legend"
                   formatter={(value) => (value === "orders" ? "Pedidos" : "Receita")}
                   wrapperStyle={{ fontSize: 12 }}
                 />
-                <Bar yAxisId="left" dataKey="orders" fill="#3b82f6" radius={[4, 4, 0, 0]} name="orders" />
-                <Bar yAxisId="right" dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} name="revenue" />
+                <Bar key="bar-orders" yAxisId="left" dataKey="orders" fill="#3b82f6" radius={[4, 4, 0, 0]} name="orders" />
+                <Bar key="bar-revenue" yAxisId="right" dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} name="revenue" />
               </BarChart>
-            </ResponsiveContainer>
+            )}
           </div>
         </div>
         );

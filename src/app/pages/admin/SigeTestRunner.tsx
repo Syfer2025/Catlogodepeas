@@ -1,19 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import {
-  Play,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Clock,
-  Zap,
-  BarChart3,
-  ChevronDown,
-  ChevronRight,
-  AlertTriangle,
-  Shield,
-  RotateCcw,
-} from "lucide-react";
-import { getValidAdminToken } from "./adminAuth";
+import { Play, CheckCircle2, XCircle, Loader2, Clock, Zap, BarChart3, ChevronDown, ChevronRight, AlertTriangle, Shield, RotateCcw } from "lucide-react";
 import * as api from "../../services/api";
 
 interface TestDefinition {

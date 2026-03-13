@@ -1,39 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import React from "react";
-import {
-  Search,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  ChevronRight,
-  ChevronDown,
-  FolderTree,
-  FolderOpen,
-  Folder,
-  Package,
-  Check,
-  X,
-  Filter,
-  ArrowRight,
-  CheckSquare,
-  Square,
-  MinusSquare,
-  RotateCcw,
-  ChevronLeft,
-  ListChecks,
-  Layers,
-  RefreshCw,
-  Zap,
-  Info,
-  Tag,
-  Plus,
-  Trash2,
-  AlertTriangle,
-  Play,
-  ClipboardList,
-  Image,
-  FolderPlus,
-} from "lucide-react";
+import { Search, Loader2, CheckCircle2, AlertCircle, ChevronRight, ChevronDown, FolderTree, FolderOpen, Folder, Package, Check, X, Filter, ArrowRight, CheckSquare, Square, MinusSquare, RotateCcw, ChevronLeft, ListChecks, Layers, RefreshCw, Zap, Info, Tag, Plus, Trash2, AlertTriangle } from "lucide-react";
+import Play from "lucide-react/dist/esm/icons/play.js";
+import ClipboardList from "lucide-react/dist/esm/icons/clipboard-list.js";
+import Image from "lucide-react/dist/esm/icons/image.js";
+import FolderPlus from "lucide-react/dist/esm/icons/folder-plus.js";
 import * as api from "../../services/api";
 import type { CategoryNode, AutoCategData } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -760,7 +731,8 @@ export function AdminBulkCategoryAssign() {
         updatedTree = insertChildInTree(categoryTree, newCatParent, newNode);
       }
 
-      await api.saveCategoryTree(updatedTree);
+      var catToken = await getValidAdminToken();
+      await api.saveCategoryTree(updatedTree, catToken || undefined);
       setCategoryTree(updatedTree);
 
       // Auto-select the newly created category

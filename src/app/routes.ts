@@ -7,18 +7,11 @@ import { HomePage } from "./pages/HomePage";
 // This avoids the "component suspended while responding to synchronous input" error
 // that React.lazy() causes with React Router navigations.
 
-// Simple spinner shown during initial hydration while lazy routes load
+// Pre-render skeleton shell (injected in Layout.tsx IIFE) already provides
+// visual feedback, so HydrateFallback returns null to avoid replacing it
+// with a plain spinner that looks like a regression.
 function HydrateFallback() {
-  return React.createElement("div", {
-    style: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }
-  }, React.createElement("div", {
-    style: {
-      width: "32px", height: "32px",
-      border: "3px solid #fecaca", borderTopColor: "#dc2626",
-      borderRadius: "50%",
-      animation: "spin 0.8s linear infinite"
-    }
-  }));
+  return null;
 }
 
 export const router = createBrowserRouter([
@@ -81,8 +74,16 @@ export const router = createBrowserRouter([
         lazy: function () { return import("./pages/AffiliatePage").then(function (m) { return { Component: m.AffiliatePage }; }); },
       },
       {
+        path: "cupons",
+        lazy: function () { return import("./pages/CouponsPage").then(function (m) { return { Component: m.CouponsPage }; }); },
+      },
+      {
         path: "rastreio/:orderId",
         lazy: function () { return import("./pages/TrackingPage").then(function (m) { return { Component: m.TrackingPage }; }); },
+      },
+      {
+        path: "faq",
+        lazy: function () { return import("./pages/FaqPage").then(function (m) { return { Component: m.FaqPage }; }); },
       },
       {
         path: "*",

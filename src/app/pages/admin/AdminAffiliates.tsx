@@ -1,38 +1,36 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Users,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  DollarSign,
-  MousePointerClick,
-  ShoppingCart,
-  Copy,
-  Ban,
-  Hourglass,
-  BadgeCheck,
-  Clock,
-  Wallet,
-  TrendingUp,
-  Settings,
-  Save,
-  Hash,
-  Mail,
-  Phone,
-  AtSign,
-  KeyRound,
-  Calendar,
-  MessageCircle,
-  Award,
-  Eye,
-  ShieldCheck,
-  Percent,
-  RefreshCw,
-} from "lucide-react";
+import Users from "lucide-react/dist/esm/icons/users.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import DollarSign from "lucide-react/dist/esm/icons/dollar-sign.js";
+import MousePointerClick from "lucide-react/dist/esm/icons/mouse-pointer-click.js";
+import ShoppingCart from "lucide-react/dist/esm/icons/shopping-cart.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import Ban from "lucide-react/dist/esm/icons/ban.js";
+import Hourglass from "lucide-react/dist/esm/icons/hourglass.js";
+import BadgeCheck from "lucide-react/dist/esm/icons/badge-check.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import Wallet from "lucide-react/dist/esm/icons/wallet.js";
+import TrendingUp from "lucide-react/dist/esm/icons/trending-up.js";
+import Settings from "lucide-react/dist/esm/icons/settings.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import Hash from "lucide-react/dist/esm/icons/hash.js";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
+import Phone from "lucide-react/dist/esm/icons/phone.js";
+import AtSign from "lucide-react/dist/esm/icons/at-sign.js";
+import KeyRound from "lucide-react/dist/esm/icons/key-round.js";
+import Calendar from "lucide-react/dist/esm/icons/calendar.js";
+import MessageCircle from "lucide-react/dist/esm/icons/message-circle.js";
+import Award from "lucide-react/dist/esm/icons/award.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
+import Percent from "lucide-react/dist/esm/icons/percent.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";

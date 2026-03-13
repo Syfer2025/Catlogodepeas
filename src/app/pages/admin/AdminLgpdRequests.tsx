@@ -1,27 +1,25 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  Shield,
-  Loader2,
-  RefreshCw,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  User,
-  Mail,
-  Phone,
-  CreditCard,
-  FileText,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  MessageSquare,
-  Save,
-  Filter,
-  Eye,
-  X,
-} from "lucide-react";
+import Shield from "lucide-react/dist/esm/icons/shield.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import User from "lucide-react/dist/esm/icons/user.js";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
+import Phone from "lucide-react/dist/esm/icons/phone.js";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card.js";
+import FileText from "lucide-react/dist/esm/icons/file-text.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.js";
+import MessageSquare from "lucide-react/dist/esm/icons/message-square.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import Filter from "lucide-react/dist/esm/icons/filter.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import X from "lucide-react/dist/esm/icons/x.js";
 import * as api from "../../services/api";
 import type { LgpdRequest } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";

@@ -1,26 +1,24 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import React from "react";
-import {
-  ShieldCheck,
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-  AlertTriangle,
-  X,
-  Check,
-  ToggleLeft,
-  ToggleRight,
-  RefreshCw,
-  Search,
-  Package,
-  Clock,
-  Percent,
-  DollarSign,
-  Tag,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Pencil from "lucide-react/dist/esm/icons/pencil.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import ToggleLeft from "lucide-react/dist/esm/icons/toggle-left.js";
+import ToggleRight from "lucide-react/dist/esm/icons/toggle-right.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import Package from "lucide-react/dist/esm/icons/package.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import Percent from "lucide-react/dist/esm/icons/percent.js";
+import DollarSign from "lucide-react/dist/esm/icons/dollar-sign.js";
+import Tag from "lucide-react/dist/esm/icons/tag.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";

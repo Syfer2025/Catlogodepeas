@@ -1,0 +1,677 @@
+vite v6.3.5 building for production...
+✓ 2793 modules transformed.
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/services/api.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/AddToCartButton.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CheckoutAddressManager.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Header.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/MobileBottomNav.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/PriceBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/RecentlyViewedSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ReviewStars.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ShippingCalculator.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBar.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SuperPromoSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/TrackingTimeline.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/AffiliateContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CatalogModeContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/HomepageInitContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/WishlistContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AboutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AffiliatePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/BrandPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CatalogPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CheckoutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ContactPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/HomePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/LgpdRightsPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAccountPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAuthPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAdmins.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAffiliates.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminApiSige.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAttributes.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAuditLog.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAutoCateg.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBranches.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBrands.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBulkCategoryAssign.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminClients.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCoupons.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminDashboard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminEmailMarketing.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminFooterBadges.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminGA4.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminHomepageCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLgpdRequests.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLoginPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMercadoPago.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMidBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminOrders.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPagHiper.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminProducts.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSettings.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShipping.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShippingTables.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSisfreteWT.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSuperPromo.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminWarranty.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeApiDocsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCategoryModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerAddressModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerComplementModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerContactModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeDepModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeIntegrationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderDiagnoseModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderInstallmentModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsTextModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderObservationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductBalanceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPcpModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPriceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPromotionModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductReferenceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductTechnicalSheetModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockExplorer.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockSync.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeTestRunner.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CategoryMegaMenu.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CartContext.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/App.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductCard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CookieConsentBanner.tsx is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminErrorScanner.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/GA4Provider.tsx, dynamic import will not move module into another chunk.
+
+dist/index.html                                              0.43 kB │ gzip:   0.28 kB
+dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.75 kB
+dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          19.00 kB
+dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.26 kB
+dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.07 kB
+dist/assets/index-Bsv0oUBL.css                             195.82 kB │ gzip:  29.12 kB
+dist/assets/minus-9unNGPmq.js                                0.29 kB │ gzip:   0.24 kB
+dist/assets/chevron-up-ovWI4kNb.js                           0.30 kB │ gzip:   0.25 kB
+dist/assets/play-DmHaJ2G_.js                                 0.31 kB │ gzip:   0.25 kB
+dist/assets/plus-B3K8KnvR.js                                 0.33 kB │ gzip:   0.26 kB
+dist/assets/arrow-left-GNvouNw4.js                           0.34 kB │ gzip:   0.27 kB
+dist/assets/arrow-up-right-CSsoF_m9.js                       0.34 kB │ gzip:   0.27 kB
+dist/assets/ban-DeyS_HAT.js                                  0.35 kB │ gzip:   0.27 kB
+dist/assets/circle-check-ljIbz85l.js                         0.35 kB │ gzip:   0.28 kB
+dist/assets/message-square-BHhS2qS0.js                       0.35 kB │ gzip:   0.27 kB
+dist/assets/clipboard-CdHgUwkZ.js                            0.37 kB │ gzip:   0.25 kB
+dist/assets/smartphone-hP48TUaG.js                           0.37 kB │ gzip:   0.29 kB
+dist/assets/rotate-ccw-BkQbv2OE.js                           0.37 kB │ gzip:   0.29 kB
+dist/assets/info-Ddh4FlqK.js                                 0.38 kB │ gzip:   0.28 kB
+dist/assets/trending-up-onKmmB7K.js                          0.38 kB │ gzip:   0.29 kB
+dist/assets/toggle-left-DrP3Y2o4.js                          0.38 kB │ gzip:   0.29 kB
+dist/assets/circle-x-C8PdPLag.js                             0.38 kB │ gzip:   0.28 kB
+dist/assets/toggle-right-CzuHqSiE.js                         0.38 kB │ gzip:   0.29 kB
+dist/assets/mail-Dn0dsvSy.js                                 0.39 kB │ gzip:   0.31 kB
+dist/assets/table-2-DQm1LIIu.js                              0.39 kB │ gzip:   0.29 kB
+dist/assets/dollar-sign-P7FopEkl.js                          0.39 kB │ gzip:   0.30 kB
+dist/assets/copy-Dqo1LYOr.js                                 0.41 kB │ gzip:   0.31 kB
+dist/assets/link-2-DuXnRo0w.js                               0.42 kB │ gzip:   0.31 kB
+dist/assets/globe-CQfuHDdc.js                                0.42 kB │ gzip:   0.30 kB
+dist/assets/percent-R6t8Uxt2.js                              0.42 kB │ gzip:   0.30 kB
+dist/assets/database-DErCu-6J.js                             0.42 kB │ gzip:   0.31 kB
+dist/assets/type-78vZZ-Zv.js                                 0.42 kB │ gzip:   0.30 kB
+dist/assets/arrow-up-down-Bm8lUtNm.js                        0.42 kB │ gzip:   0.30 kB
+dist/assets/circle-alert-CzH5lTf6.js                         0.42 kB │ gzip:   0.29 kB
+dist/assets/external-link-C4kNnWdM.js                        0.43 kB │ gzip:   0.30 kB
+dist/assets/shopping-bag-CLTfL0vx.js                         0.43 kB │ gzip:   0.31 kB
+dist/assets/eye-ByhSIrxC.js                                  0.43 kB │ gzip:   0.31 kB
+dist/assets/funnel-CH6dh9OD.js                               0.43 kB │ gzip:   0.32 kB
+dist/assets/calendar-MTPDUpNa.js                             0.43 kB │ gzip:   0.31 kB
+dist/assets/monitor-CjgqNlvc.js                              0.43 kB │ gzip:   0.31 kB
+dist/assets/log-in-BksRryQf.js                               0.43 kB │ gzip:   0.32 kB
+dist/assets/download-fn_5iO7G.js                             0.44 kB │ gzip:   0.32 kB
+dist/assets/barcode-BQrDOVKt.js                              0.44 kB │ gzip:   0.28 kB
+dist/assets/shield-BNYJrHee.js                               0.45 kB │ gzip:   0.33 kB
+dist/assets/award-D13VHzB_.js                                0.45 kB │ gzip:   0.33 kB
+dist/assets/pencil-gLORcOa1.js                               0.45 kB │ gzip:   0.33 kB
+dist/assets/flame-gUH-kSgy.js                                0.45 kB │ gzip:   0.33 kB
+dist/assets/pen-line-DHd2VcCc.js                             0.45 kB │ gzip:   0.33 kB
+dist/assets/wallet-RrBAhLrj.js                               0.46 kB │ gzip:   0.31 kB
+dist/assets/house-C1MUdjfB.js                                0.46 kB │ gzip:   0.32 kB
+dist/assets/send-k8mA54s7.js                                 0.46 kB │ gzip:   0.34 kB
+dist/assets/thumbs-up-BcA99fpr.js                            0.48 kB │ gzip:   0.34 kB
+dist/assets/shield-check-jontF4c3.js                         0.49 kB │ gzip:   0.36 kB
+dist/assets/ticket-BxBLuKD-.js                               0.50 kB │ gzip:   0.32 kB
+dist/assets/tag-BWwJMAXO.js                                  0.50 kB │ gzip:   0.35 kB
+dist/assets/save-Cra6CFGF.js                                 0.50 kB │ gzip:   0.33 kB
+dist/assets/list-ordered-DXqufL7O.js                         0.51 kB │ gzip:   0.32 kB
+dist/assets/file-text-BRubFhji.js                            0.51 kB │ gzip:   0.32 kB
+dist/assets/hourglass-Cs1Lh5LB.js                            0.53 kB │ gzip:   0.34 kB
+dist/assets/scale-DphkKTTX.js                                0.54 kB │ gzip:   0.34 kB
+dist/assets/grip-vertical-DMbIjkmt.js                        0.55 kB │ gzip:   0.30 kB
+dist/assets/file-spreadsheet-DJAI-HfL.js                     0.55 kB │ gzip:   0.33 kB
+dist/assets/phone-B5J9HBFj.js                                0.57 kB │ gzip:   0.36 kB
+dist/assets/truck-BxtcXakK.js                                0.58 kB │ gzip:   0.37 kB
+dist/assets/clipboard-list-cbJ1U0t1.js                       0.59 kB │ gzip:   0.36 kB
+dist/assets/mouse-pointer-click-Dvisqe5g.js                  0.59 kB │ gzip:   0.39 kB
+dist/assets/eye-off-B1F3Qint.js                              0.60 kB │ gzip:   0.38 kB
+dist/assets/folder-tree-COl4y8Ae.js                          0.65 kB │ gzip:   0.37 kB
+dist/assets/JsonLdBreadcrumb-xWyRE8V1.js                     0.66 kB │ gzip:   0.44 kB
+dist/assets/calendar-days-DzW3c_4t.js                        0.67 kB │ gzip:   0.37 kB
+dist/assets/palette-DnN6ooUA.js                              0.79 kB │ gzip:   0.45 kB
+dist/assets/folder-CMelJKhK.js                               0.82 kB │ gzip:   0.40 kB
+dist/assets/qr-code-Zd1MbiiF.js                              0.82 kB │ gzip:   0.42 kB
+dist/assets/user-plus-CIYKeeu4.js                            0.87 kB │ gzip:   0.44 kB
+dist/assets/list-CjfG6ovV.js                                 0.90 kB │ gzip:   0.40 kB
+dist/assets/users-1NLSyLZi.js                                0.92 kB │ gzip:   0.44 kB
+dist/assets/VirtualProductGrid-6tswziV_.js                   1.25 kB │ gzip:   0.61 kB
+dist/assets/OptimizedImage-DKKrn2Lo.js                       1.53 kB │ gzip:   0.86 kB
+dist/assets/TrackingPage-BZQ_Ztjt.js                         1.83 kB │ gzip:   0.90 kB
+dist/assets/ScrollToTopButton-BjbntphR.js                    1.97 kB │ gzip:   1.01 kB
+dist/assets/BrandCarousel-ivd-AWG0.js                        2.21 kB │ gzip:   0.96 kB
+dist/assets/NotFoundPage-Dqi740Eq.js                         2.56 kB │ gzip:   0.97 kB
+dist/assets/WhatsAppButton-B_iKcVxE.js                       2.64 kB │ gzip:   1.26 kB
+dist/assets/RecentlyViewedSection-gxU78hme.js                4.63 kB │ gzip:   1.82 kB
+dist/assets/BrandPage-C-nxzxmz.js                            4.65 kB │ gzip:   1.72 kB
+dist/assets/MobileBottomNav-DxCjlp8O.js                      4.89 kB │ gzip:   1.88 kB
+dist/assets/SigeOrderInstallmentModule-C2PZij0y.js           5.29 kB │ gzip:   1.95 kB
+dist/assets/categoryTree-B-GGW-hT.js                         5.63 kB │ gzip:   2.28 kB
+dist/assets/AddToCartButton-bBBb3Qi3.js                      6.21 kB │ gzip:   2.27 kB
+dist/assets/ShareButtons-cyri4XZV.js                         6.90 kB │ gzip:   2.76 kB
+dist/assets/SigeProductPcpModule-DKI8pIdH.js                 7.12 kB │ gzip:   2.42 kB
+dist/assets/AdminMidBanners-Blgglmco.js                      7.38 kB │ gzip:   2.69 kB
+dist/assets/ShippingCalculator-7Ch5ktwB.js                   7.60 kB │ gzip:   2.74 kB
+dist/assets/AdminFooterBadges-9eIyPPLK.js                    8.01 kB │ gzip:   2.85 kB
+dist/assets/AboutPage-BAXgl6cu.js                            8.39 kB │ gzip:   2.43 kB
+dist/assets/SigeProductBalanceModule-BhMx4344.js             8.70 kB │ gzip:   2.94 kB
+dist/assets/TermsPage-D2gfb4bP.js                            9.28 kB │ gzip:   3.38 kB
+dist/assets/UserResetPasswordPage-pg_8Vp7i.js                9.55 kB │ gzip:   2.94 kB
+dist/assets/ContactPage-C975CSho.js                          9.88 kB │ gzip:   3.01 kB
+dist/assets/Footer-Cj8qErzV.js                              10.18 kB │ gzip:   2.83 kB
+dist/assets/SigeProductPromotionModule-oV9VE5xm.js          10.34 kB │ gzip:   3.10 kB
+dist/assets/SigeOrderItemsModule-BlFTxIxC.js                10.70 kB │ gzip:   3.31 kB
+dist/assets/AdminResetPasswordPage-DlSNmAIK.js              11.03 kB │ gzip:   3.37 kB
+dist/assets/SigeOrderObservationModule-6cnEeKW9.js          12.39 kB │ gzip:   3.31 kB
+dist/assets/SigeOrderDiagnoseModule-CYCktHqL.js             12.57 kB │ gzip:   4.07 kB
+dist/assets/CategoryMegaMenu-CPCw3ByF.js                    12.60 kB │ gzip:   3.96 kB
+dist/assets/SigeProductTechnicalSheetModule-DjoO8Oun.js     13.10 kB │ gzip:   3.40 kB
+dist/assets/AdminAdmins-C9dS3Ci1.js                         13.35 kB │ gzip:   3.87 kB
+dist/assets/SuperPromoSection-Dr1wfc8L.js                   13.71 kB │ gzip:   4.49 kB
+dist/assets/AdminAuditLog-DfqKWXBO.js                       13.75 kB │ gzip:   3.55 kB
+dist/assets/SigeStockSync-CNhgz63f.js                       14.11 kB │ gzip:   3.78 kB
+dist/assets/PrivacyPolicyPage-QhcCjcON.js                   14.20 kB │ gzip:   4.37 kB
+dist/assets/SigeCustomerComplementModule-Dqe2tsmh.js        14.33 kB │ gzip:   3.74 kB
+dist/assets/AdminSafrapay-BZTVzxz7.js                       14.58 kB │ gzip:   4.17 kB
+dist/assets/AdminGA4-CCGNzLD5.js                            14.82 kB │ gzip:   4.52 kB
+dist/assets/AdminLgpdRequests-BfI5ea06.js                   14.86 kB │ gzip:   4.12 kB
+dist/assets/SigeCustomerAddressModule-CF6_IMrh.js           15.11 kB │ gzip:   3.93 kB
+dist/assets/CheckoutAddressManager-BYD-1LIR.js              15.12 kB │ gzip:   3.83 kB
+dist/assets/AdminHomepageCategories-D-_UQJvD.js             15.72 kB │ gzip:   4.35 kB
+dist/assets/AdminCoupons-9-Vp1H4N.js                        16.08 kB │ gzip:   3.96 kB
+dist/assets/AdminBranches-CBaT0Yhb.js                       16.22 kB │ gzip:   4.36 kB
+dist/assets/SigeCustomerContactModule-CAEQTnFo.js           16.47 kB │ gzip:   4.32 kB
+dist/assets/TrackingTimeline-DT0MeVbb.js                    16.50 kB │ gzip:   4.08 kB
+dist/assets/SigeProductReferenceModule-BYM6K8FS.js          16.73 kB │ gzip:   4.42 kB
+dist/assets/SigeOrderItemsTextModule-Dc_qYtNK.js            17.03 kB │ gzip:   4.12 kB
+dist/assets/CatalogPage-D6hp-KO6.js                         17.12 kB │ gzip:   4.85 kB
+dist/assets/ProductReviews-R5QPUCHV.js                      17.21 kB │ gzip:   5.18 kB
+dist/assets/SigeProductModule--0IJOdK7.js                   17.36 kB │ gzip:   4.60 kB
+dist/assets/AdminCategories-Dkyr4DmF.js                     17.56 kB │ gzip:   5.03 kB
+dist/assets/AdminClients-BfLJPuaX.js                        17.68 kB │ gzip:   4.32 kB
+dist/assets/SigeCategoryModule-BnK4CNEa.js                  17.74 kB │ gzip:   3.77 kB
+dist/assets/SigeTestRunner-qbMQRvxj.js                      17.88 kB │ gzip:   4.87 kB
+dist/assets/AdminBrands-C_8NEx5S.js                         18.41 kB │ gzip:   4.97 kB
+dist/assets/AdminWarranty-8WCl2vgj.js                       18.85 kB │ gzip:   4.82 kB
+dist/assets/AdminShippingTables-DdlOghya.js                 19.95 kB │ gzip:   5.74 kB
+dist/assets/SigeOrderModule-stCTb3i-.js                     20.03 kB │ gzip:   4.78 kB
+dist/assets/AdminReviews-CHwqLOiM.js                        20.30 kB │ gzip:   4.74 kB
+dist/assets/AffiliatePage-Czgf5Jwe.js                       20.88 kB │ gzip:   4.84 kB
+dist/assets/SigeDepModule-CbOxTDCF.js                       21.06 kB │ gzip:   5.48 kB
+dist/assets/AdminOrders-BKEfQiQp.js                         21.51 kB │ gzip:   5.75 kB
+dist/assets/AdminAffiliates-d1fKVxym.js                     21.91 kB │ gzip:   5.29 kB
+dist/assets/SigeCustomerModule-CXPyK3YT.js                  21.93 kB │ gzip:   4.91 kB
+dist/assets/AdminBanners-DgdZqBme.js                        23.12 kB │ gzip:   5.85 kB
+dist/assets/LgpdRightsPage-DOPjgdt7.js                      23.54 kB │ gzip:   5.50 kB
+dist/assets/SigeProductPriceModule-C1mza05O.js              24.31 kB │ gzip:   5.99 kB
+dist/assets/AdminSuperPromo-B8Be6IM3.js                     27.97 kB │ gzip:   6.58 kB
+dist/assets/AdminMercadoPago-BbYZThnH.js                    28.77 kB │ gzip:   7.26 kB
+dist/assets/AdminAutoCateg-toDQl1P5.js                      29.23 kB │ gzip:   8.05 kB
+dist/assets/SigeStockExplorer-CAWhUG03.js                   29.24 kB │ gzip:   6.76 kB
+dist/assets/SigeApiDocsModule-D6r8IyIU.js                   30.44 kB │ gzip:   8.87 kB
+dist/assets/AdminPagHiper-BUfXNisK.js                       34.20 kB │ gzip:   6.64 kB
+dist/assets/ProductDetailPage-CUnomwPm.js                   34.74 kB │ gzip:   9.67 kB
+dist/assets/AdminRegressionTest-Dwixzn18.js                 38.95 kB │ gzip:  10.36 kB
+dist/assets/AdminBulkCategoryAssign-CYxBuzmq.js             39.49 kB │ gzip:   9.86 kB
+dist/assets/AdminSisfreteWT-D9DWwMvd.js                     45.71 kB │ gzip:  10.22 kB
+dist/assets/AdminErrorScanner-Dx1V1NnA.js                   45.89 kB │ gzip:  11.43 kB
+dist/assets/UserAuthPage-Dl1t-G3J.js                        45.98 kB │ gzip:   9.31 kB
+dist/assets/AdminApiSige-F9saj3hD.js                        46.05 kB │ gzip:   9.19 kB
+dist/assets/AdminAttributes-DrTMIN-F.js                     47.83 kB │ gzip:  11.35 kB
+dist/assets/SigeIntegrationModule-DXgaFz2T.js               49.46 kB │ gzip:  10.50 kB
+dist/assets/AdminPage-tFM7RZfv.js                           51.20 kB │ gzip:  13.33 kB
+dist/assets/AdminEmailMarketing-DtoOP1gE.js                 56.75 kB │ gzip:  10.38 kB
+dist/assets/AdminSettings-hb00jcos.js                       62.86 kB │ gzip:  11.38 kB
+dist/assets/CheckoutPage-CG4K1MGL.js                        67.79 kB │ gzip:  15.89 kB
+dist/assets/AdminShipping-i7UL7VTY.js                       75.64 kB │ gzip:  17.59 kB
+dist/assets/UserAccountPage-TdAfnUpW.js                     77.26 kB │ gzip:  15.99 kB
+dist/assets/AdminProducts-DWgS2GOW.js                      101.18 kB │ gzip:  21.32 kB
+dist/assets/CartDrawer-BlfEjEET.js                         134.43 kB │ gzip:  44.09 kB
+dist/assets/AdminDashboard-B43DA_yW.js                     390.71 kB │ gzip: 108.17 kB
+dist/assets/index-BGnNnnbp.js                              655.44 kB │ gzip: 185.08 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.64s
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % depcheck
+zsh: command not found: depcheck
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npm audit
+
+# npm audit report
+
+vite  6.0.0 - 6.4.0
+Severity: moderate
+Vite middleware may serve files starting with the same name with the public directory - https://github.com/advisories/GHSA-g4jq-h2w9-997c
+Vite's `server.fs` settings were not applied to HTML files - https://github.com/advisories/GHSA-jqfw-vq24-v9c3
+vite allows server.fs.deny bypass via backslash on Windows - https://github.com/advisories/GHSA-93m4-6634-74q7
+fix available via `npm audit fix --force`
+Will install vite@6.4.1, which is outside the stated dependency range
+node_modules/vite
+
+1 moderate severity vulnerability
+
+To address all issues, run:
+  npm audit fix --force
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npm install vite@latest
+npm audit
+
+changed 3 packages, and audited 331 packages in 3s
+
+55 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+found 0 vulnerabilities
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx depcheck
+
+Need to install the following packages:
+depcheck@1.4.7
+Ok to proceed? (y) y
+Unused dependencies
+* @emotion/react
+* @emotion/styled
+* @fontsource-variable/inter
+* @mui/icons-material
+* @mui/material
+* @popperjs/core
+* @types/react-window
+* pdfjs-dist
+* react-dnd
+* react-dnd-html5-backend
+* react-popper
+* react-responsive-masonry
+* react-slick
+* react-window
+* tw-animate-css
+Unused devDependencies
+* tailwindcss
+Missing dependencies
+* @types/react: ./tsconfig.json
+* npm:hono: ./supabase/functions/server/index.tsx
+* npm:@supabase: ./supabase/functions/server/index.tsx
+* npm:nodemailer@6.9.16: ./supabase/functions/server/index.tsx
+* npm:jszip@3.10.1: ./supabase/functions/server/index.tsx
+* jsr:@supabase: ./supabase/functions/server/kv_store.tsx
+* @emotion/is-prop-valid: ./dist/assets/CartDrawer-BlfEjEET.js
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npm uninstall @emotion/react @emotion/styled @mui/icons-material @mui/material @popperjs/core react-popper @types/react-window react-window react-dnd react-dnd-html5-backend react-responsive-masonry react-slick pdfjs-dist
+
+removed 77 packages, and audited 254 packages in 4s
+
+38 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx vite build
+
+vite v7.3.1 building client environment for production...
+✓ 2793 modules transformed.
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/services/api.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/AddToCartButton.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CheckoutAddressManager.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Header.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/MobileBottomNav.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/PriceBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/RecentlyViewedSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ReviewStars.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ShippingCalculator.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBar.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SuperPromoSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/TrackingTimeline.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/AffiliateContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CatalogModeContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/HomepageInitContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/WishlistContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AboutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AffiliatePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/BrandPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CatalogPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CheckoutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ContactPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/HomePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/LgpdRightsPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAccountPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAuthPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAdmins.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAffiliates.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminApiSige.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAttributes.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAuditLog.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAutoCateg.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBranches.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBrands.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBulkCategoryAssign.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminClients.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCoupons.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminDashboard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminEmailMarketing.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminFooterBadges.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminGA4.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminHomepageCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLgpdRequests.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLoginPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMercadoPago.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMidBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminOrders.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPagHiper.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminProducts.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSettings.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShipping.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShippingTables.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSisfreteWT.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSuperPromo.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminWarranty.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeApiDocsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCategoryModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerAddressModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerComplementModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerContactModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeDepModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeIntegrationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderDiagnoseModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderInstallmentModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsTextModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderObservationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductBalanceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPcpModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPriceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPromotionModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductReferenceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductTechnicalSheetModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockExplorer.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockSync.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeTestRunner.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CategoryMegaMenu.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CartContext.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/App.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductCard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CookieConsentBanner.tsx is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminErrorScanner.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/GA4Provider.tsx, dynamic import will not move module into another chunk.
+
+dist/index.html                                              0.43 kB │ gzip:   0.28 kB
+dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.75 kB
+dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          19.00 kB
+dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.26 kB
+dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.07 kB
+dist/assets/index-DeXTivuc.css                             195.59 kB │ gzip:  29.05 kB
+dist/assets/minus-p1uaSRZI.js                                0.12 kB │ gzip:   0.13 kB
+dist/assets/chevron-up-CgGCljnG.js                           0.13 kB │ gzip:   0.14 kB
+dist/assets/play-BxG9MUj6.js                                 0.14 kB │ gzip:   0.15 kB
+dist/assets/plus-B2LioREY.js                                 0.16 kB │ gzip:   0.15 kB
+dist/assets/arrow-left-iy2pwRAz.js                           0.17 kB │ gzip:   0.16 kB
+dist/assets/arrow-up-right---3zvygk.js                       0.17 kB │ gzip:   0.16 kB
+dist/assets/ban-uOIC_5RX.js                                  0.18 kB │ gzip:   0.17 kB
+dist/assets/circle-check-DA3DCNCg.js                         0.18 kB │ gzip:   0.17 kB
+dist/assets/message-square-ighg4o3L.js                       0.18 kB │ gzip:   0.17 kB
+dist/assets/smartphone-CWmlUiwV.js                           0.20 kB │ gzip:   0.18 kB
+dist/assets/rotate-ccw-B29rrqLS.js                           0.20 kB │ gzip:   0.19 kB
+dist/assets/info-BbjiF-B3.js                                 0.21 kB │ gzip:   0.18 kB
+dist/assets/trending-up-BzhaTK-u.js                          0.21 kB │ gzip:   0.18 kB
+dist/assets/toggle-left-B2upHfaC.js                          0.21 kB │ gzip:   0.19 kB
+dist/assets/circle-x-9K4GXOfH.js                             0.21 kB │ gzip:   0.18 kB
+dist/assets/toggle-right-CvrL2HJS.js                         0.21 kB │ gzip:   0.19 kB
+dist/assets/mail-DchEryzN.js                                 0.22 kB │ gzip:   0.20 kB
+dist/assets/table-2-BZkqDFMo.js                              0.22 kB │ gzip:   0.19 kB
+dist/assets/dollar-sign-DazZQRkc.js                          0.22 kB │ gzip:   0.19 kB
+dist/assets/copy-DjEQI35c.js                                 0.24 kB │ gzip:   0.21 kB
+dist/assets/link-2-QEcTff2z.js                               0.24 kB │ gzip:   0.20 kB
+dist/assets/globe-ttyPoDNn.js                                0.24 kB │ gzip:   0.19 kB
+dist/assets/percent-vS932CIS.js                              0.24 kB │ gzip:   0.19 kB
+dist/assets/database-vThuCGQP.js                             0.25 kB │ gzip:   0.20 kB
+dist/assets/type-efVW7zYs.js                                 0.25 kB │ gzip:   0.19 kB
+dist/assets/arrow-up-down-CMZrCRVj.js                        0.25 kB │ gzip:   0.19 kB
+dist/assets/circle-alert-DDBN0wed.js                         0.25 kB │ gzip:   0.19 kB
+dist/assets/external-link-BHQCrDc1.js                        0.25 kB │ gzip:   0.20 kB
+dist/assets/shopping-bag-B3YMLcOr.js                         0.25 kB │ gzip:   0.20 kB
+dist/assets/eye-BsoV2Tye.js                                  0.26 kB │ gzip:   0.20 kB
+dist/assets/funnel-CsVDrwt1.js                               0.26 kB │ gzip:   0.22 kB
+dist/assets/calendar-B3ptdxuf.js                             0.26 kB │ gzip:   0.21 kB
+dist/assets/monitor-C6aqllLz.js                              0.26 kB │ gzip:   0.21 kB
+dist/assets/log-in-CDEfahjH.js                               0.26 kB │ gzip:   0.22 kB
+dist/assets/download--L4D2jlj.js                             0.26 kB │ gzip:   0.22 kB
+dist/assets/barcode-B0XEf7oL.js                              0.27 kB │ gzip:   0.18 kB
+dist/assets/shield-DLx_FTkq.js                               0.27 kB │ gzip:   0.23 kB
+dist/assets/award-Bb22Wx6I.js                                0.28 kB │ gzip:   0.23 kB
+dist/assets/pencil-Bp2jHZKY.js                               0.28 kB │ gzip:   0.23 kB
+dist/assets/flame-CyCsYxZ_.js                                0.28 kB │ gzip:   0.23 kB
+dist/assets/pen-line-Dc8g4EEN.js                             0.28 kB │ gzip:   0.23 kB
+dist/assets/wallet-ByLFFpNZ.js                               0.29 kB │ gzip:   0.21 kB
+dist/assets/house-HSJo3y7y.js                                0.29 kB │ gzip:   0.22 kB
+dist/assets/send-D4QtGSG7.js                                 0.29 kB │ gzip:   0.23 kB
+dist/assets/thumbs-up-fz8NI2PE.js                            0.30 kB │ gzip:   0.24 kB
+dist/assets/shield-check-DRWzJuqK.js                         0.32 kB │ gzip:   0.25 kB
+dist/assets/ticket-bza7YBUR.js                               0.32 kB │ gzip:   0.22 kB
+dist/assets/tag-qw8wr5Dv.js                                  0.33 kB │ gzip:   0.25 kB
+dist/assets/save-B50wBEex.js                                 0.33 kB │ gzip:   0.23 kB
+dist/assets/list-ordered-D0NU4s5L.js                         0.33 kB │ gzip:   0.22 kB
+dist/assets/file-text-kC0nGRpe.js                            0.34 kB │ gzip:   0.22 kB
+dist/assets/hourglass-GeQWWQIw.js                            0.36 kB │ gzip:   0.24 kB
+dist/assets/clipboard-CdHgUwkZ.js                            0.37 kB │ gzip:   0.25 kB
+dist/assets/scale-C2clVZMf.js                                0.37 kB │ gzip:   0.24 kB
+dist/assets/grip-vertical-BHJbXdI_.js                        0.37 kB │ gzip:   0.20 kB
+dist/assets/file-spreadsheet-BWdEaX5C.js                     0.38 kB │ gzip:   0.23 kB
+dist/assets/phone-DxU_oVuq.js                                0.40 kB │ gzip:   0.26 kB
+dist/assets/truck-CknWHtHu.js                                0.41 kB │ gzip:   0.27 kB
+dist/assets/clipboard-list-BpT-CwY3.js                       0.41 kB │ gzip:   0.26 kB
+dist/assets/mouse-pointer-click-Doj5hsBN.js                  0.42 kB │ gzip:   0.28 kB
+dist/assets/eye-off-wdsu9IKY.js                              0.43 kB │ gzip:   0.27 kB
+dist/assets/folder-BXpeRUmk.js                               0.47 kB │ gzip:   0.29 kB
+dist/assets/folder-tree-Vd87WJFa.js                          0.48 kB │ gzip:   0.27 kB
+dist/assets/calendar-days-CZRkd6kE.js                        0.50 kB │ gzip:   0.27 kB
+dist/assets/user-plus-BpXypa27.js                            0.53 kB │ gzip:   0.33 kB
+dist/assets/list-DX6zcBqE.js                                 0.55 kB │ gzip:   0.29 kB
+dist/assets/users-oBxq2MIP.js                                0.57 kB │ gzip:   0.33 kB
+dist/assets/palette-HQkRBGsx.js                              0.62 kB │ gzip:   0.34 kB
+dist/assets/qr-code-fBOf1OOp.js                              0.65 kB │ gzip:   0.31 kB
+dist/assets/JsonLdBreadcrumb-B_3Mn6h2.js                     0.66 kB │ gzip:   0.44 kB
+dist/assets/VirtualProductGrid-B30BFzCc.js                   1.25 kB │ gzip:   0.61 kB
+dist/assets/OptimizedImage-B_MZkXC9.js                       1.52 kB │ gzip:   0.86 kB
+dist/assets/ScrollToTopButton-B0bQaSEn.js                    1.80 kB │ gzip:   0.90 kB
+dist/assets/TrackingPage-XJqL0-L8.js                         1.83 kB │ gzip:   0.90 kB
+dist/assets/BrandCarousel-urwxD8bS.js                        2.21 kB │ gzip:   0.96 kB
+dist/assets/NotFoundPage-yjDtc-tc.js                         2.56 kB │ gzip:   0.97 kB
+dist/assets/WhatsAppButton-0KY_-852.js                       2.64 kB │ gzip:   1.26 kB
+dist/assets/RecentlyViewedSection-FFO76hgv.js                4.63 kB │ gzip:   1.82 kB
+dist/assets/BrandPage-Pb9iPF1x.js                            4.65 kB │ gzip:   1.71 kB
+dist/assets/MobileBottomNav-BrAuY7Z-.js                      4.89 kB │ gzip:   1.88 kB
+dist/assets/SigeOrderInstallmentModule-knyn_RQk.js           5.29 kB │ gzip:   1.96 kB
+dist/assets/categoryTree-B-GGW-hT.js                         5.63 kB │ gzip:   2.28 kB
+dist/assets/AddToCartButton-CXBzdiru.js                      6.21 kB │ gzip:   2.27 kB
+dist/assets/ShareButtons-CQkrZYyX.js                         6.72 kB │ gzip:   2.65 kB
+dist/assets/SigeProductPcpModule-DaqCPdXV.js                 7.12 kB │ gzip:   2.42 kB
+dist/assets/AdminMidBanners-B0HPCgYn.js                      7.32 kB │ gzip:   2.65 kB
+dist/assets/ShippingCalculator-B-8YuBbk.js                   7.54 kB │ gzip:   2.71 kB
+dist/assets/AdminFooterBadges-pJnxsfAf.js                    7.92 kB │ gzip:   2.81 kB
+dist/assets/AboutPage-CZk7gElk.js                            8.39 kB │ gzip:   2.43 kB
+dist/assets/SigeProductBalanceModule-r0ZdfAN_.js             8.52 kB │ gzip:   2.84 kB
+dist/assets/TermsPage-CxEZGnlo.js                            9.28 kB │ gzip:   3.38 kB
+dist/assets/UserResetPasswordPage-_NabfBqb.js                9.55 kB │ gzip:   2.94 kB
+dist/assets/ContactPage-CdP8f6bj.js                          9.88 kB │ gzip:   3.02 kB
+dist/assets/SigeProductPromotionModule-lmkq_h3O.js          10.00 kB │ gzip:   3.00 kB
+dist/assets/Footer-FQ6YWhLu.js                              10.18 kB │ gzip:   2.83 kB
+dist/assets/SigeOrderItemsModule-DD6brSH5.js                10.70 kB │ gzip:   3.31 kB
+dist/assets/AdminResetPasswordPage-CjB4KYlG.js              11.02 kB │ gzip:   3.37 kB
+dist/assets/SigeOrderDiagnoseModule-NIgFehqi.js             11.84 kB │ gzip:   3.88 kB
+dist/assets/SigeOrderObservationModule-Cuk1-wyh.js          12.22 kB │ gzip:   3.21 kB
+dist/assets/CategoryMegaMenu-tBO8Gyhc.js                    12.59 kB │ gzip:   3.95 kB
+dist/assets/SigeProductTechnicalSheetModule-tQs3yZb2.js     13.10 kB │ gzip:   3.40 kB
+dist/assets/AdminAdmins-BUKfxVeb.js                         13.17 kB │ gzip:   3.76 kB
+dist/assets/SuperPromoSection-B1uT08j-.js                   13.66 kB │ gzip:   4.47 kB
+dist/assets/AdminAuditLog-CZfN1sai.js                       13.75 kB │ gzip:   3.55 kB
+dist/assets/SigeStockSync-763_wYP2.js                       14.04 kB │ gzip:   3.75 kB
+dist/assets/PrivacyPolicyPage-CKQRFLa8.js                   14.20 kB │ gzip:   4.37 kB
+dist/assets/SigeCustomerComplementModule-BTzOIebu.js        14.33 kB │ gzip:   3.74 kB
+dist/assets/AdminSafrapay-VooYpzuv.js                       14.41 kB │ gzip:   4.07 kB
+dist/assets/AdminGA4-CZ9QFerr.js                            14.65 kB │ gzip:   4.42 kB
+dist/assets/AdminLgpdRequests-BMLwtLO4.js                   14.86 kB │ gzip:   4.12 kB
+dist/assets/CheckoutAddressManager-qOSwXgcq.js              15.07 kB │ gzip:   3.81 kB
+dist/assets/SigeCustomerAddressModule-eWe4TpHz.js           15.11 kB │ gzip:   3.93 kB
+dist/assets/AdminHomepageCategories-j-Fb4gw6.js             15.68 kB │ gzip:   4.34 kB
+dist/assets/AdminCoupons-Ot_O88lE.js                        16.08 kB │ gzip:   3.96 kB
+dist/assets/AdminBranches-D6WRzx3K.js                       16.19 kB │ gzip:   4.34 kB
+dist/assets/TrackingTimeline-DU_Uct8n.js                    16.30 kB │ gzip:   3.96 kB
+dist/assets/SigeCustomerContactModule-pQpdkK_c.js           16.30 kB │ gzip:   4.22 kB
+dist/assets/SigeProductReferenceModule-IdcAZdVG.js          16.56 kB │ gzip:   4.32 kB
+dist/assets/SigeOrderItemsTextModule-DMRhPxcf.js            16.85 kB │ gzip:   4.01 kB
+dist/assets/CatalogPage-CiB-zsUe.js                         17.12 kB │ gzip:   4.85 kB
+dist/assets/SigeProductModule-ZKq1HQQ6.js                   17.18 kB │ gzip:   4.50 kB
+dist/assets/ProductReviews-DlkSYMZx.js                      17.19 kB │ gzip:   5.17 kB
+dist/assets/AdminCategories-Bbpw-gF8.js                     17.27 kB │ gzip:   4.89 kB
+dist/assets/AdminClients-DRkLpyl8.js                        17.68 kB │ gzip:   4.32 kB
+dist/assets/SigeCategoryModule-B_2hapt2.js                  17.74 kB │ gzip:   3.77 kB
+dist/assets/SigeTestRunner-gLPT9ROj.js                      17.83 kB │ gzip:   4.86 kB
+dist/assets/AdminBrands-CX_49k79.js                         18.05 kB │ gzip:   4.84 kB
+dist/assets/AdminWarranty-COcl4q5I.js                       18.83 kB │ gzip:   4.81 kB
+dist/assets/AdminShippingTables-DBXBvJ1z.js                 19.75 kB │ gzip:   5.66 kB
+dist/assets/SigeOrderModule-BYj42h46.js                     19.86 kB │ gzip:   4.68 kB
+dist/assets/AdminReviews-CmQlA45q.js                        20.30 kB │ gzip:   4.74 kB
+dist/assets/AffiliatePage-C_wYDQ9P.js                       20.82 kB │ gzip:   4.81 kB
+dist/assets/SigeDepModule-mLOSrd7x.js                       21.03 kB │ gzip:   5.47 kB
+dist/assets/AdminOrders-B4G61t45.js                         21.51 kB │ gzip:   5.76 kB
+dist/assets/AdminAffiliates-BD2duu1_.js                     21.65 kB │ gzip:   5.15 kB
+dist/assets/SigeCustomerModule-acQcDOXH.js                  21.93 kB │ gzip:   4.91 kB
+dist/assets/AdminBanners-CGNMQ-QM.js                        22.85 kB │ gzip:   5.70 kB
+dist/assets/LgpdRightsPage-CcFCgdDE.js                      23.54 kB │ gzip:   5.50 kB
+dist/assets/SigeProductPriceModule-Ula5S9Jl.js              24.22 kB │ gzip:   5.96 kB
+dist/assets/AdminSuperPromo-BDHGNB3W.js                     27.97 kB │ gzip:   6.58 kB
+dist/assets/AdminMercadoPago-BukJPTBd.js                    28.40 kB │ gzip:   7.08 kB
+dist/assets/SigeStockExplorer-B-nwABh7.js                   29.11 kB │ gzip:   6.72 kB
+dist/assets/AdminAutoCateg-BZeROPLw.js                      29.23 kB │ gzip:   8.05 kB
+dist/assets/SigeApiDocsModule-CX9Z6j89.js                   29.37 kB │ gzip:   8.69 kB
+dist/assets/AdminPagHiper-CP8MEkFm.js                       34.06 kB │ gzip:   6.60 kB
+dist/assets/ProductDetailPage-TmmVCKKc.js                   34.74 kB │ gzip:   9.68 kB
+dist/assets/AdminRegressionTest-QWTtGfuP.js                 38.61 kB │ gzip:  10.25 kB
+dist/assets/AdminBulkCategoryAssign-BJFKDzcN.js             38.63 kB │ gzip:   9.75 kB
+dist/assets/AdminSisfreteWT-lzmIDZ1A.js                     45.37 kB │ gzip:  10.09 kB
+dist/assets/AdminApiSige-Shn4dyqe.js                        45.53 kB │ gzip:   9.06 kB
+dist/assets/AdminErrorScanner-atu7duRX.js                   45.80 kB │ gzip:  11.40 kB
+dist/assets/UserAuthPage-DhcQfJI9.js                        45.86 kB │ gzip:   9.25 kB
+dist/assets/AdminAttributes-XKo46gVn.js                     47.02 kB │ gzip:  11.19 kB
+dist/assets/AdminPage-Dz1q5JAx.js                           48.39 kB │ gzip:  13.01 kB
+dist/assets/SigeIntegrationModule-BsOHoL4H.js               48.48 kB │ gzip:  10.26 kB
+dist/assets/AdminEmailMarketing-DrNpogSh.js                 56.29 kB │ gzip:  10.22 kB
+dist/assets/AdminSettings-BFUstGFY.js                       62.04 kB │ gzip:  11.22 kB
+dist/assets/CheckoutPage-Divsrf6F.js                        67.24 kB │ gzip:  15.71 kB
+dist/assets/AdminShipping-vjPbsf1y.js                       73.36 kB │ gzip:  16.93 kB
+dist/assets/UserAccountPage-DGHhBPjA.js                     76.78 kB │ gzip:  15.87 kB
+dist/assets/AdminProducts-D9cmWaae.js                       97.65 kB │ gzip:  20.42 kB
+dist/assets/CartDrawer-CfNMhUvL.js                         132.45 kB │ gzip:  43.39 kB
+dist/assets/AdminDashboard-CSto6Big.js                     390.27 kB │ gzip: 107.98 kB
+dist/assets/index-B1mifUdP.js                              642.38 kB │ gzip: 183.76 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.44s
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx tsc --noEmit
+Need to install the following packages:
+tsc@2.0.4
+Ok to proceed? (y) npx -p typescript tsc --noEmit
+npm error canceled
+npm error A complete log of this run can be found in: /Users/alexmeiradossantos/.npm/_logs/2026-03-10T17_00_55_954Z-debug-0.log
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx -p typescript tsc --noEmit
+
+npx -p typescript tsc --noEmit
+
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx -p typescript tsc --noEmit
+
+./node_modules/.bin/tsc --noEmit
+
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % ./node_modules/.bin/tsc --noEmit
+zsh: no such file or directory: ./node_modules/.bin/tsc
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % ./node_modules/.bin/tsc --noEmit && npx vite build
+zsh: no such file or directory: ./node_modules/.bin/tsc
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % ./node_modules/.bin/tsc --noEmit && npx vite build
+zsh: no such file or directory: ./node_modules/.bin/tsc
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npm install -D typescript && npx tsc --noEmit
+
+
+added 1 package, and audited 255 packages in 867ms
+
+38 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % npx vite build
+
+vite v7.3.1 building client environment for production...
+✓ 2793 modules transformed.
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/services/api.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/AddToCartButton.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CheckoutAddressManager.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Header.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/MobileBottomNav.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/PriceBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/RecentlyViewedSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ReviewStars.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ShippingCalculator.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBadge.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/StockBar.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SuperPromoSection.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/TrackingTimeline.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/AffiliateContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CatalogModeContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/HomepageInitContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/WishlistContext.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AboutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/AffiliatePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/BrandPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CatalogPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/CheckoutPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ContactPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/HomePage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/LgpdRightsPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAccountPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserAuthPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/UserResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAdmins.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAffiliates.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminApiSige.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAttributes.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAuditLog.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminAutoCateg.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBranches.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBrands.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminBulkCategoryAssign.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminClients.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminCoupons.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminDashboard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminEmailMarketing.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminFooterBadges.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminGA4.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminHomepageCategories.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLgpdRequests.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminLoginPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMercadoPago.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminMidBanners.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminOrders.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPagHiper.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminProducts.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminResetPasswordPage.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminReviews.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSettings.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShipping.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminShippingTables.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSisfreteWT.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminSuperPromo.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminWarranty.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeApiDocsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCategoryModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerAddressModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerComplementModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerContactModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeCustomerModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeDepModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeIntegrationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderDiagnoseModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderInstallmentModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderItemsTextModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeOrderObservationModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductBalanceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPcpModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPriceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductPromotionModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductReferenceModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeProductTechnicalSheetModule.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockExplorer.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeStockSync.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/SigeTestRunner.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/utils/prefetch.ts is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CategoryMegaMenu.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/contexts/CartContext.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/App.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/ProductCard.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/SearchAutocomplete.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/ProductDetailPage.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/CookieConsentBanner.tsx is dynamically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/Layout.tsx, /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/pages/admin/AdminErrorScanner.tsx but also statically imported by /Users/alexmeiradossantos/Documents/Catálogo de Peças/src/app/components/GA4Provider.tsx, dynamic import will not move module into another chunk.
+
+dist/index.html                                              0.43 kB │ gzip:   0.28 kB
+dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.75 kB
+dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          19.00 kB
+dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.26 kB
+dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.07 kB
+dist/assets/index-DeXTivuc.css                             195.59 kB │ gzip:  29.05 kB
+dist/assets/minus-p1uaSRZI.js                                0.12 kB │ gzip:   0.13 kB
+dist/assets/chevron-up-CgGCljnG.js                           0.13 kB │ gzip:   0.14 kB
+dist/assets/play-BxG9MUj6.js                                 0.14 kB │ gzip:   0.15 kB
+dist/assets/plus-B2LioREY.js                                 0.16 kB │ gzip:   0.15 kB
+dist/assets/arrow-left-iy2pwRAz.js                           0.17 kB │ gzip:   0.16 kB
+dist/assets/arrow-up-right---3zvygk.js                       0.17 kB │ gzip:   0.16 kB
+dist/assets/ban-uOIC_5RX.js                                  0.18 kB │ gzip:   0.17 kB
+dist/assets/circle-check-DA3DCNCg.js                         0.18 kB │ gzip:   0.17 kB
+dist/assets/message-square-ighg4o3L.js                       0.18 kB │ gzip:   0.17 kB
+dist/assets/smartphone-CWmlUiwV.js                           0.20 kB │ gzip:   0.18 kB
+dist/assets/rotate-ccw-B29rrqLS.js                           0.20 kB │ gzip:   0.19 kB
+dist/assets/info-BbjiF-B3.js                                 0.21 kB │ gzip:   0.18 kB
+dist/assets/trending-up-BzhaTK-u.js                          0.21 kB │ gzip:   0.18 kB
+dist/assets/toggle-left-B2upHfaC.js                          0.21 kB │ gzip:   0.19 kB
+dist/assets/circle-x-9K4GXOfH.js                             0.21 kB │ gzip:   0.18 kB
+dist/assets/toggle-right-CvrL2HJS.js                         0.21 kB │ gzip:   0.19 kB
+dist/assets/mail-DchEryzN.js                                 0.22 kB │ gzip:   0.20 kB
+dist/assets/table-2-BZkqDFMo.js                              0.22 kB │ gzip:   0.19 kB
+dist/assets/dollar-sign-DazZQRkc.js                          0.22 kB │ gzip:   0.19 kB
+dist/assets/copy-DjEQI35c.js                                 0.24 kB │ gzip:   0.21 kB
+dist/assets/link-2-QEcTff2z.js                               0.24 kB │ gzip:   0.20 kB
+dist/assets/globe-ttyPoDNn.js                                0.24 kB │ gzip:   0.19 kB
+dist/assets/percent-vS932CIS.js                              0.24 kB │ gzip:   0.19 kB
+dist/assets/database-vThuCGQP.js                             0.25 kB │ gzip:   0.20 kB
+dist/assets/type-efVW7zYs.js                                 0.25 kB │ gzip:   0.19 kB
+dist/assets/arrow-up-down-CMZrCRVj.js                        0.25 kB │ gzip:   0.19 kB
+dist/assets/circle-alert-DDBN0wed.js                         0.25 kB │ gzip:   0.19 kB
+dist/assets/external-link-BHQCrDc1.js                        0.25 kB │ gzip:   0.20 kB
+dist/assets/shopping-bag-B3YMLcOr.js                         0.25 kB │ gzip:   0.20 kB
+dist/assets/eye-BsoV2Tye.js                                  0.26 kB │ gzip:   0.20 kB
+dist/assets/funnel-CsVDrwt1.js                               0.26 kB │ gzip:   0.22 kB
+dist/assets/calendar-B3ptdxuf.js                             0.26 kB │ gzip:   0.21 kB
+dist/assets/monitor-C6aqllLz.js                              0.26 kB │ gzip:   0.21 kB
+dist/assets/log-in-CDEfahjH.js                               0.26 kB │ gzip:   0.22 kB
+dist/assets/download--L4D2jlj.js                             0.26 kB │ gzip:   0.22 kB
+dist/assets/barcode-B0XEf7oL.js                              0.27 kB │ gzip:   0.18 kB
+dist/assets/shield-DLx_FTkq.js                               0.27 kB │ gzip:   0.23 kB
+dist/assets/award-Bb22Wx6I.js                                0.28 kB │ gzip:   0.23 kB
+dist/assets/pencil-Bp2jHZKY.js                               0.28 kB │ gzip:   0.23 kB
+dist/assets/flame-CyCsYxZ_.js                                0.28 kB │ gzip:   0.23 kB
+dist/assets/pen-line-Dc8g4EEN.js                             0.28 kB │ gzip:   0.23 kB
+dist/assets/wallet-ByLFFpNZ.js                               0.29 kB │ gzip:   0.21 kB
+dist/assets/house-HSJo3y7y.js                                0.29 kB │ gzip:   0.22 kB
+dist/assets/send-D4QtGSG7.js                                 0.29 kB │ gzip:   0.23 kB
+dist/assets/thumbs-up-fz8NI2PE.js                            0.30 kB │ gzip:   0.24 kB
+dist/assets/shield-check-DRWzJuqK.js                         0.32 kB │ gzip:   0.25 kB
+dist/assets/ticket-bza7YBUR.js                               0.32 kB │ gzip:   0.22 kB
+dist/assets/tag-qw8wr5Dv.js                                  0.33 kB │ gzip:   0.25 kB
+dist/assets/save-B50wBEex.js                                 0.33 kB │ gzip:   0.23 kB
+dist/assets/list-ordered-D0NU4s5L.js                         0.33 kB │ gzip:   0.22 kB
+dist/assets/file-text-kC0nGRpe.js                            0.34 kB │ gzip:   0.22 kB
+dist/assets/hourglass-GeQWWQIw.js                            0.36 kB │ gzip:   0.24 kB
+dist/assets/clipboard-CdHgUwkZ.js                            0.37 kB │ gzip:   0.25 kB
+dist/assets/scale-C2clVZMf.js                                0.37 kB │ gzip:   0.24 kB
+dist/assets/grip-vertical-BHJbXdI_.js                        0.37 kB │ gzip:   0.20 kB
+dist/assets/file-spreadsheet-BWdEaX5C.js                     0.38 kB │ gzip:   0.23 kB
+dist/assets/phone-DxU_oVuq.js                                0.40 kB │ gzip:   0.26 kB
+dist/assets/truck-CknWHtHu.js                                0.41 kB │ gzip:   0.27 kB
+dist/assets/clipboard-list-BpT-CwY3.js                       0.41 kB │ gzip:   0.26 kB
+dist/assets/mouse-pointer-click-Doj5hsBN.js                  0.42 kB │ gzip:   0.28 kB
+dist/assets/eye-off-wdsu9IKY.js                              0.43 kB │ gzip:   0.27 kB
+dist/assets/folder-BXpeRUmk.js                               0.47 kB │ gzip:   0.29 kB
+dist/assets/folder-tree-Vd87WJFa.js                          0.48 kB │ gzip:   0.27 kB
+dist/assets/calendar-days-CZRkd6kE.js                        0.50 kB │ gzip:   0.27 kB
+dist/assets/user-plus-BpXypa27.js                            0.53 kB │ gzip:   0.33 kB
+dist/assets/list-DX6zcBqE.js                                 0.55 kB │ gzip:   0.29 kB
+dist/assets/users-oBxq2MIP.js                                0.57 kB │ gzip:   0.33 kB
+dist/assets/palette-HQkRBGsx.js                              0.62 kB │ gzip:   0.34 kB
+dist/assets/qr-code-fBOf1OOp.js                              0.65 kB │ gzip:   0.31 kB
+dist/assets/JsonLdBreadcrumb-B_3Mn6h2.js                     0.66 kB │ gzip:   0.44 kB
+dist/assets/VirtualProductGrid-B30BFzCc.js                   1.25 kB │ gzip:   0.61 kB
+dist/assets/OptimizedImage-B_MZkXC9.js                       1.52 kB │ gzip:   0.86 kB
+dist/assets/ScrollToTopButton-B0bQaSEn.js                    1.80 kB │ gzip:   0.90 kB
+dist/assets/TrackingPage-XJqL0-L8.js                         1.83 kB │ gzip:   0.90 kB
+dist/assets/BrandCarousel-urwxD8bS.js                        2.21 kB │ gzip:   0.96 kB
+dist/assets/NotFoundPage-yjDtc-tc.js                         2.56 kB │ gzip:   0.97 kB
+dist/assets/WhatsAppButton-0KY_-852.js                       2.64 kB │ gzip:   1.26 kB
+dist/assets/RecentlyViewedSection-FFO76hgv.js                4.63 kB │ gzip:   1.82 kB
+dist/assets/BrandPage-Pb9iPF1x.js                            4.65 kB │ gzip:   1.71 kB
+dist/assets/MobileBottomNav-BrAuY7Z-.js                      4.89 kB │ gzip:   1.88 kB
+dist/assets/SigeOrderInstallmentModule-knyn_RQk.js           5.29 kB │ gzip:   1.96 kB
+dist/assets/categoryTree-B-GGW-hT.js                         5.63 kB │ gzip:   2.28 kB
+dist/assets/AddToCartButton-CXBzdiru.js                      6.21 kB │ gzip:   2.27 kB
+dist/assets/ShareButtons-CQkrZYyX.js                         6.72 kB │ gzip:   2.65 kB
+dist/assets/SigeProductPcpModule-DaqCPdXV.js                 7.12 kB │ gzip:   2.42 kB
+dist/assets/AdminMidBanners-B0HPCgYn.js                      7.32 kB │ gzip:   2.65 kB
+dist/assets/ShippingCalculator-B-8YuBbk.js                   7.54 kB │ gzip:   2.71 kB
+dist/assets/AdminFooterBadges-pJnxsfAf.js                    7.92 kB │ gzip:   2.81 kB
+dist/assets/AboutPage-CZk7gElk.js                            8.39 kB │ gzip:   2.43 kB
+dist/assets/SigeProductBalanceModule-r0ZdfAN_.js             8.52 kB │ gzip:   2.84 kB
+dist/assets/TermsPage-CxEZGnlo.js                            9.28 kB │ gzip:   3.38 kB
+dist/assets/UserResetPasswordPage-_NabfBqb.js                9.55 kB │ gzip:   2.94 kB
+dist/assets/ContactPage-CdP8f6bj.js                          9.88 kB │ gzip:   3.02 kB
+dist/assets/SigeProductPromotionModule-lmkq_h3O.js          10.00 kB │ gzip:   3.00 kB
+dist/assets/Footer-FQ6YWhLu.js                              10.18 kB │ gzip:   2.83 kB
+dist/assets/SigeOrderItemsModule-DD6brSH5.js                10.70 kB │ gzip:   3.31 kB
+dist/assets/AdminResetPasswordPage-CjB4KYlG.js              11.02 kB │ gzip:   3.37 kB
+dist/assets/SigeOrderDiagnoseModule-NIgFehqi.js             11.84 kB │ gzip:   3.88 kB
+dist/assets/SigeOrderObservationModule-Cuk1-wyh.js          12.22 kB │ gzip:   3.21 kB
+dist/assets/CategoryMegaMenu-tBO8Gyhc.js                    12.59 kB │ gzip:   3.95 kB
+dist/assets/SigeProductTechnicalSheetModule-tQs3yZb2.js     13.10 kB │ gzip:   3.40 kB
+dist/assets/AdminAdmins-BUKfxVeb.js                         13.17 kB │ gzip:   3.76 kB
+dist/assets/SuperPromoSection-B1uT08j-.js                   13.66 kB │ gzip:   4.47 kB
+dist/assets/AdminAuditLog-CZfN1sai.js                       13.75 kB │ gzip:   3.55 kB
+dist/assets/SigeStockSync-763_wYP2.js                       14.04 kB │ gzip:   3.75 kB
+dist/assets/PrivacyPolicyPage-CKQRFLa8.js                   14.20 kB │ gzip:   4.37 kB
+dist/assets/SigeCustomerComplementModule-BTzOIebu.js        14.33 kB │ gzip:   3.74 kB
+dist/assets/AdminSafrapay-VooYpzuv.js                       14.41 kB │ gzip:   4.07 kB
+dist/assets/AdminGA4-CZ9QFerr.js                            14.65 kB │ gzip:   4.42 kB
+dist/assets/AdminLgpdRequests-BMLwtLO4.js                   14.86 kB │ gzip:   4.12 kB
+dist/assets/CheckoutAddressManager-qOSwXgcq.js              15.07 kB │ gzip:   3.81 kB
+dist/assets/SigeCustomerAddressModule-eWe4TpHz.js           15.11 kB │ gzip:   3.93 kB
+dist/assets/AdminHomepageCategories-j-Fb4gw6.js             15.68 kB │ gzip:   4.34 kB
+dist/assets/AdminCoupons-Ot_O88lE.js                        16.08 kB │ gzip:   3.96 kB
+dist/assets/AdminBranches-D6WRzx3K.js                       16.19 kB │ gzip:   4.34 kB
+dist/assets/TrackingTimeline-DU_Uct8n.js                    16.30 kB │ gzip:   3.96 kB
+dist/assets/SigeCustomerContactModule-pQpdkK_c.js           16.30 kB │ gzip:   4.22 kB
+dist/assets/SigeProductReferenceModule-IdcAZdVG.js          16.56 kB │ gzip:   4.32 kB
+dist/assets/SigeOrderItemsTextModule-DMRhPxcf.js            16.85 kB │ gzip:   4.01 kB
+dist/assets/CatalogPage-CiB-zsUe.js                         17.12 kB │ gzip:   4.85 kB
+dist/assets/SigeProductModule-ZKq1HQQ6.js                   17.18 kB │ gzip:   4.50 kB
+dist/assets/ProductReviews-DlkSYMZx.js                      17.19 kB │ gzip:   5.17 kB
+dist/assets/AdminCategories-Bbpw-gF8.js                     17.27 kB │ gzip:   4.89 kB
+dist/assets/AdminClients-DRkLpyl8.js                        17.68 kB │ gzip:   4.32 kB
+dist/assets/SigeCategoryModule-B_2hapt2.js                  17.74 kB │ gzip:   3.77 kB
+dist/assets/SigeTestRunner-gLPT9ROj.js                      17.83 kB │ gzip:   4.86 kB
+dist/assets/AdminBrands-CX_49k79.js                         18.05 kB │ gzip:   4.84 kB
+dist/assets/AdminWarranty-COcl4q5I.js                       18.83 kB │ gzip:   4.81 kB
+dist/assets/AdminShippingTables-DBXBvJ1z.js                 19.75 kB │ gzip:   5.66 kB
+dist/assets/SigeOrderModule-BYj42h46.js                     19.86 kB │ gzip:   4.68 kB
+dist/assets/AdminReviews-CmQlA45q.js                        20.30 kB │ gzip:   4.74 kB
+dist/assets/AffiliatePage-C_wYDQ9P.js                       20.82 kB │ gzip:   4.81 kB
+dist/assets/SigeDepModule-mLOSrd7x.js                       21.03 kB │ gzip:   5.47 kB
+dist/assets/AdminOrders-B4G61t45.js                         21.51 kB │ gzip:   5.76 kB
+dist/assets/AdminAffiliates-BD2duu1_.js                     21.65 kB │ gzip:   5.15 kB
+dist/assets/SigeCustomerModule-acQcDOXH.js                  21.93 kB │ gzip:   4.91 kB
+dist/assets/AdminBanners-CGNMQ-QM.js                        22.85 kB │ gzip:   5.70 kB
+dist/assets/LgpdRightsPage-CcFCgdDE.js                      23.54 kB │ gzip:   5.50 kB
+dist/assets/SigeProductPriceModule-Ula5S9Jl.js              24.22 kB │ gzip:   5.96 kB
+dist/assets/AdminSuperPromo-BDHGNB3W.js                     27.97 kB │ gzip:   6.58 kB
+dist/assets/AdminMercadoPago-BukJPTBd.js                    28.40 kB │ gzip:   7.08 kB
+dist/assets/SigeStockExplorer-B-nwABh7.js                   29.11 kB │ gzip:   6.72 kB
+dist/assets/AdminAutoCateg-BZeROPLw.js                      29.23 kB │ gzip:   8.05 kB
+dist/assets/SigeApiDocsModule-CX9Z6j89.js                   29.37 kB │ gzip:   8.69 kB
+dist/assets/AdminPagHiper-CP8MEkFm.js                       34.06 kB │ gzip:   6.60 kB
+dist/assets/ProductDetailPage-TmmVCKKc.js                   34.74 kB │ gzip:   9.68 kB
+dist/assets/AdminRegressionTest-QWTtGfuP.js                 38.61 kB │ gzip:  10.25 kB
+dist/assets/AdminBulkCategoryAssign-BJFKDzcN.js             38.63 kB │ gzip:   9.75 kB
+dist/assets/AdminSisfreteWT-lzmIDZ1A.js                     45.37 kB │ gzip:  10.09 kB
+dist/assets/AdminApiSige-Shn4dyqe.js                        45.53 kB │ gzip:   9.06 kB
+dist/assets/AdminErrorScanner-atu7duRX.js                   45.80 kB │ gzip:  11.40 kB
+dist/assets/UserAuthPage-DhcQfJI9.js                        45.86 kB │ gzip:   9.25 kB
+dist/assets/AdminAttributes-XKo46gVn.js                     47.02 kB │ gzip:  11.19 kB
+dist/assets/AdminPage-Dz1q5JAx.js                           48.39 kB │ gzip:  13.01 kB
+dist/assets/SigeIntegrationModule-BsOHoL4H.js               48.48 kB │ gzip:  10.26 kB
+dist/assets/AdminEmailMarketing-DrNpogSh.js                 56.29 kB │ gzip:  10.22 kB
+dist/assets/AdminSettings-BFUstGFY.js                       62.04 kB │ gzip:  11.22 kB
+dist/assets/CheckoutPage-Divsrf6F.js                        67.24 kB │ gzip:  15.71 kB
+dist/assets/AdminShipping-vjPbsf1y.js                       73.36 kB │ gzip:  16.93 kB
+dist/assets/UserAccountPage-DGHhBPjA.js                     76.78 kB │ gzip:  15.87 kB
+dist/assets/AdminProducts-D9cmWaae.js                       97.65 kB │ gzip:  20.42 kB
+dist/assets/CartDrawer-CfNMhUvL.js                         132.45 kB │ gzip:  43.39 kB
+dist/assets/AdminDashboard-CSto6Big.js                     390.27 kB │ gzip: 107.98 kB
+dist/assets/index-B1mifUdP.js                              642.38 kB │ gzip: 183.76 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.72s
+alexmeiradossantos@MacBook-Air-de-Maria Catálogo de Peças % 

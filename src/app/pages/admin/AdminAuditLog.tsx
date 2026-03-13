@@ -3,24 +3,7 @@ import * as api from "../../services/api";
 import type { AuditLogEntry } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
-import {
-  ScrollText,
-  LogIn,
-  LogOut,
-  Settings,
-  Shield,
-  Trash2,
-  Search,
-  Filter,
-  Loader2,
-  RefreshCw,
-  AlertTriangle,
-  Clock,
-  User,
-  Monitor,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { ScrollText, LogIn, LogOut, Settings, Shield, Trash2, Search, Filter, Loader2, RefreshCw, AlertTriangle, Clock, User, Monitor, ChevronDown, ChevronUp } from "lucide-react";
 
 const ACTION_CONFIG: Record<string, { label: string; icon: typeof LogIn; color: string; bg: string }> = {
   login: { label: "Login", icon: LogIn, color: "text-green-600", bg: "bg-green-50" },

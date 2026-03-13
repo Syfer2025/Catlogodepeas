@@ -1,16 +1,8 @@
 import { Link } from "react-router";
 import { ProductCard } from "../components/ProductCard";
 import type { ProdutoItem } from "../components/ProductCard";
-import {
-  ArrowRight,
-  ChevronRight,
-  ChevronLeft,
-  Package,
-  MessageCircle,
-  Sparkles,
-  Search,
-} from "lucide-react";
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { ArrowRight, ChevronRight, ChevronLeft, Package, MessageCircle, Sparkles, Search } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense, useMemo } from "react";
 import * as api from "../services/api";
 import type { BannerItem, ProductBalance, ProductPrice, HomepageCategoryCard, MidBanner } from "../services/api";
 // Lazy-load below-fold sections for better initial load performance
@@ -25,6 +17,8 @@ import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { ProductCardSkeletonGrid } from "../components/ProductCardSkeleton";
 const RecentlyViewedSection = lazy(function () { return import("../components/RecentlyViewedSection").then(function (m) { return { default: m.RecentlyViewedSection }; }); });
 const BrandCarousel = lazy(function () { return import("../components/BrandCarousel").then(function (m) { return { default: m.BrandCarousel }; }); });
+const HomeReels = lazy(function () { return import("../components/HomeReels").then(function (m) { return { default: m.HomeReels }; }); });
+const InfluencerCarousel = lazy(function () { return import("../components/InfluencerCarousel").then(function (m) { return { default: m.InfluencerCarousel }; }); });
 import "../utils/emptyStateAnimations";
 
 /** Hook to animate elements when they scroll into view */
@@ -54,7 +48,7 @@ function useScrollReveal() {
 const DEFAULT_HERO_IMAGE = "https://images.unsplash.com/photo-1698998882494-57c3e043f340?crop=entropy&cs=tinysrgb&fit=max&fm=webp&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhdXRvbW90aXZlJTIwbWVjaGFuaWMlMjB3b3Jrc2hvcHxlbnwxfHx8fDE3NzA5ODY5MDh8MA&ixlib=rb-4.1.0&q=75&w=1080";
 
 /** Banner Carousel component — full-width responsive slider with smooth translateX transitions */
-function HeroBannerCarousel({ banners }: { banners: BannerItem[] }) {
+const HeroBannerCarousel = React.memo(function HeroBannerCarousel({ banners }: { banners: BannerItem[] }) {
   const [current, setCurrent] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,7 +110,7 @@ function HeroBannerCarousel({ banners }: { banners: BannerItem[] }) {
 
   return (
     <section
-      className="relative group w-full"
+      className="relative group w-full rounded-2xl overflow-hidden"
       style={{ backgroundColor: "#111827" }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -308,12 +302,12 @@ function HeroBannerCarousel({ banners }: { banners: BannerItem[] }) {
       )}
     </section>
   );
-}
+});
 
 /** Default Hero (fallback when no banners are configured) */
-function DefaultHero() {
+const DefaultHero = React.memo(function DefaultHero() {
   return (
-    <section className="relative bg-gray-900 overflow-hidden">
+    <section className="relative bg-gray-900 overflow-hidden rounded-2xl">
       <div className="absolute inset-0">
         <img
           src={DEFAULT_HERO_IMAGE}
@@ -360,7 +354,7 @@ function DefaultHero() {
       </div>
     </section>
   );
-}
+});
 
 export function HomePage() {
   useDocumentMeta({
@@ -494,125 +488,222 @@ export function HomePage() {
     return function () { ac.abort(); };
   }, [produtos, initLoading]);
 
-  return (
-    <div className="min-h-screen">
-      {/* Hero Section — dynamic banners or default */}
-      {!bannersLoaded ? (
-        /* Skeleton — reserve reasonable space while loading */
-        <section
-          className="relative bg-gray-900 overflow-hidden"
-          aria-hidden="true"
-        >
-          <div className="w-full bg-gray-800 animate-pulse" style={{ aspectRatio: "16 / 4" }} />
-        </section>
-      ) : banners.length > 0 ? (
-        <HeroBannerCarousel banners={banners} />
-      ) : (
-        <DefaultHero />
-      )}
-
-      {/* Categories Strip — ATF, homepage categories with images (replaces old benefits) */}
-      {(() => {
-        var adminCats: HomepageCategoryCard[] = (initData && initData.homepageCategories) ? initData.homepageCategories : [];
-        var treeCats = (initData && initData.categoryTree) ? initData.categoryTree : [];
-        var catItems: Array<{ id: string; name: string; slug: string; imageUrl?: string }> = [];
-        if (adminCats.length > 0) {
-          for (var ci = 0; ci < adminCats.length; ci++) {
-            catItems.push({ id: adminCats[ci].id, name: adminCats[ci].name, slug: adminCats[ci].categorySlug, imageUrl: adminCats[ci].imageUrl });
-          }
-        } else {
-          for (var ti = 0; ti < treeCats.length; ti++) {
-            catItems.push({ id: treeCats[ti].id || treeCats[ti].slug, name: treeCats[ti].name, slug: treeCats[ti].slug });
-          }
-        }
-        // ── CLS FIX: Show skeleton while loading instead of returning null ──
-        // This reserves vertical space and prevents 0.549 CLS on <main>.
-        if (initLoading) {
-          return (
-            <section className="bg-white border-b border-gray-100 py-5" aria-hidden="true">
-              <div className="max-w-7xl mx-auto px-4">
-                <div className="h-4 bg-gray-100 rounded w-24 mb-3 animate-pulse" />
-                <div className="flex gap-3 overflow-hidden">
-                  {[1,2,3,4,5,6,7,8].map(function (i) {
-                    return (
-                      <div key={i} className="flex items-center gap-3 shrink-0 rounded-full border border-gray-100 pl-1.5 pr-5 py-1.5">
-                        <div className="w-9 h-9 rounded-full bg-gray-100 animate-pulse" />
-                        <div className="w-16 h-3.5 bg-gray-100 rounded animate-pulse" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-          );
-        }
-        if (catItems.length === 0) return null;
-        var catScrollRef = React.createRef<HTMLDivElement>();
-        var scrollCats = function (dir: "left" | "right") {
-          if (!catScrollRef.current) return;
-          var amount = dir === "left" ? -200 : 200;
-          catScrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
-        };
-        return (
-          <section className="bg-white border-b border-gray-100 py-5">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-gray-700" style={{ fontSize: "0.85rem", fontWeight: 700 }}>
-                  Categorias
-                </h3>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={function () { scrollCats("left"); }}
-                    className="p-1.5 rounded-full border border-gray-200 bg-white hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                    aria-label="Rolar categorias para esquerda"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={function () { scrollCats("right"); }}
-                    className="p-1.5 rounded-full border border-gray-200 bg-white hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                    aria-label="Rolar categorias para direita"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div ref={catScrollRef} className="flex gap-3 overflow-x-auto pb-1 hide-scrollbar" style={{ WebkitOverflowScrolling: "touch" }}>
-                {catItems.map(function (cat) {
-                  return (
-                    <Link
-                      key={cat.id}
-                      to={"/catalogo?categoria=" + cat.slug}
-                      className={"group flex items-center gap-3 shrink-0 bg-white rounded-full border border-gray-200 hover:border-red-300 hover:shadow-sm transition-all duration-200 " + (cat.imageUrl ? "pl-1.5 pr-5 py-1.5" : "px-5 py-2.5")}
-                    >
-                      {cat.imageUrl && (
-                        <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-100 shrink-0">
-                          <img
-                            src={cat.imageUrl}
-                            alt={cat.name}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                            width={36}
-                            height={36}
-                            draggable={false}
-                          />
-                        </div>
-                      )}
-                      <span
-                        className="text-gray-700 group-hover:text-gray-900 whitespace-nowrap transition-colors"
-                        style={{ fontSize: "0.8rem", fontWeight: 500 }}
-                      >
-                        {cat.name}
-                      </span>
-                    </Link>
-                  );
-                })}
+  // ── Memoized product grid to avoid re-renders when unrelated state changes ──
+  const productGrid = useMemo(function () {
+    if (loading) return <ProductCardSkeletonGrid />;
+    if (produtos.length === 0) {
+      return (
+        <div className="text-center py-16 flex flex-col items-center">
+          <div className="relative mb-5">
+            <div
+              className="w-24 h-24 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center"
+              style={{ animation: "es-spin 20s linear infinite" }}
+            >
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-50 to-red-50 flex items-center justify-center">
+                <Package className="w-7 h-7 text-gray-300" style={{ animation: "es-float 3s ease-in-out infinite" }} />
               </div>
             </div>
+            <Sparkles className="w-3 h-3 text-red-300 absolute -top-0.5 right-0" style={{ animation: "es-twinkle 2s ease-in-out infinite" }} />
+          </div>
+          <p className="text-gray-500 mb-1" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
+            Nenhum produto disponível
+          </p>
+          <p className="text-gray-400" style={{ fontSize: "0.82rem" }}>
+            Estamos atualizando nosso catálogo. Volte em breve!
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
+        {produtos.map(function (produto) {
+          return (
+            <ProductCard
+              key={produto.sku}
+              product={produto}
+              balance={balanceMap[produto.sku]}
+              preloadedPrice={priceMap[produto.sku]}
+              reviewSummary={reviewMap[produto.sku] || null}
+            />
+          );
+        })}
+      </div>
+    );
+  }, [loading, produtos, balanceMap, priceMap, reviewMap]);
+
+  // ── Memoized mid-banners (position 1 — slots 3 & 4) ──
+  const midBannersTop = useMemo(function () {
+    var mbs: MidBanner[] = (initData && initData.midBanners) ? initData.midBanners : [];
+    var topMbs = mbs.filter(function (mb) { return (mb.slot === 3 || mb.slot === 4) && mb.active && mb.imageUrl; });
+    if (topMbs.length === 0) return null;
+    return (
+      <section className="bg-white py-6 md:py-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={"grid gap-4 " + (topMbs.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
+            {topMbs.map(function (mb) {
+              var inner = (
+                <div
+                  className="relative w-full overflow-hidden rounded-xl bg-gray-100 group"
+                  style={{ aspectRatio: "2048 / 595" }}
+                >
+                  <img
+                    src={mb.imageUrl!}
+                    alt={"Banner " + mb.slot}
+                    className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    loading="lazy"
+                    decoding="async"
+                    width={2048}
+                    height={595}
+                    draggable={false}
+                  />
+                </div>
+              );
+              if (mb.link) {
+                var isExt = mb.link.startsWith("http");
+                if (isExt) {
+                  return (
+                    <a key={mb.slot} href={mb.link} target="_blank" rel="noopener noreferrer" className="block hover:opacity-95 transition-opacity">
+                      {inner}
+                    </a>
+                  );
+                }
+                return (
+                  <Link key={mb.slot} to={mb.link} className="block hover:opacity-95 transition-opacity">
+                    {inner}
+                  </Link>
+                );
+              }
+              return <div key={mb.slot}>{inner}</div>;
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }, [initData]);
+
+  // ── Memoized mid-banners (position 2 — slots 1 & 2) ──
+  const midBannersBottom = useMemo(function () {
+    var mbs: MidBanner[] = (initData && initData.midBanners) ? initData.midBanners : [];
+    var activeMbs = mbs.filter(function (mb) { return (mb.slot === 1 || mb.slot === 2) && mb.active && mb.imageUrl; });
+    if (activeMbs.length === 0) return null;
+    return (
+      <section className="bg-white py-6 md:py-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className={"grid gap-4 " + (activeMbs.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
+            {activeMbs.map(function (mb) {
+              var inner = (
+                <div
+                  className="relative w-full overflow-hidden rounded-xl bg-gray-100 group"
+                  style={{ aspectRatio: "2048 / 595" }}
+                >
+                  <img
+                    src={mb.imageUrl!}
+                    alt={"Banner " + mb.slot}
+                    className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                    loading="lazy"
+                    decoding="async"
+                    width={2048}
+                    height={595}
+                    draggable={false}
+                  />
+                </div>
+              );
+              if (mb.link) {
+                var isExt = mb.link.startsWith("http");
+                if (isExt) {
+                  return (
+                    <a key={mb.slot} href={mb.link} target="_blank" rel="noopener noreferrer" className="block hover:opacity-95 transition-opacity">
+                      {inner}
+                    </a>
+                  );
+                }
+                return (
+                  <Link key={mb.slot} to={mb.link} className="block hover:opacity-95 transition-opacity">
+                    {inner}
+                  </Link>
+                );
+              }
+              return <div key={mb.slot}>{inner}</div>;
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }, [initData]);
+
+  // ── Memoized categories strip ──
+  const categoriesStrip = useMemo(function () {
+    var adminCats: HomepageCategoryCard[] = (initData && initData.homepageCategories) ? initData.homepageCategories : [];
+    var treeCats = (initData && initData.categoryTree) ? initData.categoryTree : [];
+    var catItems: Array<{ id: string; name: string; slug: string; imageUrl?: string }> = [];
+    if (adminCats.length > 0) {
+      for (var ci = 0; ci < adminCats.length; ci++) {
+        catItems.push({ id: adminCats[ci].id, name: adminCats[ci].name, slug: adminCats[ci].categorySlug, imageUrl: adminCats[ci].imageUrl });
+      }
+    } else {
+      for (var ti = 0; ti < treeCats.length; ti++) {
+        catItems.push({ id: treeCats[ti].id || treeCats[ti].slug, name: treeCats[ti].name, slug: treeCats[ti].slug });
+      }
+    }
+    if (initLoading) {
+      return (
+        <section className="bg-white border-b border-gray-100 py-5" aria-hidden="true">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="h-4 bg-gray-100 rounded w-24 mb-3 animate-pulse" />
+            <div className="flex gap-3 overflow-hidden">
+              {[1,2,3,4,5,6,7,8].map(function (i) {
+                return (
+                  <div key={i} className="flex items-center gap-3 shrink-0 rounded-full border border-gray-100 pl-1.5 pr-5 py-1.5">
+                    <div className="w-9 h-9 rounded-full bg-gray-100 animate-pulse" />
+                    <div className="w-16 h-3.5 bg-gray-100 rounded animate-pulse" />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      );
+    }
+    if (catItems.length === 0) return null;
+    return <CategoriesStripInner catItems={catItems} />;
+  }, [initData, initLoading]);
+
+  // ── Memoized brands section ──
+  const brandsSection = useMemo(function () {
+    if (!initData || !initData.brands || initData.brands.length === 0) return null;
+    return (
+      <Suspense fallback={null}>
+        <BrandCarousel brands={initData.brands} />
+      </Suspense>
+    );
+  }, [initData]);
+
+  return (
+    <div className="min-h-screen">
+      {/* Hero Section — dynamic banners or default, contained in site width */}
+      <div className="max-w-7xl mx-auto px-4 pt-4 sm:pt-6">
+        {!bannersLoaded ? (
+          /* Skeleton — reserve reasonable space while loading */
+          <section
+            className="relative bg-gray-900 overflow-hidden rounded-2xl"
+            aria-hidden="true"
+          >
+            <div className="w-full bg-gray-800 animate-pulse" style={{ aspectRatio: "16 / 5" }} />
           </section>
-        );
-      })()}
+        ) : banners.length > 0 ? (
+          <HeroBannerCarousel banners={banners} />
+        ) : (
+          <DefaultHero />
+        )}
+      </div>
+
+      {/* Categories Strip — ATF, homepage categories with images (replaces old benefits) */}
+      {categoriesStrip}
+
+      {/* Home Reels — short product videos, TikTok style */}
+      <Suspense fallback={null}>
+        <HomeReels />
+      </Suspense>
 
       {/* Super Promo Section — between categories and products */}
       <Suspense fallback={null}>
@@ -620,54 +711,7 @@ export function HomePage() {
       </Suspense>
 
       {/* Mid-Page Banners (Position 1) — slots 3 & 4, after Super Promo */}
-      {(() => {
-        var mbs: MidBanner[] = (initData && initData.midBanners) ? initData.midBanners : [];
-        var topMbs = mbs.filter(function (mb) { return (mb.slot === 3 || mb.slot === 4) && mb.active && mb.imageUrl; });
-        if (topMbs.length === 0) return null;
-        return (
-          <section className="bg-white py-6 md:py-8">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className={"grid gap-4 " + (topMbs.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
-                {topMbs.map(function (mb) {
-                  var inner = (
-                    <div
-                      className="relative w-full overflow-hidden rounded-xl bg-gray-100 group"
-                      style={{ aspectRatio: "2048 / 595" }}
-                    >
-                      <img
-                        src={mb.imageUrl!}
-                        alt={"Banner " + mb.slot}
-                        className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                        loading="lazy"
-                        decoding="async"
-                        width={2048}
-                        height={595}
-                        draggable={false}
-                      />
-                    </div>
-                  );
-                  if (mb.link) {
-                    var isExt = mb.link.startsWith("http");
-                    if (isExt) {
-                      return (
-                        <a key={mb.slot} href={mb.link} target="_blank" rel="noopener noreferrer" className="block hover:opacity-95 transition-opacity">
-                          {inner}
-                        </a>
-                      );
-                    }
-                    return (
-                      <Link key={mb.slot} to={mb.link} className="block hover:opacity-95 transition-opacity">
-                        {inner}
-                      </Link>
-                    );
-                  }
-                  return <div key={mb.slot}>{inner}</div>;
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })()}
+      {midBannersTop}
 
       {/* Products from DB */}
       <section className="py-12 md:py-16 bg-gray-50">
@@ -698,41 +742,7 @@ export function HomePage() {
             </Link>
           </div>
 
-          {loading ? (
-            <ProductCardSkeletonGrid />
-          ) : produtos.length === 0 ? (
-            <div className="text-center py-16 flex flex-col items-center">
-              <div className="relative mb-5">
-                <div
-                  className="w-24 h-24 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center"
-                  style={{ animation: "es-spin 20s linear infinite" }}
-                >
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-50 to-red-50 flex items-center justify-center">
-                    <Package className="w-7 h-7 text-gray-300" style={{ animation: "es-float 3s ease-in-out infinite" }} />
-                  </div>
-                </div>
-                <Sparkles className="w-3 h-3 text-red-300 absolute -top-0.5 right-0" style={{ animation: "es-twinkle 2s ease-in-out infinite" }} />
-              </div>
-              <p className="text-gray-500 mb-1" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
-                Nenhum produto disponível
-              </p>
-              <p className="text-gray-400" style={{ fontSize: "0.82rem" }}>
-                Estamos atualizando nosso catálogo. Volte em breve!
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
-              {produtos.map((produto) => (
-                <ProductCard
-                  key={produto.sku}
-                  product={produto}
-                  balance={balanceMap[produto.sku]}
-                  preloadedPrice={priceMap[produto.sku]}
-                  reviewSummary={reviewMap[produto.sku] || null}
-                />
-              ))}
-            </div>
-          )}
+          {productGrid}
 
           <div className="text-center mt-8 sm:hidden">
             <Link
@@ -748,54 +758,7 @@ export function HomePage() {
       </section>
 
       {/* Mid-Page Banners (Position 2) — slots 1 & 2, after Products */}
-      {(() => {
-        var mbs: MidBanner[] = (initData && initData.midBanners) ? initData.midBanners : [];
-        var activeMbs = mbs.filter(function (mb) { return (mb.slot === 1 || mb.slot === 2) && mb.active && mb.imageUrl; });
-        if (activeMbs.length === 0) return null;
-        return (
-          <section className="bg-white py-6 md:py-8">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className={"grid gap-4 " + (activeMbs.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
-                {activeMbs.map(function (mb) {
-                  var inner = (
-                    <div
-                      className="relative w-full overflow-hidden rounded-xl bg-gray-100 group"
-                      style={{ aspectRatio: "2048 / 595" }}
-                    >
-                      <img
-                        src={mb.imageUrl!}
-                        alt={"Banner " + mb.slot}
-                        className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                        loading="lazy"
-                        decoding="async"
-                        width={2048}
-                        height={595}
-                        draggable={false}
-                      />
-                    </div>
-                  );
-                  if (mb.link) {
-                    var isExt = mb.link.startsWith("http");
-                    if (isExt) {
-                      return (
-                        <a key={mb.slot} href={mb.link} target="_blank" rel="noopener noreferrer" className="block hover:opacity-95 transition-opacity">
-                          {inner}
-                        </a>
-                      );
-                    }
-                    return (
-                      <Link key={mb.slot} to={mb.link} className="block hover:opacity-95 transition-opacity">
-                        {inner}
-                      </Link>
-                    );
-                  }
-                  return <div key={mb.slot}>{inner}</div>;
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })()}
+      {midBannersBottom}
 
       {/* Recently Viewed Products */}
       <Suspense fallback={null}>
@@ -803,11 +766,12 @@ export function HomePage() {
       </Suspense>
 
       {/* Brand Carousel — after Recently Viewed, before CTA */}
-      {initData && initData.brands && initData.brands.length > 0 && (
-        <Suspense fallback={null}>
-          <BrandCarousel brands={initData.brands} />
-        </Suspense>
-      )}
+      {brandsSection}
+
+      {/* Influencer Carousel — Instagram Stories style, above CTA */}
+      <Suspense fallback={null}>
+        <InfluencerCarousel />
+      </Suspense>
 
       {/* CTA Banner */}
       <section className="relative overflow-hidden">
@@ -863,3 +827,72 @@ export function HomePage() {
     </div>
   );
 }
+
+/** Scrollable categories strip — extracted for memoization */
+const CategoriesStripInner = React.memo(function CategoriesStripInner({ catItems }: { catItems: Array<{ id: string; name: string; slug: string; imageUrl?: string }> }) {
+  var catScrollRef = React.createRef<HTMLDivElement>();
+  var scrollCats = function (dir: "left" | "right") {
+    if (!catScrollRef.current) return;
+    var amount = dir === "left" ? -200 : 200;
+    catScrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
+  };
+  return (
+    <section className="bg-white border-b border-gray-100 py-5">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-gray-700" style={{ fontSize: "0.85rem", fontWeight: 700 }}>
+            Categorias
+          </h3>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={function () { scrollCats("left"); }}
+              className="p-1.5 rounded-full border border-gray-200 bg-white hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+              aria-label="Rolar categorias para esquerda"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={function () { scrollCats("right"); }}
+              className="p-1.5 rounded-full border border-gray-200 bg-white hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+              aria-label="Rolar categorias para direita"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div ref={catScrollRef} className="flex gap-3 overflow-x-auto pb-1 hide-scrollbar" style={{ WebkitOverflowScrolling: "touch" }}>
+          {catItems.map(function (cat) {
+            return (
+              <Link
+                key={cat.id}
+                to={"/catalogo?categoria=" + cat.slug}
+                className={"group flex items-center gap-3 shrink-0 bg-white rounded-full border border-gray-200 hover:border-red-300 hover:shadow-sm transition-all duration-200 " + (cat.imageUrl ? "pl-1.5 pr-5 py-1.5" : "px-5 py-2.5")}
+              >
+                {cat.imageUrl && (
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-100 shrink-0">
+                    <img
+                      src={cat.imageUrl}
+                      alt={cat.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      width={36}
+                      height={36}
+                      draggable={false}
+                    />
+                  </div>
+                )}
+                <span
+                  className="text-gray-700 group-hover:text-gray-900 whitespace-nowrap transition-colors"
+                  style={{ fontSize: "0.8rem", fontWeight: 500 }}
+                >
+                  {cat.name}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+});

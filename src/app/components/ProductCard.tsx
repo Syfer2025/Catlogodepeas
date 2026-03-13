@@ -9,6 +9,7 @@ import { ProductImage } from "./ProductImage";
 import { WishlistButton } from "./WishlistButton";
 import { ReviewStars } from "./ReviewStars";
 import { prefetchProductDetail, scheduleProductDataPrefetch, cancelProductDataPrefetch } from "../utils/prefetch";
+import { useGA4 } from "./GA4Provider";
 
 export interface ProdutoItem {
   sku: string;
@@ -28,6 +29,7 @@ interface ProductCardProps {
 export function ProductCardInner({ product, balance, preloadedPrice, reviewSummary }: ProductCardProps) {
   const inStock = balance ? (balance.disponivel ?? balance.quantidade ?? 0) > 0 : true;
   const showOutOfStock = balance !== undefined && balance !== null && balance.found && !inStock;
+  const { trackEvent } = useGA4();
 
   return (
     <Link
@@ -36,6 +38,7 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
       style={{ transition: "box-shadow 0.35s cubic-bezier(.22,.61,.36,1), transform 0.35s cubic-bezier(.22,.61,.36,1)" }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 10px 25px -5px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = "translateY(-2px)"; prefetchProductDetail(); scheduleProductDataPrefetch(product.sku); }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ""; e.currentTarget.style.transform = ""; cancelProductDataPrefetch(product.sku); }}
+      onClick={() => { trackEvent("select_item", { items: [{ item_id: product.sku, item_name: product.titulo }] }); }}
       aria-label={product.titulo + " - Código " + product.sku}
     >
       {/* Out-of-stock ribbon */}

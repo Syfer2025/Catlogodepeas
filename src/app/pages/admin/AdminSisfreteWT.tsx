@@ -1,39 +1,37 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Save,
-  Loader2,
-  Check,
-  Settings,
-  Send,
-  Search,
-  RefreshCw,
-  Package,
-  Truck,
-  MapPin,
-  ExternalLink,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Eye,
-  EyeOff,
-  ChevronDown,
-  ChevronUp,
-  Ban,
-  Copy,
-  Link2,
-  FileText,
-  Box,
-  PackageOpen,
-  UserPlus,
-  Users,
-  Trash2,
-  Key,
-  Phone,
-  Mail,
-  Hash,
-  Info,
-} from "lucide-react";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import Settings from "lucide-react/dist/esm/icons/settings.js";
+import Send from "lucide-react/dist/esm/icons/send.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Package from "lucide-react/dist/esm/icons/package.js";
+import Truck from "lucide-react/dist/esm/icons/truck.js";
+import MapPin from "lucide-react/dist/esm/icons/map-pin.js";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Ban from "lucide-react/dist/esm/icons/ban.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import Link2 from "lucide-react/dist/esm/icons/link-2.js";
+import FileText from "lucide-react/dist/esm/icons/file-text.js";
+import Box from "lucide-react/dist/esm/icons/box.js";
+import PackageOpen from "lucide-react/dist/esm/icons/package-open.js";
+import UserPlus from "lucide-react/dist/esm/icons/user-plus.js";
+import Users from "lucide-react/dist/esm/icons/users.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Key from "lucide-react/dist/esm/icons/key.js";
+import Phone from "lucide-react/dist/esm/icons/phone.js";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
+import Hash from "lucide-react/dist/esm/icons/hash.js";
+import Info from "lucide-react/dist/esm/icons/info.js";
 import * as api from "../../services/api";
 import type {
   SisfreteWTConfig,

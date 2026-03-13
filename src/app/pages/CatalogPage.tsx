@@ -1,26 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, Link } from "react-router";
 import type { ProdutoItem } from "../components/ProductCard";
-import {
-  X,
-  Grid3X3,
-  List,
-  Home,
-  Loader2,
-  Package,
-  Hash,
-  ChevronLeft,
-  ChevronRight,
-  AlertTriangle,
-  Database,
-  Layers,
-  Tag,
-  ArrowUpDown,
-  ChevronDown,
-  Filter,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import { X, Grid3X3, List, Home, Loader2, Package, Hash, ChevronLeft, ChevronRight, AlertTriangle, Database, Layers, Tag, ArrowUpDown, ChevronDown, Filter, Search, Sparkles } from "lucide-react";
 import { StockBadge } from "../components/StockBadge";
 import { PriceBadge } from "../components/PriceBadge";
 import { seedPriceCache } from "../components/PriceBadge";
@@ -30,6 +11,7 @@ import * as api from "../services/api";
 import type { ProductBalance, ProductPrice } from "../services/api";
 import { ProductImage } from "../components/ProductImage";
 import { useGA4 } from "../components/GA4Provider";
+import { useMarketing } from "../components/MarketingPixels";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { ProductCardSkeletonGrid } from "../components/ProductCardSkeleton";
 import { VirtualProductGrid } from "../components/VirtualProductGrid";
@@ -83,6 +65,7 @@ export function CatalogPage() {
   const searchQuery = searchParams.get("busca") || "";
   const categoriaSlug = searchParams.get("categoria") || "";
   const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
 
   // ── Dynamic SEO meta tags ──
   var _catTitle = categoryName ? categoryName + " - Carretão Auto Peças" : searchQuery ? "Busca: " + searchQuery + " - Carretão Auto Peças" : "Catálogo de Peças - Carretão Auto Peças";
@@ -113,7 +96,22 @@ export function CatalogPage() {
       // GA4: track search when there's a search query
       if (searchQuery) {
         trackEvent("search", { search_term: searchQuery });
+        trackMetaEvent("Search", { search_string: searchQuery });
       }
+
+      // GA4: track view_item_list for category/catalog views
+      var listItems = result.data.slice(0, 10).map(function (p: any, idx: number) {
+        return { item_id: p.sku, item_name: p.titulo, index: idx };
+      });
+      trackEvent("view_item_list", {
+        item_list_id: categoriaSlug || "catalog",
+        item_list_name: result.categoryName || "Catalogo",
+        items: listItems,
+      });
+      trackMetaEvent("ViewContent", {
+        content_type: "product_group",
+        content_category: result.categoryName || "Catalogo",
+      });
     } catch (e: any) {
       console.error("Erro ao buscar produtos do catalogo:", e);
       setError(e.message || "Erro ao carregar produtos.");
@@ -196,7 +194,7 @@ export function CatalogPage() {
     if (stockFilter !== "all" && Object.keys(balanceMap).length > 0) {
       list = list.filter(function (p) {
         var bal = balanceMap[p.sku];
-        if (!bal || !bal.found) return stockFilter === "all";
+        if (!bal || !bal.found) return false;
         var qty = bal.disponivel ?? bal.quantidade ?? 0;
         return stockFilter === "inStock" ? qty > 0 : qty <= 0;
       });
@@ -296,9 +294,9 @@ export function CatalogPage() {
       {/* JSON-LD BreadcrumbList for Google rich results */}
       <JsonLdBreadcrumb items={
         categoriaSlug && categoryBreadcrumb
-          ? [{ name: "Início", url: "/" }, { name: "Catálogo", url: "/catalogo" }].concat(
-              categoryBreadcrumb.map(function (crumb, idx) {
-                return { name: crumb, url: idx === categoryBreadcrumb.length - 1 ? undefined : undefined };
+          ? ([{ name: "Início", url: "/" }, { name: "Catálogo", url: "/catalogo" }] as Array<{ name: string; url?: string }>).concat(
+              categoryBreadcrumb.map(function (crumb) {
+                return { name: crumb };
               })
             )
           : [{ name: "Início", url: "/" }, { name: "Catálogo" }]

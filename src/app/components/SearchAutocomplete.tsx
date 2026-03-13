@@ -1,10 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
-import * as api from "../services/api";
-import { ProductImage } from "./ProductImage";
-import type { AutocompleteResult } from "../services/api";
-import { prefetchProductDetail, prefetchCatalog } from "../utils/prefetch";
 import "../utils/emptyStateAnimations";
 
 // ── Search History (localStorage) ──

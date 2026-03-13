@@ -1,22 +1,12 @@
 import React, { useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import {
-  X,
-  ShoppingCart,
-  Trash2,
-  Plus,
-  Minus,
-  Package,
-  ArrowRight,
-  Flame,
-  Search,
-  Sparkles,
-  ShieldCheck,
-} from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus, Minus, Package, ArrowRight, Flame, Search, Sparkles, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useCart } from "../contexts/CartContext";
 import { ProductImage } from "./ProductImage";
 import { useCatalogMode } from "../contexts/CatalogModeContext";
+import { useGA4 } from "./GA4Provider";
+import { useMarketing } from "./MarketingPixels";
 
 /* Empty cart animation keyframes — injected once */
 var _emptyCartCssInjected = false;
@@ -52,6 +42,28 @@ export function CartDrawer() {
     isDrawerOpen,
     closeDrawer,
   } = useCart();
+  const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
+
+  // GA4 + Meta: track view_cart when drawer opens
+  useEffect(() => {
+    if (!isDrawerOpen || items.length === 0) return;
+    var cartItems = items.map(function (it, idx) {
+      return { item_id: it.sku, item_name: it.titulo, price: it.precoUnitario || 0, quantity: it.quantidade, index: idx };
+    });
+    trackEvent("view_cart", { currency: "BRL", value: totalPrice, items: cartItems });
+  }, [isDrawerOpen]);
+
+  // Wrapper for removeItem that also fires GA4 remove_from_cart
+  var handleRemove = useCallback(function (item: typeof items[0]) {
+    trackEvent("remove_from_cart", {
+      currency: "BRL",
+      value: (item.precoUnitario || 0) * item.quantidade,
+      items: [{ item_id: item.sku, item_name: item.titulo, price: item.precoUnitario || 0, quantity: item.quantidade }],
+    });
+    trackMetaEvent("RemoveFromCart", { content_ids: [item.sku], content_type: "product" });
+    removeItem(item.sku);
+  }, [removeItem, trackEvent, trackMetaEvent]);
 
   // Lock body scroll when drawer is open
   useEffect(() => {
@@ -85,7 +97,7 @@ export function CartDrawer() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/40 z-[900] backdrop-blur-sm"
+            className="fixed inset-0 bg-black/40 z-[900]"
             onClick={closeDrawer}
           />
 
@@ -197,7 +209,7 @@ export function CartDrawer() {
                     <CartItemRow
                       key={item.sku}
                       item={item}
-                      onRemove={() => removeItem(item.sku)}
+                      onRemove={() => handleRemove(item)}
                       onUpdateQty={(qty) => updateQuantity(item.sku, qty)}
                     />
                   ))}

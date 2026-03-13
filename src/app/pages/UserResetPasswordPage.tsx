@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
-import {
-  Lock,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  ArrowLeft,
-  ShieldCheck,
-  Mail,
-} from "lucide-react";
+import Lock from "lucide-react/dist/esm/icons/lock.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.js";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
 import { supabase } from "../services/supabaseClient";
 import * as api from "../services/api";
 

@@ -1,20 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  MapPin,
-  Plus,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  Loader2,
-  Search,
-  Home,
-  Building2,
-  Star,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-} from "lucide-react";
+import { MapPin, Plus, Pencil, Trash2, Check, X, Loader2, Search, Home, Building2, Star, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import * as api from "../services/api";
 
 interface AddressFormData {

@@ -1,20 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
 import React from "react";
-import {
-  Ticket,
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-  AlertTriangle,
-  X,
-  Check,
-  Copy,
-  ToggleLeft,
-  ToggleRight,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import Ticket from "lucide-react/dist/esm/icons/ticket.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Pencil from "lucide-react/dist/esm/icons/pencil.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import ToggleLeft from "lucide-react/dist/esm/icons/toggle-left.js";
+import ToggleRight from "lucide-react/dist/esm/icons/toggle-right.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import UserCheck from "lucide-react/dist/esm/icons/user-check.js";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
@@ -45,6 +45,7 @@ const EMPTY_FORM = {
   maxUses: 0,
   active: true,
   expiresAt: "",
+  singleUsePerCpf: true,
 };
 
 export function AdminCoupons() {
@@ -106,6 +107,7 @@ export function AdminCoupons() {
       maxUses: coupon.maxUses,
       active: coupon.active,
       expiresAt: coupon.expiresAt ? coupon.expiresAt.substring(0, 10) : "",
+      singleUsePerCpf: coupon.singleUsePerCpf !== false,
     });
     setEditingCode(coupon.code);
     setSaveError(null);
@@ -126,6 +128,7 @@ export function AdminCoupons() {
           maxUses: form.maxUses,
           active: form.active,
           expiresAt: form.expiresAt || null,
+          singleUsePerCpf: form.singleUsePerCpf,
         } as any);
       } else {
         if (!form.code.trim()) {
@@ -147,6 +150,7 @@ export function AdminCoupons() {
           maxUses: form.maxUses,
           active: form.active,
           expiresAt: form.expiresAt || null,
+          singleUsePerCpf: form.singleUsePerCpf,
         } as any);
       }
       setShowModal(false);
@@ -350,7 +354,7 @@ export function AdminCoupons() {
                 </div>
 
                 {/* Status badges */}
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {coupon.active && !isExpired && !isExhausted && (
                     <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full" style={{ fontSize: "0.65rem", fontWeight: 600 }}>Ativo</span>
                   )}
@@ -362,6 +366,12 @@ export function AdminCoupons() {
                   )}
                   {isExhausted && (
                     <span className="px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full" style={{ fontSize: "0.65rem", fontWeight: 600 }}>Esgotado</span>
+                  )}
+                  {coupon.singleUsePerCpf && (
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full flex items-center gap-1" style={{ fontSize: "0.65rem", fontWeight: 600 }}>
+                      <ShieldCheck className="w-3 h-3" />
+                      1x por CPF
+                    </span>
                   )}
                 </div>
 
@@ -527,6 +537,33 @@ export function AdminCoupons() {
                     {form.active ? "Ativo" : "Inativo"}
                   </button>
                 </div>
+              </div>
+
+              {/* Single use per CPF/CNPJ */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, singleUsePerCpf: !form.singleUsePerCpf })}
+                  className={"w-full px-3 py-3 border rounded-lg flex items-center gap-3 transition-colors " +
+                    (form.singleUsePerCpf
+                      ? "border-blue-300 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-gray-50 text-gray-500")}
+                >
+                  <ShieldCheck className={"w-5 h-5 " + (form.singleUsePerCpf ? "text-blue-500" : "text-gray-400")} />
+                  <div className="flex-1 text-left">
+                    <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                      Uso unico por CPF/CNPJ
+                    </span>
+                    <p style={{ fontSize: "0.68rem", fontWeight: 400 }} className={form.singleUsePerCpf ? "text-blue-500" : "text-gray-400"}>
+                      {form.singleUsePerCpf
+                        ? "Cada CPF/CNPJ so pode usar este cupom 1 vez"
+                        : "Sem restricao por CPF/CNPJ"}
+                    </p>
+                  </div>
+                  {form.singleUsePerCpf
+                    ? <ToggleRight className="w-6 h-6 text-blue-500 shrink-0" />
+                    : <ToggleLeft className="w-6 h-6 text-gray-400 shrink-0" />}
+                </button>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 // ─── Global error storage (singleton, survives re-renders) ───
 interface CapturedError {
@@ -16,6 +17,74 @@ interface CapturedError {
 var errorCounter = 0;
 var globalErrors: CapturedError[] = [];
 var errorListeners: Array<() => void> = [];
+
+// ─── Backend error reporting — batch-sends errors for persistent monitoring ───
+var _errorReportBuffer: Array<{
+  type: string;
+  message: string;
+  stack?: string;
+  url: string;
+  timestamp: number;
+}> = [];
+var _errorReportTimer: ReturnType<typeof setTimeout> | null = null;
+var _errorReportUrl = "https://" + projectId + ".supabase.co/functions/v1/make-server-b7b07654/error-report";
+
+function _flushErrorReport() {
+  if (_errorReportBuffer.length === 0) return;
+  var payload = _errorReportBuffer.splice(0);
+  var body = JSON.stringify({ errors: payload });
+  if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+    var sent = navigator.sendBeacon(
+      _errorReportUrl,
+      new Blob([body], { type: "application/json" })
+    );
+    if (!sent) {
+      fetch(_errorReportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + publicAnonKey,
+        },
+        body: body,
+        keepalive: true,
+      }).catch(function () { /* silent */ });
+    }
+  } else {
+    fetch(_errorReportUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + publicAnonKey,
+      },
+      body: body,
+      keepalive: true,
+    }).catch(function () { /* silent */ });
+  }
+}
+
+function _queueErrorForBackend(err: CapturedError) {
+  // Skip resource errors for common non-critical assets (images, fonts)
+  if (err.type === "resource") return;
+  // Skip console-error noise from React dev mode
+  if (err.type === "console-error" && err.message.length < 10) return;
+
+  _errorReportBuffer.push({
+    type: err.type,
+    message: err.message.substring(0, 500),
+    stack: (err.stack || "").substring(0, 1000),
+    url: typeof window !== "undefined" ? window.location.pathname : "",
+    timestamp: err.timestamp.getTime(),
+  });
+
+  // Keep buffer bounded
+  if (_errorReportBuffer.length > 20) {
+    _errorReportBuffer = _errorReportBuffer.slice(-20);
+  }
+
+  // Debounce flush — wait 5s for more errors to arrive
+  if (_errorReportTimer) clearTimeout(_errorReportTimer);
+  _errorReportTimer = setTimeout(_flushErrorReport, 5000);
+}
 
 function addGlobalError(err: CapturedError) {
   // Deduplicate by message (within last 5 seconds)
@@ -38,6 +107,9 @@ function addGlobalError(err: CapturedError) {
   for (var j = 0; j < errorListeners.length; j++) {
     errorListeners[j]();
   }
+
+  // Also queue for backend persistence
+  _queueErrorForBackend(err);
 }
 
 export function getGlobalErrors(): CapturedError[] {
@@ -102,7 +174,7 @@ function installInterceptor() {
   // 3. Resource load errors (images, scripts, etc.)
   window.addEventListener("error", function (event) {
     var target = event.target as HTMLElement | null;
-    if (target && target !== window && (target as any).tagName) {
+    if (target && target !== (window as unknown as HTMLElement) && (target as any).tagName) {
       var tagName = (target as any).tagName;
       var src = (target as any).src || (target as any).href || "";
       addGlobalError({

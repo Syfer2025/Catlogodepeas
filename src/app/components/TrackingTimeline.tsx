@@ -1,20 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Package,
-  Truck,
-  MapPin,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  AlertTriangle,
-  ExternalLink,
-  Copy,
-  Check,
-  PackageOpen,
-  ArrowLeft,
-  RefreshCw,
-  Info,
-} from "lucide-react";
+import { Package, Truck, MapPin, CheckCircle2, Clock, Loader2, AlertTriangle, ExternalLink, Copy, Check, PackageOpen, ArrowLeft, RefreshCw, Info } from "lucide-react";
 import * as api from "../services/api";
 
 /* ─── helpers ─── */

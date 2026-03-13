@@ -1,16 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router";
-import {
-  Lock,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  ArrowLeft,
-  ShieldCheck,
-  Mail,
-} from "lucide-react";
+import { Lock, Loader2, AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowLeft, ShieldCheck, Mail } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
 

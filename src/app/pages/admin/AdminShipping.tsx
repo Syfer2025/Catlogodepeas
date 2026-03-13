@@ -1,41 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
-import {
-  Save,
-  Loader2,
-  Check,
-  Truck,
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  MapPin,
-  Package,
-  AlertTriangle,
-  Info,
-  ToggleLeft,
-  ToggleRight,
-  Copy,
-  Settings,
-  Globe,
-  Zap,
-  Bike,
-  FileSpreadsheet,
-  Plug,
-  Layers,
-  Eye,
-  EyeOff,
-  Search,
-  Braces,
-  CheckCircle,
-  ArrowRight,
-  Upload,
-  Play,
-  Terminal,
-  RotateCcw,
-  ChevronUp,
-  ExternalLink,
-  Scale,
-} from "lucide-react";
+import { Save, Loader2, Check, Truck, Plus, Trash2, ChevronDown, ChevronRight, MapPin, Package, AlertTriangle, Info, ToggleLeft, ToggleRight, Copy, Settings, Globe, Zap, Bike, FileSpreadsheet, Plug, Layers, Eye, EyeOff, Search, Braces, CheckCircle, ArrowRight, Upload, Play, Terminal, RotateCcw, ChevronUp, ExternalLink, Scale } from "lucide-react";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";

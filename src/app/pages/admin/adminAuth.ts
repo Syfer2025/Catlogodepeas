@@ -4,16 +4,34 @@
  * The admin session is stored **exclusively** in admin-specific localStorage
  * keys so it NEVER leaks into the Supabase client session used by the
  * customer-facing side of the site.
+ *
+ * CRITICAL: Token refresh uses a DEDICATED Supabase client so it never
+ * pollutes the shared customer-side client — preventing cross-tab session
+ * corruption that caused recurring auth errors.
  */
 
-import { supabase } from "../../services/supabaseClient";
-import { projectId } from "/utils/supabase/info";
+import { createClient } from "@supabase/supabase-js";
+import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 
 var ADMIN_AT_KEY  = "carretao_admin_at";
 var ADMIN_RT_KEY  = "carretao_admin_rt";
 var ADMIN_EXP_KEY = "carretao_admin_exp";
 export var ADMIN_EMAIL_KEY = "carretao_admin_email";
 export var ADMIN_NAME_KEY  = "carretao_admin_name";
+
+// ─── Dedicated Supabase client for admin auth operations ───
+// This client does NOT persist sessions and does NOT auto-refresh,
+// so it never writes to localStorage or fires onAuthStateChange on
+// the customer-facing shared Supabase client.
+var _adminSupabaseUrl = "https://" + projectId + ".supabase.co";
+var _adminSupabase = createClient(_adminSupabaseUrl, publicAnonKey, {
+  auth: {
+    detectSessionInUrl: false,
+    autoRefreshToken: false,
+    persistSession: false,  // ← key: never touches localStorage
+    storageKey: "sb-" + projectId + "-admin-token", // ← unique key: avoids "Multiple GoTrueClient instances" warning
+  },
+});
 
 /* ------------------------------------------------------------------ */
 /*  Safely clear Supabase client session WITHOUT revoking the JWT     */
@@ -85,44 +103,59 @@ export function clearAdminStorage(): void {
 
 /**
  * Refresh the admin token using the stored refresh_token.
- * We temporarily `setSession` on the Supabase client, grab a fresh
- * token pair, persist them, then **locally** sign out so the
- * customer side never sees the session.
+ * Uses the DEDICATED admin Supabase client (non-persisting) so it
+ * NEVER writes to localStorage or fires onAuthStateChange events
+ * that would corrupt customer-side sessions in other tabs.
+ *
+ * DEDUP: If a refresh is already in flight, concurrent callers
+ * piggyback on the same promise (refresh tokens are single-use).
  */
+var _adminRefreshInflight: Promise<string | null> | null = null;
+
 export async function refreshAdminToken(): Promise<string | null> {
+  // Dedup — if already refreshing, piggyback
+  if (_adminRefreshInflight) return _adminRefreshInflight;
+
+  _adminRefreshInflight = _doRefreshAdminToken();
+  return _adminRefreshInflight;
+}
+
+async function _doRefreshAdminToken(): Promise<string | null> {
   try {
     var rt = localStorage.getItem(ADMIN_RT_KEY);
-    if (!rt) return null;
+    if (!rt) { _adminRefreshInflight = null; return null; }
     var at = localStorage.getItem(ADMIN_AT_KEY);
-    if (!at) return null;
+    if (!at) { _adminRefreshInflight = null; return null; }
 
-    var setResult = await supabase.auth.setSession({
+    // Use dedicated client — never touches the shared client's session
+    var setResult = await _adminSupabase.auth.setSession({
       access_token: at,
       refresh_token: rt,
     });
     if (setResult.error) {
       console.warn("[AdminTokenRefresh] setSession failed:", setResult.error.message);
+      _adminRefreshInflight = null;
       return null;
     }
 
-    var refreshResult = await supabase.auth.refreshSession();
+    var refreshResult = await _adminSupabase.auth.refreshSession();
     var fresh = refreshResult.data?.session;
     if (fresh?.access_token) {
       localStorage.setItem(ADMIN_AT_KEY, fresh.access_token);
       localStorage.setItem(ADMIN_RT_KEY, fresh.refresh_token || rt);
       localStorage.setItem(ADMIN_EXP_KEY, String(fresh.expires_at || 0));
-      // Clear the Supabase client session from localStorage so it doesn't
-      // leak to the customer side — WITHOUT calling signOut (which may revoke the JWT)
-      _clearSupabaseLocalSession();
+      // No need to call _clearSupabaseLocalSession — the dedicated client
+      // never wrote anything to localStorage in the first place.
       // Token refreshed successfully
+      _adminRefreshInflight = null;
       return fresh.access_token;
     }
 
-    _clearSupabaseLocalSession();
+    _adminRefreshInflight = null;
     return null;
   } catch (e) {
     console.warn("[AdminTokenRefresh] Error:", e);
-    _clearSupabaseLocalSession();
+    _adminRefreshInflight = null;
     return null;
   }
 }

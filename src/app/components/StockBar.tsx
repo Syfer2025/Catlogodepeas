@@ -15,7 +15,7 @@ function getStockColor(pct: number): string {
 
 function getStockLabel(qty: number): string {
   if (qty <= 0) return "Esgotado";
-  if (qty <= 3) return "Ultimas unidades!";
+  if (qty <= 3) return "Últimas unidades!";
   if (qty <= 10) return "Poucas unidades";
   if (qty <= 25) return "Em estoque";
   return "Estoque alto";

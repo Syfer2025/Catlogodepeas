@@ -1,28 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import {
-  Image as ImageIcon,
-  Plus,
-  Trash2,
-  Edit3,
-  Eye,
-  EyeOff,
-  GripVertical,
-  ChevronUp,
-  ChevronDown,
-  Save,
-  X,
-  Upload,
-  Loader2,
-  ExternalLink,
-  AlertTriangle,
-  Check,
-  Monitor,
-  Smartphone,
-  Link2,
-  Type,
-  FileText,
-  Maximize2,
-} from "lucide-react";
+import { Image as ImageIcon, Plus, Trash2, Edit3, Eye, EyeOff, GripVertical, ChevronUp, ChevronDown, Save, X, Upload, Loader2, ExternalLink, AlertTriangle, Check, Monitor, Smartphone, Link2, Type, FileText, Maximize2 } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";

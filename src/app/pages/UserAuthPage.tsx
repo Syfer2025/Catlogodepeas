@@ -1,24 +1,24 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import {
-  User,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  Phone,
-  ArrowRight,
-  ShieldCheck,
-  CreditCard,
-  Building2,
-  FileText,
-} from "lucide-react";
+import User from "lucide-react/dist/esm/icons/user";
+import Mail from "lucide-react/dist/esm/icons/mail";
+import Lock from "lucide-react/dist/esm/icons/lock";
+import Eye from "lucide-react/dist/esm/icons/eye";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
+import CheckCircle2 from "lucide-react/dist/esm/icons/circle-check";
+import Phone from "lucide-react/dist/esm/icons/phone";
+import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card";
+import Building2 from "lucide-react/dist/esm/icons/building-2";
+import FileText from "lucide-react/dist/esm/icons/file-text";
 import { supabase } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
+import { useGA4 } from "../components/GA4Provider";
+import { useMarketing } from "../components/MarketingPixels";
 
 // ─── Google Logo SVG (inline for zero external dependency) ───
 // Force re-build
@@ -40,6 +40,8 @@ type RegisterStep = "form" | "email-sent";
 export function UserAuthPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("login");
+  const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
 
   useDocumentMeta({
     title: tab === "login" ? "Entrar - Carretão Auto Peças" : "Criar Conta - Carretão Auto Peças",
@@ -468,6 +470,9 @@ export function UserAuthPage() {
       // Report success (clears failed attempt counter) — pass token so backend can verify
       api.reportLoginResult(loginEmail.trim(), true, data.session?.access_token).catch(() => {});
 
+      // GA4 + Meta: login event
+      trackEvent("login", { method: "email" });
+
       if (data.session?.access_token) {
         navigate("/", { replace: true });
       }
@@ -630,6 +635,10 @@ export function UserAuthPage() {
         } : {}),
       });
 
+      // GA4 + Meta: sign_up / CompleteRegistration event
+      trackEvent("sign_up", { method: "email" });
+      trackMetaEvent("CompleteRegistration", { content_name: "user_signup", status: true });
+
       // Show email confirmation screen
       setRegisteredEmail(regEmail.trim());
       setRegisterStep("email-sent");
@@ -710,6 +719,8 @@ export function UserAuthPage() {
         setGoogleLoading(false);
       }
       // If no error, user is being redirected to Google — do NOT set googleLoading=false
+      // GA4: login with Google (fires before redirect)
+      trackEvent("login", { method: "google" });
     } catch (err: any) {
       console.error("Google OAuth exception:", err);
       setError(err.message || "Erro ao conectar com Google.");

@@ -3,37 +3,35 @@ import * as api from "../../services/api";
 import type { EmktSubscriber, EmktTemplate, EmktCampaign, EmktSendLog, EmktConfig } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
-import {
-  Mail,
-  Plus,
-  Trash2,
-  Edit3,
-  Send,
-  Users,
-  FileText,
-  BarChart3,
-  Settings,
-  Loader2,
-  RefreshCw,
-  Search,
-  X,
-  Check,
-  AlertTriangle,
-  Copy,
-  Eye,
-  Upload,
-  Tag,
-  ArrowLeft,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Inbox,
-  Zap,
-  TestTube,
-  AlertCircle,
-} from "lucide-react";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Edit3 from "lucide-react/dist/esm/icons/edit-3.js";
+import Send from "lucide-react/dist/esm/icons/send.js";
+import Users from "lucide-react/dist/esm/icons/users.js";
+import FileText from "lucide-react/dist/esm/icons/file-text.js";
+import BarChart3 from "lucide-react/dist/esm/icons/bar-chart-3.js";
+import Settings from "lucide-react/dist/esm/icons/settings.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import Upload from "lucide-react/dist/esm/icons/upload.js";
+import Tag from "lucide-react/dist/esm/icons/tag.js";
+import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Inbox from "lucide-react/dist/esm/icons/inbox.js";
+import Zap from "lucide-react/dist/esm/icons/zap.js";
+import TestTube from "lucide-react/dist/esm/icons/test-tube.js";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.js";
 
 type SubTab = "campaigns" | "subscribers" | "templates" | "history" | "config";
 
@@ -1375,6 +1373,9 @@ function ConfigPanel() {
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [sendingTest, setSendingTest] = useState(false);
+  const [sendTestEmail, setSendTestEmail] = useState("");
+  const [sendTestResult, setSendTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // SMTP fields
   const [smtpHost, setSmtpHost] = useState("");
@@ -1473,6 +1474,25 @@ function ConfigPanel() {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    if (!sendTestEmail.trim() || sendTestEmail.indexOf("@") < 1) {
+      setSendTestResult({ ok: false, msg: "Informe um email de destino valido." });
+      return;
+    }
+    setSendingTest(true);
+    setSendTestResult(null);
+    try {
+      const token = await getToken();
+      if (!token) { setSendTestResult({ ok: false, msg: "Sessao expirada." }); return; }
+      const res = await api.sendSmtpTestEmail(token, sendTestEmail.trim());
+      setSendTestResult({ ok: true, msg: res.message || "Email enviado!" });
+    } catch (e: any) {
+      setSendTestResult({ ok: false, msg: e.message || "Falha ao enviar email de teste" });
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1562,6 +1582,38 @@ function ConfigPanel() {
                 {testResult.ok ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                 {testResult.msg}
               </span>
+            )}
+          </div>
+
+          {/* Send real test email */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-gray-600 mb-2" style={{ fontSize: "0.78rem", fontWeight: 600 }}>Enviar Email de Teste Real</p>
+            <p className="text-gray-400 mb-2" style={{ fontSize: "0.7rem" }}>
+              Diferente do "Testar Conexao" acima (que so verifica se conecta), este envia um email de verdade usando as configuracoes salvas.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                value={sendTestEmail}
+                onChange={(e) => setSendTestEmail(e.target.value)}
+                placeholder="seu@email.com"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-red-500 outline-none"
+                style={{ fontSize: "0.82rem" }}
+              />
+              <button
+                onClick={handleSendTestEmail}
+                disabled={sendingTest || !sendTestEmail.trim()}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap"
+                style={{ fontSize: "0.82rem", fontWeight: 600 }}
+              >
+                {sendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                Enviar Teste
+              </button>
+            </div>
+            {sendTestResult && (
+              <div className={"mt-2 flex items-center gap-1 " + (sendTestResult.ok ? "text-green-600" : "text-red-600")} style={{ fontSize: "0.8rem" }}>
+                {sendTestResult.ok ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                {sendTestResult.msg}
+              </div>
             )}
           </div>
         </div>

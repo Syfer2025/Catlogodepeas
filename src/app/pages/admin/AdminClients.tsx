@@ -1,24 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  Users,
-  Search,
-  Loader2,
-  RefreshCw,
-  Mail,
-  Phone,
-  MapPin,
-  CreditCard,
-  CheckCircle2,
-  XCircle,
-  ChevronDown,
-  ChevronUp,
-  Calendar,
-  Clock,
-  Download,
-  X,
-  User,
-  Shield,
-} from "lucide-react";
+import { Users, Search, Loader2, RefreshCw, Mail, Phone, MapPin, CreditCard, CheckCircle2, XCircle, ChevronDown, ChevronUp, Calendar, Clock, Download, X, User, Shield } from "lucide-react";
 import * as api from "../../services/api";
 import type { ClientProfile } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";

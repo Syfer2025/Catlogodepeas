@@ -30,7 +30,22 @@ interface CartContextType {
   closeDrawer: () => void;
 }
 
-const CartContext = createContext<CartContextType | null>(null);
+const _noop = () => {};
+
+const _fallback: CartContextType = {
+  items: [],
+  totalItems: 0,
+  totalPrice: 0,
+  addItem: _noop,
+  removeItem: _noop,
+  updateQuantity: _noop,
+  clearCart: _noop,
+  isDrawerOpen: false,
+  openDrawer: _noop,
+  closeDrawer: _noop,
+};
+
+const CartContext = createContext<CartContextType>(_fallback);
 
 const CART_STORAGE_KEY = "carretao_cart";
 
@@ -55,6 +70,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     saveCart(items);
   }, [items]);
+
+  // ── Cross-tab sync: listen for cart changes in other tabs ──
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== CART_STORAGE_KEY) return;
+      try {
+        var updated = e.newValue ? JSON.parse(e.newValue) : [];
+        setItems(updated);
+      } catch {}
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const addItem = useCallback(
     (newItem: Omit<CartItem, "quantidade"> & { quantidade?: number }) => {
@@ -143,28 +171,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 }
 
-const _noop = () => {};
-
-const _fallback: CartContextType = {
-  items: [],
-  totalItems: 0,
-  totalPrice: 0,
-  addItem: _noop,
-  removeItem: _noop,
-  updateQuantity: _noop,
-  clearCart: _noop,
-  isDrawerOpen: false,
-  openDrawer: _noop,
-  closeDrawer: _noop,
-};
-
 export function useCart() {
-  const ctx = useContext(CartContext);
-  // Return safe fallback instead of throwing — prevents crashes during hot reload
-  // or when components render before CartProvider mounts
-  if (!ctx) {
-    console.warn("[useCart] Rendered outside CartProvider — using fallback.");
-    return _fallback;
-  }
-  return ctx;
+  return useContext(CartContext);
 }

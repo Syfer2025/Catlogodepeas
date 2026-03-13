@@ -1,28 +1,7 @@
 import { useState, useEffect } from "react";
-import {
-  Save,
-  Loader2,
-  Check,
-  BarChart3,
-  Eye,
-  ShoppingCart,
-  CreditCard,
-  Search,
-  Package,
-  ExternalLink,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ToggleLeft,
-  ToggleRight,
-  Copy,
-  Info,
-  Globe,
-  MousePointerClick,
-  Activity,
-} from "lucide-react";
-import * as api from "../../services/api";
+import { Save, Loader2, Check, BarChart3, Eye, ShoppingCart, CreditCard, Search, Package, ExternalLink, AlertTriangle, CheckCircle2, XCircle, ToggleLeft, ToggleRight, Copy, Info, Globe, MousePointerClick, Activity } from "lucide-react";
 import type { GA4Config } from "../../services/api";
+import { getValidAdminToken } from "./adminAuth";
 
 const DEFAULT_CONFIG: GA4Config = {
   measurementId: "",
@@ -121,7 +100,8 @@ export function AdminGA4() {
     setError("");
     setSaving(true);
     try {
-      await api.updateGA4Config(config);
+      var token = await getValidAdminToken();
+      await api.updateGA4Config(config, token || undefined);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {

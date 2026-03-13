@@ -1,24 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Star,
-  Check,
-  X,
-  Trash2,
-  Loader2,
-  AlertCircle,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Eye,
-  MessageSquare,
-  Image as ImageIcon,
-  Filter,
-  RefreshCw,
-  User,
-  ChevronDown,
-  ChevronUp,
-  Search,
-} from "lucide-react";
+import Star from "lucide-react/dist/esm/icons/star.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import MessageSquare from "lucide-react/dist/esm/icons/message-square.js";
+import ImageIcon from "lucide-react/dist/esm/icons/image.js";
+import Filter from "lucide-react/dist/esm/icons/filter.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import User from "lucide-react/dist/esm/icons/user.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
 import * as api from "../../services/api";
 import type { Review } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -706,9 +704,9 @@ export function AdminReviews() {
           review={selectedReview}
           onClose={function () { setSelectedReview(null); }}
           onModerate={function (action, note, imageActions) {
-            handleModerate(selectedReview.id, action, note, imageActions);
+            handleModerate(selectedReview!.id, action, note, imageActions);
           }}
-          onDelete={function () { handleDelete(selectedReview.id); }}
+          onDelete={function () { handleDelete(selectedReview!.id); }}
         />
       )}
     </div>

@@ -1,5 +1,9 @@
 import { Link } from "react-router";
-import { Home, ChevronRight, Shield, Mail, Phone } from "lucide-react";
+import Home from "lucide-react/dist/esm/icons/home";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import Shield from "lucide-react/dist/esm/icons/shield";
+import Mail from "lucide-react/dist/esm/icons/mail";
+import Phone from "lucide-react/dist/esm/icons/phone";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
 export function PrivacyPolicyPage() {

@@ -10,25 +10,7 @@ import { defaultCategoryTree } from "../../data/categoryTree";
 const SigeStockSync = lazy(function () { return import("./SigeStockSync").then(function (m) { return { default: m.SigeStockSync }; }); });
 import { PriceBadge } from "../../components/PriceBadge";
 import { convertImageToWebP, ProductImage as ProductImage2 } from "../../components/ProductImage";
-import {
-  Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff,
-  ChevronLeft, ChevronRight, Grid3X3, List, Database, X,
-  Plus, Edit3, Trash2, Save, ImagePlus, Check,
-  AlertCircle, CheckCircle2, ChevronDown,
-  FileText, Tag, ExternalLink, Camera, PenLine,
-  PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal,
-  BarChart3, TrendingUp, TrendingDown, AlertOctagon,
-  DollarSign,
-  Truck,
-  Scale,
-  RotateCcw,
-  Info,
-  Zap,
-  Link2,
-  Weight,
-  Ruler,
-  Barcode,
-} from "lucide-react";
+import { Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff, ChevronLeft, ChevronRight, Grid3X3, List, Database, X, Plus, Edit3, Trash2, Save, ImagePlus, Check, AlertCircle, CheckCircle2, ChevronDown, FileText, Tag, ExternalLink, Camera, PenLine, PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal, BarChart3, TrendingUp, TrendingDown, AlertOctagon, DollarSign, Truck, Scale, RotateCcw, Info, Zap, Link2, Weight, Ruler, Barcode } from "lucide-react";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -200,7 +182,8 @@ export function AdminProducts() {
       let remaining = Infinity;
       let totalScanned = 0;
       while (remaining > 0) {
-        const result = await api.triggerStockScan(50);
+        var scanToken = await getValidAdminToken();
+        const result = await api.triggerStockScan(50, scanToken || undefined);
         if (result.error) { showToast("error", result.error); break; }
         totalScanned += result.scanned;
         remaining = result.remaining;

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router";
-import { Home, Heart, ShoppingCart, MessageCircle, User } from "lucide-react";
+import { Home, Heart, ShoppingCart, Ticket, User } from "lucide-react";
 import { useCart } from "../contexts/CartContext";
 import { useWishlist } from "../contexts/WishlistContext";
 import { useState, useEffect } from "react";
@@ -7,8 +7,6 @@ import { supabase } from "../services/supabaseClient";
 import { getValidAccessToken } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { UserAvatar } from "./AvatarPicker";
-
-var WHATSAPP_URL = "https://wa.me/5544997330202?text=" + encodeURIComponent("Olá! Vim pelo site da Carretão Auto Peças e gostaria de mais informações.");
 
 /* Badge bounce animation — injected once */
 var _bottomNavCssInjected = false;
@@ -59,12 +57,21 @@ export function MobileBottomNav() {
       }
     });
     var sub = supabase.auth.onAuthStateChange(function (_ev, session) {
+      // Ignore auth events triggered by admin operations or initial session load
+      if (window.location.pathname.startsWith("/admin")) return;
+      if (_ev === "INITIAL_SESSION") return;
+
       if (session && session.user) {
         setLoggedIn(true);
         fetchAvatar(session.access_token);
-      } else {
-        setLoggedIn(false);
-        setAvatarInfo(null);
+      } else if (_ev === "SIGNED_OUT") {
+        // Only clear if not contaminated by admin token operations
+        var adminToken = null;
+        try { adminToken = localStorage.getItem("carretao_admin_at"); } catch {}
+        if (!adminToken) {
+          setLoggedIn(false);
+          setAvatarInfo(null);
+        }
       }
     });
     return function () { sub.data.subscription.unsubscribe(); };
@@ -74,6 +81,7 @@ export function MobileBottomNav() {
 
   var isHome = path === "/";
   var isFavorites = path === "/minha-conta" && location.search.includes("tab=favoritos");
+  var isCupons = path === "/cupons";
   var isProfile = path === "/minha-conta" || path === "/conta";
 
   function goTo(to: string) {
@@ -150,17 +158,15 @@ export function MobileBottomNav() {
           <span className="text-red-600" style={{ fontSize: "0.6rem", fontWeight: 700, marginTop: "2px" }}>Carrinho</span>
         </button>
 
-        {/* WhatsApp */}
-        <a
-          href={WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 text-green-600 cursor-pointer"
-          aria-label="WhatsApp"
+        {/* Cupons */}
+        <button
+          onClick={function () { goTo("/cupons"); }}
+          className={"flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 transition-colors cursor-pointer " + (isCupons ? "text-red-600" : "text-gray-400")}
+          aria-label="Cupons"
         >
-          <MessageCircle className="w-5 h-5" strokeWidth={1.8} fill="currentColor" />
-          <span style={{ fontSize: "0.6rem", fontWeight: 500 }}>WhatsApp</span>
-        </a>
+          <Ticket className="w-5 h-5" strokeWidth={isCupons ? 2.5 : 1.8} />
+          <span style={{ fontSize: "0.6rem", fontWeight: isCupons ? 700 : 500 }}>Cupons</span>
+        </button>
 
         {/* Perfil / Conta */}
         <button

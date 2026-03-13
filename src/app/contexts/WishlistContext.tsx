@@ -55,17 +55,25 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
 
     var sub = supabase.auth.onAuthStateChange(function (_event, session) {
       // Ignore auth state changes triggered by admin token refresh
-      // (refreshAdminToken calls setSession/signOut which fires this listener)
-      if (window.location.pathname.startsWith("/admin")) {
-        return;
-      }
-      if (session?.access_token) {
-        setAccessToken(session.access_token);
-      } else {
-        setAccessToken(null);
-        setFavorites([]);
-        updateSet([]);
-        loadedRef.current = false;
+      // (the dedicated admin Supabase client shouldn't fire these, but defense-in-depth)
+      if (window.location.pathname.startsWith("/admin")) return;
+      // Ignore INITIAL_SESSION — we already checked getSession() above
+      if (_event === "INITIAL_SESSION") return;
+
+      if (_event === "SIGNED_IN" || _event === "TOKEN_REFRESHED") {
+        if (session?.access_token) {
+          setAccessToken(session.access_token);
+        }
+      } else if (_event === "SIGNED_OUT") {
+        // Only clear if not contaminated by admin operations
+        var adminToken = null;
+        try { adminToken = localStorage.getItem("carretao_admin_at"); } catch {}
+        if (!adminToken) {
+          setAccessToken(null);
+          setFavorites([]);
+          updateSet([]);
+          loadedRef.current = false;
+        }
       }
     });
 

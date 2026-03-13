@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import type { GA4Config } from "../services/api";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { hasAnalyticsConsent } from "./CookieConsentBanner";
+import { isGTMEnabled } from "./GTMProvider";
 
 // Extend window for gtag
 declare global {
@@ -31,7 +32,7 @@ export function GA4Provider({ children }: { children: React.ReactNode }) {
   var loadedRef = useRef(false);
   var location = useLocation();
   var { data: initData } = useHomepageInit();
-  var [consentGranted, setConsentGranted] = useState(hasAnalyticsConsent);
+  var [consentGranted, setConsentGranted] = useState(hasAnalyticsConsent());
 
   // Listen for LGPD consent changes (user clicking "Aceitar Todos")
   useEffect(function () {
@@ -64,6 +65,18 @@ export function GA4Provider({ children }: { children: React.ReactNode }) {
     // Don't re-inject
     if (loadedRef.current) return;
     loadedRef.current = true;
+
+    // When GTM is enabled, it loads gtag.js — we only need to set up the
+    // dataLayer push function so our event tracking calls still work.
+    if (initData.marketingConfig && isGTMEnabled(initData.marketingConfig)) {
+      window.dataLayer = window.dataLayer || [];
+      if (!window.gtag) {
+        window.gtag = function gtag() {
+          window.dataLayer.push(arguments);
+        };
+      }
+      return;
+    }
 
     // Defer GA4 script injection using requestIdleCallback (non-blocking)
     var inject = function () {

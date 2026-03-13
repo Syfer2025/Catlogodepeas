@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
-import {
-  Layers,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-} from "lucide-react";
+import { Layers, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import * as api from "../services/api";
 import type { CategoryNode } from "../services/api";
 import { defaultCategoryTree } from "../data/categoryTree";
@@ -182,22 +177,22 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
         style={{
           fontSize: "0.9rem",
           fontWeight: isOpen ? 600 : 500,
-          transition: "all 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+          transition: "background-color 220ms ease, color 220ms ease, box-shadow 220ms ease, border-radius 220ms ease, font-weight 220ms ease",
           boxShadow: isOpen ? "0 -2px 12px rgba(220,38,38,0.15)" : "none",
         }}
       >
         <Layers
           className="w-4 h-4"
           style={{
-            transition: "transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1)",
-            transform: isOpen ? "rotate(-15deg) scale(1.1)" : "rotate(0) scale(1)",
+            transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+            transform: isOpen ? "rotate(-15deg) scale(1.08)" : "rotate(0) scale(1)",
           }}
         />
         Categorias
         <ChevronDown
           className="w-3.5 h-3.5"
           style={{
-            transition: "transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+            transition: "transform 350ms cubic-bezier(0.4, 0, 0.2, 1)",
             transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
           }}
         />
@@ -229,10 +224,10 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
                   ? `${dropdownWidth + dropdownLeft}px`
                   : "min(1060px, calc(100vw - 2rem))",
                 transition: visible
-                  ? "opacity 300ms cubic-bezier(0.16,1,0.3,1), transform 300ms cubic-bezier(0.34,1.56,0.64,1)"
-                  : "opacity 200ms ease, transform 200ms ease",
+                  ? "opacity 280ms cubic-bezier(0.16,1,0.3,1), transform 280ms cubic-bezier(0.16,1,0.3,1)"
+                  : "opacity 180ms ease, transform 180ms ease",
                 opacity: visible ? 1 : 0,
-                transform: visible ? "translateY(0) scale(1)" : "translateY(-12px) scale(0.98)",
+                transform: visible ? "translateY(0)" : "translateY(-8px)",
                 transformOrigin: "top left",
                 pointerEvents: visible ? "auto" : "none",
               }}
@@ -246,8 +241,8 @@ export function CategoryMegaMenu({ onNavigate }: CategoryMegaMenuProps) {
                   transform: visible ? "scaleX(1)" : "scaleX(0)",
                   transformOrigin: "left",
                   transition: visible
-                    ? "transform 400ms cubic-bezier(0.34,1.56,0.64,1) 80ms"
-                    : "transform 150ms ease",
+                    ? "transform 350ms cubic-bezier(0.16,1,0.3,1) 60ms"
+                    : "transform 120ms ease",
                   animationName: visible ? "megaMenuShimmer" : "none",
                   animationDuration: "3s",
                   animationTimingFunction: "ease-in-out",
@@ -454,7 +449,6 @@ function ChildrenPanel({
               key={child.id}
               style={{
                 breakInside: "avoid",
-                WebkitColumnBreakInside: "avoid",
                 animationName: "megaMenuFadeIn",
                 animationDuration: "200ms",
                 animationTimingFunction: "ease",

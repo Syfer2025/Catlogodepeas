@@ -1,22 +1,20 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
-import {
-  CreditCard,
-  Save,
-  Loader2,
-  Eye,
-  EyeOff,
-  CheckCircle2,
-  AlertCircle,
-  Shield,
-  Settings,
-  Zap,
-  Info,
-  KeyRound,
-  ExternalLink,
-  PlugZap,
-} from "lucide-react";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import AlertCircle from "lucide-react/dist/esm/icons/alert-circle.js";
+import Shield from "lucide-react/dist/esm/icons/shield.js";
+import Settings from "lucide-react/dist/esm/icons/settings.js";
+import Zap from "lucide-react/dist/esm/icons/zap.js";
+import Info from "lucide-react/dist/esm/icons/info.js";
+import KeyRound from "lucide-react/dist/esm/icons/key-round.js";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link.js";
+import PlugZap from "lucide-react/dist/esm/icons/plug-zap.js";
 
 async function getToken(): Promise<string> {
   const token = await getValidAdminToken();
@@ -35,7 +33,7 @@ interface SafrapayConfig {
   enabled: boolean;
 }
 
-import { projectId, publicAnonKey } from "/utils/supabase/info";
+import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
 
 export function AdminSafrapay() {

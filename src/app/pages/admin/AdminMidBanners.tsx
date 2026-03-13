@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Upload, Trash2, Loader2, ImageIcon, Link2, Save, Eye, EyeOff } from "lucide-react";
+import { Upload, Trash2, Loader2, Image as ImageIcon, Link2, Save, Eye, EyeOff } from "lucide-react";
 import * as api from "../../services/api";
 import type { MidBanner } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -45,6 +45,7 @@ export function AdminMidBanners() {
     try {
       setLoading(true);
       var token = await getValidAdminToken();
+      if (!token) return;
       var result = await api.getMidBanners(token);
       var banners = result.banners || [];
       setSlots(function (prev) {
@@ -104,6 +105,7 @@ export function AdminMidBanners() {
     updateSlot(slotIdx, "saving", true);
     try {
       var token = await getValidAdminToken();
+      if (!token) return;
       var formData = new FormData();
       if (s.file) formData.append("image", s.file);
       formData.append("link", s.link);
@@ -125,6 +127,7 @@ export function AdminMidBanners() {
     updateSlot(slotIdx, "deleting", true);
     try {
       var token = await getValidAdminToken();
+      if (!token) return;
       await api.deleteMidBanner(slotIdx + 1, token);
       invalidateHomepageCache();
       showToast("success", "Banner " + (slotIdx + 1) + " removido!");

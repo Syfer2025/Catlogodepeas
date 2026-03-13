@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Upload, Trash2, Loader2, ImageIcon, Link2, Save, Eye, EyeOff, CreditCard, Truck, ShieldCheck } from "lucide-react";
+import { Upload, Trash2, Loader2, Image as ImageIcon, Link2, Save, Eye, EyeOff, CreditCard, Truck, ShieldCheck } from "lucide-react";
 import * as api from "../../services/api";
 import type { FooterBadge } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -59,6 +59,7 @@ export function AdminFooterBadges() {
     try {
       setLoading(true);
       var token = await getValidAdminToken();
+      if (!token) return;
       var result = await api.getFooterBadges(token);
       var badges = result.badges || [];
       setSlotsMap(function (prev) {
@@ -112,6 +113,7 @@ export function AdminFooterBadges() {
     updateSlot(key, "saving", true);
     try {
       var token = await getValidAdminToken();
+      if (!token) return;
       var formData = new FormData();
       if (s.file) formData.append("image", s.file);
       formData.append("link", s.link);
@@ -134,6 +136,7 @@ export function AdminFooterBadges() {
     updateSlot(key, "deleting", true);
     try {
       var token = await getValidAdminToken();
+      if (!token) return;
       await api.deleteFooterBadge(key, token);
       invalidateHomepageCache();
       showToast("success", key + " removido!");

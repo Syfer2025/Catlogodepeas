@@ -1,27 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  Plus,
-  Trash2,
-  Loader2,
-  Save,
-  MapPin,
-  Phone,
-  Clock,
-  MessageCircle,
-  ImageIcon,
-  Upload,
-  GripVertical,
-  Eye,
-  EyeOff,
-  Star,
-  ChevronDown,
-  ChevronUp,
-  X,
-  ExternalLink,
-} from "lucide-react";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import MapPin from "lucide-react/dist/esm/icons/map-pin.js";
+import Phone from "lucide-react/dist/esm/icons/phone.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import MessageCircle from "lucide-react/dist/esm/icons/message-circle.js";
+import ImageIcon from "lucide-react/dist/esm/icons/image.js";
+import Upload from "lucide-react/dist/esm/icons/upload.js";
+import GripVertical from "lucide-react/dist/esm/icons/grip-vertical.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import Star from "lucide-react/dist/esm/icons/star.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link.js";
 import * as api from "../../services/api";
 import type { Branch } from "../../services/api";
-import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 
 async function getToken(): Promise<string> {

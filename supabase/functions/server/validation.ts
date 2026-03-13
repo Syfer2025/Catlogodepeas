@@ -305,10 +305,12 @@ export var schemas = {
   couponValidate: {
     code: { required: true, type: "string" as const, maxLen: 50 },
     orderTotal: { type: "number" as const, min: 0, max: 99999999 },
+    cpf: { type: "string" as const, maxLen: 20 },
   },
   couponUse: {
     code: { required: true, type: "string" as const, maxLen: 50 },
     orderId: { type: "string" as const, maxLen: 100 },
+    cpf: { type: "string" as const, maxLen: 20 },
   },
   profileUpdate: {
     name: { maxLen: 150 },

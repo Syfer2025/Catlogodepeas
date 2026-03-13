@@ -1,26 +1,24 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import {
-  Play,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  RotateCcw,
-  Search,
-  AlertTriangle,
-  FileCode,
-  ChevronDown,
-  ChevronRight,
-  Zap,
-  Bug,
-  Eye,
-  Globe,
-  Layers,
-  RefreshCw,
-  Trash2,
-  Download,
-  Copy,
-  Check,
-} from "lucide-react";
+import Play from "lucide-react/dist/esm/icons/play.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import FileCode from "lucide-react/dist/esm/icons/file-code.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.js";
+import Zap from "lucide-react/dist/esm/icons/zap.js";
+import Bug from "lucide-react/dist/esm/icons/bug.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import Globe from "lucide-react/dist/esm/icons/globe.js";
+import Layers from "lucide-react/dist/esm/icons/layers.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Download from "lucide-react/dist/esm/icons/download.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
 import { getGlobalErrors, clearGlobalErrors } from "../../components/GlobalErrorCollector";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

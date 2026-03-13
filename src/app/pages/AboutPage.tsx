@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import {
-  Home,
-  ChevronRight,
-  MapPin,
-  Phone,
-  Clock,
-  MessageCircle,
-  ExternalLink,
-  Loader2,
-  Building2,
-} from "lucide-react";
+import Home from "lucide-react/dist/esm/icons/home";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import MapPin from "lucide-react/dist/esm/icons/map-pin";
+import Phone from "lucide-react/dist/esm/icons/phone";
+import Clock from "lucide-react/dist/esm/icons/clock";
+import MessageCircle from "lucide-react/dist/esm/icons/message-circle";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import Building2 from "lucide-react/dist/esm/icons/building-2";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import * as api from "../services/api";
 import type { Branch } from "../services/api";

@@ -1,45 +1,43 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
-import {
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Lock,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  LogOut,
-  Save,
-  ShieldCheck,
-  Package,
-  ChevronRight,
-  CreditCard,
-  ExternalLink,
-  Clock,
-  ShoppingBag,
-  Eye,
-  ChevronDown,
-  Hash,
-  Truck,
-  Heart,
-  Plus,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-  Home,
-  Building2,
-  Star,
-  Filter,
-  ArrowUpDown,
-  Sparkles,
-  Search,
-  FileText,
-  ThumbsUp,
-  ChevronUp,
-} from "lucide-react";
-import { supabase } from "../services/supabaseClient";
+import User from "lucide-react/dist/esm/icons/user";
+import Mail from "lucide-react/dist/esm/icons/mail";
+import Phone from "lucide-react/dist/esm/icons/phone";
+import MapPin from "lucide-react/dist/esm/icons/map-pin";
+import Lock from "lucide-react/dist/esm/icons/lock";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
+import CheckCircle2 from "lucide-react/dist/esm/icons/circle-check";
+import LogOut from "lucide-react/dist/esm/icons/log-out";
+import Save from "lucide-react/dist/esm/icons/save";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check";
+import Package from "lucide-react/dist/esm/icons/package";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link";
+import Clock from "lucide-react/dist/esm/icons/clock";
+import ShoppingBag from "lucide-react/dist/esm/icons/shopping-bag";
+import Eye from "lucide-react/dist/esm/icons/eye";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import Hash from "lucide-react/dist/esm/icons/hash";
+import Truck from "lucide-react/dist/esm/icons/truck";
+import Heart from "lucide-react/dist/esm/icons/heart";
+import Plus from "lucide-react/dist/esm/icons/plus";
+import Pencil from "lucide-react/dist/esm/icons/pencil";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2";
+import Check from "lucide-react/dist/esm/icons/check";
+import X from "lucide-react/dist/esm/icons/x";
+import Home from "lucide-react/dist/esm/icons/home";
+import Building2 from "lucide-react/dist/esm/icons/building-2";
+import Star from "lucide-react/dist/esm/icons/star";
+import Filter from "lucide-react/dist/esm/icons/funnel";
+import ArrowUpDown from "lucide-react/dist/esm/icons/arrow-up-down";
+import Sparkles from "lucide-react/dist/esm/icons/sparkles";
+import Search from "lucide-react/dist/esm/icons/search";
+import FileText from "lucide-react/dist/esm/icons/file-text";
+import ThumbsUp from "lucide-react/dist/esm/icons/thumbs-up";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
+import { supabase, getValidAccessToken } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { ProductImage } from "../components/ProductImage";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
@@ -172,13 +170,38 @@ export function UserAccountPage() {
       setEditInscricaoEstadual(data.inscricaoEstadual || "");
     } catch (err: any) {
       console.error("Load profile error:", err);
+      // Don't signOut on transient errors (network hiccup, cold start timeout).
+      // Only redirect to login if the session is genuinely expired/invalid.
       try {
         var refreshResult = await supabase.auth.refreshSession();
         var refreshData = refreshResult.data;
         var refreshErr = refreshResult.error;
         if (refreshErr || !refreshData.session?.access_token) {
-          console.error("Session refresh failed, redirecting to login");
-          await supabase.auth.signOut();
+          // Double-check: is there still a session? If so, it's a transient failure.
+          var fallbackResult = await supabase.auth.getSession();
+          if (fallbackResult.data?.session?.access_token) {
+            // Session still exists — try once more with existing token
+            var fbToken = fallbackResult.data.session.access_token;
+            setAccessToken(fbToken);
+            try {
+              var data3 = await api.userMe(fbToken);
+              setProfile(data3);
+              setName(data3.name || "");
+              setPhone(data3.phone ? formatPhone(data3.phone) : "");
+              setCpf(data3.cpf ? formatCpf(data3.cpf) : "");
+              setEditPersonType(data3.personType || "pf");
+              setEditCnpj(data3.cnpj ? formatCnpj(data3.cnpj) : "");
+              setEditRazaoSocial(data3.razaoSocial || "");
+              setEditInscricaoEstadual(data3.inscricaoEstadual || "");
+              return "ok";
+            } catch {
+              // API unreachable but session valid — don't destroy session
+              console.warn("API unreachable but session valid — NOT signing out");
+              return "ok";
+            }
+          }
+          console.error("Session genuinely expired, redirecting to login");
+          await supabase.auth.signOut({ scope: "local" });
           return "redirect";
         }
         var freshToken = refreshData.session.access_token;
@@ -194,7 +217,15 @@ export function UserAccountPage() {
         setEditInscricaoEstadual(data2.inscricaoEstadual || "");
       } catch (retryErr: any) {
         console.error("Retry after refresh also failed:", retryErr);
-        await supabase.auth.signOut();
+        // Last resort: check if session still exists before signing out
+        try {
+          var lastCheck = await supabase.auth.getSession();
+          if (lastCheck.data?.session?.access_token) {
+            console.warn("API unreachable but session valid — NOT signing out");
+            return "ok";
+          }
+        } catch {}
+        await supabase.auth.signOut({ scope: "local" });
         return "redirect";
       }
     }
@@ -206,18 +237,30 @@ export function UserAccountPage() {
     var cancelled = false;
 
     async function init() {
-      var refreshResult = await supabase.auth.refreshSession();
-      var session = refreshResult.data?.session;
+      // Use getValidAccessToken (with dedup) instead of direct refreshSession
+      // to avoid race conditions with concurrent refresh calls from other components
+      var token = await getValidAccessToken();
 
-      if (!session?.access_token) {
+      if (!token) {
+        // Fallback: check getSession in case dedup returned null transiently
         var sessionResult = await supabase.auth.getSession();
-        session = sessionResult.data?.session;
+        if (sessionResult.data?.session?.access_token) {
+          token = sessionResult.data.session.access_token;
+        }
       }
 
-      if (!session?.access_token) {
+      if (!token) {
         if (!cancelled) navigate("/conta", { replace: true });
         return;
       }
+
+      // We have a valid token — assign it as a pseudo-session for downstream code
+      var session = { access_token: token, user: null as any } as any;
+      // Try to get the full session object for user ID
+      try {
+        var fullSession = await supabase.auth.getSession();
+        if (fullSession.data?.session) session = fullSession.data.session;
+      } catch {}
 
       if (!cancelled) {
         setAccessToken(session.access_token);

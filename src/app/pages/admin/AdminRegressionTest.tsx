@@ -1,27 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import {
-  Play,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-  RotateCcw,
-  Gauge,
-  Clock,
-  Layers,
-  Zap,
-  Eye,
-  BarChart3,
-  ChevronDown,
-  ChevronRight,
-  Cpu,
-  Monitor,
-  Smartphone,
-  Globe,
-  FileCheck,
-  ArrowUpRight,
-  Info,
-} from "lucide-react";
+import Play from "lucide-react/dist/esm/icons/play.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import XCircle from "lucide-react/dist/esm/icons/x-circle.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw.js";
+import Gauge from "lucide-react/dist/esm/icons/gauge.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import Layers from "lucide-react/dist/esm/icons/layers.js";
+import Zap from "lucide-react/dist/esm/icons/zap.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import BarChart3 from "lucide-react/dist/esm/icons/bar-chart-3.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right.js";
+import Cpu from "lucide-react/dist/esm/icons/cpu.js";
+import Monitor from "lucide-react/dist/esm/icons/monitor.js";
+import Smartphone from "lucide-react/dist/esm/icons/smartphone.js";
+import Globe from "lucide-react/dist/esm/icons/globe.js";
+import FileCheck from "lucide-react/dist/esm/icons/file-check.js";
+import ArrowUpRight from "lucide-react/dist/esm/icons/arrow-up-right.js";
+import Info from "lucide-react/dist/esm/icons/info.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TestResult {

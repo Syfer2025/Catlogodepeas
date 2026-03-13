@@ -1,24 +1,22 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import {
-  Home,
-  ChevronRight,
-  Shield,
-  Send,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  Copy,
-  Check,
-  Info,
-  FileText,
-  User,
-  Mail,
-  Phone,
-  CreditCard,
-  Clock,
-} from "lucide-react";
+import Home from "lucide-react/dist/esm/icons/home";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import Shield from "lucide-react/dist/esm/icons/shield";
+import Send from "lucide-react/dist/esm/icons/send";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import CheckCircle2 from "lucide-react/dist/esm/icons/circle-check";
+import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
+import Search from "lucide-react/dist/esm/icons/search";
+import Copy from "lucide-react/dist/esm/icons/copy";
+import Check from "lucide-react/dist/esm/icons/check";
+import Info from "lucide-react/dist/esm/icons/info";
+import FileText from "lucide-react/dist/esm/icons/file-text";
+import User from "lucide-react/dist/esm/icons/user";
+import Mail from "lucide-react/dist/esm/icons/mail";
+import Phone from "lucide-react/dist/esm/icons/phone";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card";
+import Clock from "lucide-react/dist/esm/icons/clock";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import * as api from "../services/api";
 import { toast } from "sonner";

@@ -1,14 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
-import {
-  Phone,
-  Mail,
-  Clock,
-  MessageCircle,
-  ExternalLink,
-  ArrowUpRight,
-  Cookie,
-} from "lucide-react";
+import { Phone, Mail, Clock, MessageCircle, ExternalLink, ArrowUpRight, Cookie } from "lucide-react";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import type { FooterBadge } from "../services/api";
 
@@ -28,6 +20,7 @@ var UNIDADES = [
 var QUICK_LINKS = [
   { label: "Catálogo Completo", path: "/catalogo" },
   { label: "Fale Conosco", path: "/contato" },
+  { label: "Perguntas Frequentes", path: "/faq" },
   { label: "Programa de Afiliados", path: "/afiliados" },
   { label: "Política de Privacidade", path: "/politica-de-privacidade" },
   { label: "Termos de Uso", path: "/termos-de-uso" },
@@ -62,7 +55,7 @@ export function Footer() {
   var raBadge = useMemo(function () { return badges.find(function (b) { return b.category === "reclameaqui" && b.active && b.imageUrl; }); }, [badges]);
 
   return (
-    <footer className="bg-gray-900 text-gray-300">
+    <footer className="bg-gray-900 text-gray-300" role="contentinfo" aria-label="Rodapé do site">
       <div className="h-1 bg-gradient-to-r from-red-600 via-red-500 to-red-600" />
 
       {/* ═══════════ PARTE SUPERIOR — Contato, Links, Unidades ═══════════ */}

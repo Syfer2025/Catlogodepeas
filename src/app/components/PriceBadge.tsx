@@ -24,7 +24,7 @@ function formatPrice(value: number): string {
 
 // ═══════════════════════════════════════════════════════════
 // Module-level concurrency limiter + dedup cache + retry
-// ═══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
 
 const MAX_CONCURRENT = 2;
 const PRICE_CACHE_TTL = 5 * 60_000;

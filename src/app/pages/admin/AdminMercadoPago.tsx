@@ -4,35 +4,7 @@ import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { MercadoPagoConfig, MPPayment } from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
-import {
-  Wallet,
-  Save,
-  Check,
-  Loader2,
-  Trash2,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  FileText,
-  XCircle,
-  ExternalLink,
-  Copy,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Ban,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  Zap,
-  Shield,
-  Globe,
-  Settings,
-  CreditCard,
-  ArrowRight,
-  Info,
-  TestTube2,
-} from "lucide-react";
+import { Wallet, Save, Check, Loader2, Trash2, Eye, EyeOff, RefreshCw, FileText, XCircle, ExternalLink, Copy, AlertCircle, CheckCircle2, Clock, Ban, ChevronDown, ChevronUp, Search, Zap, Shield, Globe, Settings, CreditCard, ArrowRight, Info, TestTube2 } from "lucide-react";
 
 /* ===================================================
    Helpers
@@ -570,7 +542,8 @@ function PaymentsSection() {
   const refreshPayment = async (paymentId: number) => {
     setRefreshingId(paymentId);
     try {
-      await api.getMPPaymentStatus(paymentId);
+      const tk = await getToken();
+      await api.getMPPaymentStatus(paymentId, tk);
       await loadPayments();
     } catch (e: any) {
       console.error("Refresh error:", e);

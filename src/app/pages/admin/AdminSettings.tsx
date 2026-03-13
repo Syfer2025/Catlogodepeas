@@ -3,10 +3,7 @@ import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { SiteSettings, LogoMeta, FaviconMeta } from "../../services/api";
-import {
-  Save, Store, Globe, Bell, Palette, Shield, Check, Loader2, Database,
-  Upload, Trash2, ImageIcon, FileWarning, X, DollarSign,
-} from "lucide-react";
+import { Save, Store, Globe, Bell, Palette, Shield, Check, Loader2, Database, Upload, Trash2, Image as ImageIcon, FileWarning, X, DollarSign } from "lucide-react";
 
 const defaultSettings: SiteSettings = {
   storeName: "Carretão Auto Peças",
@@ -1432,7 +1429,7 @@ function PricingConfigSection() {
     try {
       const token = await getToken();
       const result = await api.clearPriceCache(token);
-      setCacheClearMsg(result.message || `${result.cleared} caches removidos.`);
+      setCacheClearMsg((result as any).message || (result.cleared + " caches removidos."));
       setTimeout(() => setCacheClearMsg(""), 5000);
     } catch (e: any) {
       setCacheClearMsg(e.message || "Erro ao limpar cache.");

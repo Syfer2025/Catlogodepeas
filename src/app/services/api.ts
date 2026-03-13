@@ -1,4 +1,4 @@
-import { projectId, publicAnonKey } from "/utils/supabase/info";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { Product, Category } from "../data/products";
 
 const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
@@ -32,11 +32,20 @@ function _doWarmup() {
     signal: ac.signal,
   }).then(function () {
     clearTimeout(tid);
+    _warmupReady = true;
+    // Pre-warm public coupons cache on server after health succeeds
+    fetch(BASE_URL + "/coupons/public", {
+      method: "GET",
+      headers: { Authorization: "Bearer " + publicAnonKey },
+    }).catch(function () { /* silent — cache priming is best-effort */ });
   }).catch(function () {
     clearTimeout(tid);
     // Silent — warmup failure is non-critical; retry logic in request() handles it
   });
 }
+
+// Track whether warmup has completed (edge function is hot)
+var _warmupReady = false;
 
 // Fire immediately at module load
 _doWarmup();
@@ -47,7 +56,7 @@ setTimeout(function () {
   fetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + publicAnonKey },
-  }).catch(function () { /* silent */ });
+  }).then(function () { _warmupReady = true; }).catch(function () { /* silent */ });
 }, 2000);
 
 const headers = {
@@ -323,8 +332,8 @@ export const getAdminList = (accessToken: string) =>
   });
 
 /** Add or remove admin from whitelist (master only) */
-export const manageAdmin = (accessToken: string, action: "add" | "remove", email: string, permissions?: string[]) =>
-  request<{ ok?: boolean; list?: string[]; permissions?: string[]; error?: string }>("/auth/admin-whitelist", {
+export const manageAdmin = (accessToken: string, action: "add" | "remove" | "resend-invite", email: string, permissions?: string[]) =>
+  request<{ ok?: boolean; list?: string[]; permissions?: string[]; error?: string; message?: string; emailSent?: boolean; emailError?: string }>("/auth/admin-whitelist", {
     method: "POST",
     headers: { "X-User-Token": accessToken },
     body: JSON.stringify({ action, email, permissions }),
@@ -1476,24 +1485,9 @@ export const sigeTestOrderTipoMv = async (accessToken: string, data: { codCliFor
   return body;
 };
 
-// ─── Products ───
-export const getProducts = () => request<Product[]>("/products");
-export const getProduct = (id: string) => request<Product>(`/products/${id}`);
-export const createProduct = (product: Partial<Product>) =>
-  request<Product>("/products", { method: "POST", body: JSON.stringify(product) });
-export const updateProduct = (id: string, product: Partial<Product>) =>
-  request<Product>(`/products/${id}`, { method: "PUT", body: JSON.stringify(product) });
-export const deleteProduct = (id: string) =>
-  request<{ deleted: boolean }>(`/products/${id}`, { method: "DELETE" });
+// ─── Products (legacy CRUD removed — dead code) ───
 
-// ─── Categories ───
-export const getCategories = () => request<Category[]>("/categories");
-export const createCategory = (category: Partial<Category>) =>
-  request<Category>("/categories", { method: "POST", body: JSON.stringify(category) });
-export const updateCategory = (id: string, category: Partial<Category>) =>
-  request<Category>(`/categories/${id}`, { method: "PUT", body: JSON.stringify(category) });
-export const deleteCategory = (id: string) =>
-  request<{ deleted: boolean }>(`/categories/${id}`, { method: "DELETE" });
+// ─── Categories (legacy CRUD removed — dead code) ───
 
 // ─── Category Tree (hierarchical) ───
 export interface CategoryNode {
@@ -1504,8 +1498,12 @@ export interface CategoryNode {
 }
 
 export const getCategoryTree = () => request<CategoryNode[]>("/category-tree");
-export const saveCategoryTree = (tree: CategoryNode[]) =>
-  request<CategoryNode[]>("/category-tree", { method: "PUT", body: JSON.stringify(tree) });
+export const saveCategoryTree = (tree: CategoryNode[], accessToken?: string) =>
+  request<CategoryNode[]>("/category-tree", {
+    method: "PUT",
+    body: JSON.stringify(tree),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
+  });
 
 // ─── Messages ───
 export interface Message {
@@ -1520,13 +1518,9 @@ export interface Message {
   read: boolean;
 }
 
-export const getMessages = () => request<Message[]>("/messages");
 export const createMessage = (msg: Partial<Message> & { captchaToken?: string }) =>
   request<Message>("/messages", { method: "POST", body: JSON.stringify(msg) });
-export const updateMessage = (id: string, msg: Partial<Message>) =>
-  request<Message>(`/messages/${id}`, { method: "PUT", body: JSON.stringify(msg) });
-export const deleteMessage = (id: string) =>
-  request<{ deleted: boolean }>(`/messages/${id}`, { method: "DELETE" });
+// getMessages, updateMessage, deleteMessage removed — dead code
 
 // ─── Admin Audit Log ───
 export interface AuditLogEntry {
@@ -1642,9 +1636,37 @@ export interface GA4Config {
   trackViewItem: boolean;
 }
 
+// ─── Marketing Pixels (Meta Pixel, Google Ads, Clarity, TikTok, GTM) ───
+export interface MarketingConfig {
+  // GTM (Google Tag Manager) — when enabled, replaces individual pixel scripts
+  gtmId: string;
+  gtmEnabled: boolean;
+  metaPixelId: string;
+  metaPixelEnabled: boolean;
+  googleAdsId: string;
+  googleAdsConversionLabel: string;
+  googleAdsEnabled: boolean;
+  clarityProjectId: string;
+  clarityEnabled: boolean;
+  tiktokPixelId: string;
+  tiktokPixelEnabled: boolean;
+}
+
+export const getMarketingConfig = () => request<MarketingConfig>("/marketing/config");
+export const updateMarketingConfig = (config: MarketingConfig, accessToken?: string) =>
+  request<MarketingConfig>("/marketing/config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
+  });
+
 export const getGA4Config = () => request<GA4Config>("/ga4/config");
-export const updateGA4Config = (config: GA4Config) =>
-  request<GA4Config>("/ga4/config", { method: "PUT", body: JSON.stringify(config) });
+export const updateGA4Config = (config: GA4Config, accessToken?: string) =>
+  request<GA4Config>("/ga4/config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
+  });
 
 // ─── Produtos (Supabase DB Table) ───
 export interface ProdutoDB {
@@ -2028,10 +2050,11 @@ export interface StockScanResult {
   error?: string;
 }
 
-export const triggerStockScan = (batchSize = 50) =>
+export const triggerStockScan = (batchSize = 50, accessToken?: string) =>
   request<StockScanResult>("/produtos/stock-scan", {
     method: "POST",
     body: JSON.stringify({ batchSize }),
+    ...(accessToken ? { headers: { "X-User-Token": accessToken } } : {}),
   });
 
 // ─── SIGE Product Mapping (match local SKUs ↔ SIGE IDs) ─���─
@@ -2582,7 +2605,7 @@ export const clearPriceCache = (accessToken: string) =>
 export interface ProductPrice {
   sku: string;
   found: boolean;
-  source: "sige" | "custom" | "none";
+  source: "sige" | "custom" | "none" | "error";
   price: number | null;
   v1: number | null;
   v2: number | null;
@@ -2753,13 +2776,14 @@ export interface PixCreateResponse {
   error?: string;
 }
 
-export const createPixCharge = (payload: PixCreatePayload) =>
+export const createPixCharge = (payload: PixCreatePayload, accessToken?: string | null) =>
   request<PixCreateResponse>("/paghiper/pix/create", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
-export const getPixStatus = (transaction_id: string) =>
+export const getPixStatus = (transaction_id: string, accessToken?: string | null) =>
   request<{
     transaction_id: string;
     status: string;
@@ -2772,6 +2796,7 @@ export const getPixStatus = (transaction_id: string) =>
   }>("/paghiper/pix/status", {
     method: "POST",
     body: JSON.stringify({ transaction_id }),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
 export const cancelPixCharge = (accessToken: string, transaction_id: string) =>
@@ -2822,13 +2847,14 @@ export interface BoletoCreateResponse {
   error?: string;
 }
 
-export const createBoletoCharge = (payload: BoletoCreatePayload) =>
+export const createBoletoCharge = (payload: BoletoCreatePayload, accessToken?: string | null) =>
   request<BoletoCreateResponse>("/paghiper/boleto/create", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
-export const getBoletoStatus = (transaction_id: string) =>
+export const getBoletoStatus = (transaction_id: string, accessToken?: string | null) =>
   request<{
     transaction_id: string;
     status: string;
@@ -2841,6 +2867,7 @@ export const getBoletoStatus = (transaction_id: string) =>
   }>("/paghiper/boleto/status", {
     method: "POST",
     body: JSON.stringify({ transaction_id }),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
 export const cancelBoletoCharge = (accessToken: string, transaction_id: string) =>
@@ -3279,7 +3306,7 @@ export const searchMPPayments = (
     }
   );
 
-export const getMPPaymentStatus = (payment_id: string | number) =>
+export const getMPPaymentStatus = (payment_id: string | number, accessToken?: string | null) =>
   request<{
     payment_id: number;
     status: string;
@@ -3295,6 +3322,7 @@ export const getMPPaymentStatus = (payment_id: string | number) =>
   }>("/mercadopago/payment-status", {
     method: "POST",
     body: JSON.stringify({ payment_id }),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
 export interface MPCreatePreferencePayload {
@@ -3315,7 +3343,7 @@ export interface MPCreatePreferencePayload {
   };
 }
 
-export const createMPPreference = (payload: MPCreatePreferencePayload) =>
+export const createMPPreference = (payload: MPCreatePreferencePayload, accessToken?: string | null) =>
   request<{
     success: boolean;
     preferenceId: string;
@@ -3327,6 +3355,7 @@ export const createMPPreference = (payload: MPCreatePreferencePayload) =>
   }>("/mercadopago/create-preference", {
     method: "POST",
     body: JSON.stringify(payload),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
 export const getMPTransactions = (accessToken: string) =>
@@ -3721,11 +3750,128 @@ export interface HomepageInitData {
   midBanners?: MidBanner[];
   footerBadges?: FooterBadge[];
   brands?: BrandItem[];
+  marketingConfig?: MarketingConfig;
+  exitIntentConfig?: ExitIntentConfig;
+  googleReviewsConfig?: GoogleReviewsConfig;
 }
 
 /** Fetches all homepage data in a single API call */
 export const getHomepageInit = () =>
   request<HomepageInitData>("/homepage-init");
+
+// ─── Exit Intent Popup ───
+
+export interface ExitIntentConfig {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  couponCode: string;
+  discountText: string;
+  buttonText: string;
+  successMessage: string;
+  showAfterSeconds: number;
+  showOnMobile: boolean;
+}
+
+export const getExitIntentConfig = () => request<ExitIntentConfig>("/exit-intent-config");
+export const updateExitIntentConfig = (config: ExitIntentConfig, accessToken?: string) =>
+  request<ExitIntentConfig>("/exit-intent-config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
+  });
+
+export const captureExitIntentLead = (data: { email: string; name?: string; page?: string }) =>
+  request<{ ok: boolean }>("/exit-intent-lead", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getExitIntentLeads = (accessToken: string) =>
+  request<{ leads: any[] }>("/admin/exit-intent-leads", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── Google Customer Reviews ───
+
+export interface GoogleReviewsConfig {
+  enabled: boolean;
+  merchantId: string;
+  badgePosition: string;
+}
+
+export const getGoogleReviewsConfig = () => request<GoogleReviewsConfig>("/google-reviews-config");
+export const updateGoogleReviewsConfig = (config: GoogleReviewsConfig, accessToken?: string) =>
+  request<GoogleReviewsConfig>("/google-reviews-config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
+  });
+
+// ─── WhatsApp Abandoned Cart ───
+
+export interface WhatsAppTemplate {
+  enabled: boolean;
+  delayMinutes: number;
+  message: string;
+}
+
+export interface WhatsAppConfig {
+  enabled: boolean;
+  provider: "zenvia" | "blip";
+  zenviaApiToken: string;
+  zenviaSender: string;
+  blipBotKey: string;
+  storePhone: string;
+  templates: {
+    reminder1h: WhatsAppTemplate;
+    reminder24h: WhatsAppTemplate;
+    reminder72h: WhatsAppTemplate;
+  };
+}
+
+export const getWhatsAppConfig = (accessToken: string) =>
+  request<WhatsAppConfig>("/admin/whatsapp-config", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const updateWhatsAppConfig = (config: WhatsAppConfig, accessToken: string) =>
+  request<WhatsAppConfig>("/admin/whatsapp-config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const sendWhatsAppTest = (accessToken: string, phone: string, message?: string) =>
+  request<{ ok: boolean; message?: string; error?: string }>("/admin/whatsapp-test", {
+    method: "POST",
+    body: JSON.stringify({ phone, message }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const processAbandonedCarts = (accessToken: string) =>
+  request<{ processed: number; sent: number; errors?: string[] }>("/admin/whatsapp-process-abandoned", {
+    method: "POST",
+    body: "{}",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const getAbandonedCarts = (accessToken: string) =>
+  request<{ carts: any[] }>("/admin/whatsapp-abandoned-carts", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const saveCartSnapshot = (data: { phone?: string; email?: string; name?: string; items: any[]; totalPrice: number }) =>
+  request<{ ok: boolean }>("/whatsapp/cart-snapshot", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const markCartCompleted = (data: { phone?: string; email?: string }) =>
+  request<{ ok: boolean }>("/whatsapp/cart-completed", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 
 // ─── Email Marketing ───
 
@@ -3931,6 +4077,13 @@ export const testSmtpConnection = (accessToken: string, data: {
     headers: { "X-User-Token": accessToken },
   });
 
+export const sendSmtpTestEmail = (accessToken: string, to: string) =>
+  request<{ ok: boolean; message: string; messageId?: string; response?: string }>("/admin/email-marketing/smtp-send-test", {
+    method: "POST",
+    body: JSON.stringify({ to }),
+    headers: { "X-User-Token": accessToken },
+  });
+
 // ─── Admin Dashboard ───
 
 export interface DashboardStats {
@@ -3969,10 +4122,59 @@ export interface AdminPendingCounts {
   orders: { paid: number; awaiting: number; total: number };
   reviews: number;
   lgpd: number;
+  affiliates?: number;
 }
 
 export const getAdminPendingCounts = (accessToken: string) =>
   request<AdminPendingCounts>("/admin/pending-counts", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── FAQ (Perguntas Frequentes) ───
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  active: boolean;
+  order: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const getPublicFaq = () =>
+  request<{ items: FaqItem[] }>("/faq");
+
+export const getAdminFaq = (accessToken: string) =>
+  request<{ items: FaqItem[]; total: number }>("/admin/faq", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const createFaq = (accessToken: string, data: { question: string; answer: string; category?: string; active?: boolean }) =>
+  request<{ ok: boolean; item: FaqItem }>("/admin/faq", {
+    method: "POST",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const updateFaq = (accessToken: string, id: string, data: Partial<FaqItem>) =>
+  request<{ ok: boolean; item: FaqItem }>("/admin/faq/" + encodeURIComponent(id), {
+    method: "PUT",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const deleteFaq = (accessToken: string, id: string) =>
+  request<{ ok: boolean; deleted: string }>("/admin/faq/" + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const reorderFaq = (accessToken: string, ids: string[]) =>
+  request<{ ok: boolean }>("/admin/faq-order", {
+    method: "PUT",
+    body: JSON.stringify({ ids }),
     headers: { "X-User-Token": accessToken },
   });
 
@@ -3988,6 +4190,7 @@ export interface Coupon {
   usedCount: number;
   active: boolean;
   expiresAt: string | null;
+  singleUsePerCpf: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -4017,7 +4220,20 @@ export const deleteCoupon = (accessToken: string, code: string) =>
     headers: { "X-User-Token": accessToken },
   });
 
-export const validateCoupon = (code: string, orderTotal: number) =>
+export interface PublicCoupon {
+  code: string;
+  description: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  minOrderValue: number;
+  expiresAt: string | null;
+  singleUsePerCpf: boolean;
+}
+
+export const getPublicCoupons = () =>
+  request<{ coupons: PublicCoupon[] }>("/coupons/public");
+
+export const validateCoupon = (code: string, orderTotal: number, cpf?: string) =>
   request<{
     valid: boolean;
     code?: string;
@@ -4028,13 +4244,14 @@ export const validateCoupon = (code: string, orderTotal: number) =>
     error?: string;
   }>("/coupons/validate", {
     method: "POST",
-    body: JSON.stringify({ code, orderTotal }),
+    body: JSON.stringify({ code, orderTotal, cpf: cpf || undefined }),
   });
 
-export const useCoupon = (code: string) =>
+export const useCoupon = (code: string, accessToken?: string | null, cpf?: string) =>
   request<{ ok: boolean; usedCount?: number }>("/coupons/use", {
     method: "POST",
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, cpf: cpf || undefined }),
+    headers: accessToken ? { "X-User-Token": accessToken } : undefined,
   });
 
 // ─── LGPD — Exercicio de Direitos ───
@@ -4707,6 +4924,326 @@ export const saveBranch = async (
 /** Admin: delete a branch */
 export const deleteBranch = (id: string, accessToken: string) =>
   request<{ deleted: boolean }>("/admin/branches/" + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── Reels (Short Videos) ───
+
+export interface ReelProduct {
+  sku: string;
+  title: string;
+  imageUrl: string;
+}
+
+export interface ReelItem {
+  id: string;
+  title: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  /** @deprecated use products[] — kept for backward compat */
+  productSku: string;
+  productTitle: string;
+  productPrice: number | null;
+  productImageUrl: string;
+  productSlug: string;
+  /** Multiple linked products */
+  products?: ReelProduct[];
+  active?: boolean;
+  /** Show this reel on linked product pages */
+  showOnProduct?: boolean;
+  /** If set, this reel belongs to an influencer and should NOT appear in the product reels section */
+  influencerId?: string;
+  order: number;
+  createdAt?: number;
+}
+
+/** Helper: get normalized products array from a reel (handles legacy single-product) */
+export function getReelProducts(reel: ReelItem): ReelProduct[] {
+  if (reel.products && reel.products.length > 0) return reel.products;
+  if (reel.productSku) return [{ sku: reel.productSku, title: reel.productTitle || reel.productSku, imageUrl: reel.productImageUrl || "" }];
+  return [];
+}
+
+export const getReels = () =>
+  request<{ reels: ReelItem[] }>("/reels");
+
+export const getAdminReels = (accessToken: string) =>
+  request<{ reels: ReelItem[] }>("/admin/reels", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+/** Step 1: Get signed upload URLs for video (and optional thumbnail) */
+export interface ReelUploadUrlResponse {
+  reelId: string;
+  videoPath: string;
+  videoUploadUrl: string;
+  videoToken: string;
+  thumbPath: string;
+  thumbUploadUrl: string;
+  thumbToken: string;
+}
+
+export const getReelUploadUrl = (accessToken: string, videoExt: string, thumbExt?: string) =>
+  request<ReelUploadUrlResponse>("/admin/reels/upload-url", {
+    method: "POST",
+    body: JSON.stringify({ videoExt, thumbExt: thumbExt || "" }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+/** Step 2: Upload file directly to Supabase Storage via signed URL */
+export async function uploadToSignedUrl(signedUrl: string, token: string, file: File): Promise<void> {
+  var res = await fetch(signedUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+      "x-upsert": "true",
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    var text = await res.text().catch(function () { return ""; });
+    throw new Error("Upload falhou (HTTP " + res.status + "): " + text.substring(0, 200));
+  }
+}
+
+/** Step 3: Save reel metadata (after files uploaded) */
+export const createReel = (accessToken: string, data: {
+  reelId: string;
+  title: string;
+  videoFilename: string;
+  thumbnailFilename: string;
+  productSku: string;
+  productTitle: string;
+  productImageUrl: string;
+  productSlug: string;
+  products?: ReelProduct[];
+  active: boolean;
+  /** If provided, marks this reel as belonging to an influencer (excluded from product reels) */
+  influencerId?: string;
+}) =>
+  request<{ ok: boolean; reel: ReelItem }>("/admin/reels", {
+    method: "POST",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+/** Update reel metadata (optionally with new filenames if files re-uploaded) */
+export const updateReel = (accessToken: string, id: string, data: Record<string, any>) =>
+  request<{ ok: boolean; reel: ReelItem }>("/admin/reels/" + encodeURIComponent(id), {
+    method: "PUT",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const deleteReel = (id: string, accessToken: string) =>
+  request<{ ok: boolean; deleted: string }>("/admin/reels/" + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const reorderReels = (accessToken: string, ids: string[]) =>
+  request<{ ok: boolean }>("/admin/reels-order", {
+    method: "PUT",
+    body: JSON.stringify({ ids }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── Influencers (Stories-style carousel) ───
+
+export interface InfluencerItem {
+  id: string;
+  name: string;
+  photoUrl: string;
+  photoFilename?: string;
+  reelIds: string[];
+  reels?: ReelItem[];
+  active?: boolean;
+  order: number;
+  createdAt?: number;
+}
+
+export const getInfluencers = () =>
+  request<{ influencers: InfluencerItem[] }>("/influencers");
+
+export const getAdminInfluencers = (accessToken: string) =>
+  request<{ influencers: InfluencerItem[] }>("/admin/influencers", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export interface InfluencerPhotoUploadResponse {
+  influencerId: string;
+  photoPath: string;
+  uploadUrl: string;
+  token: string;
+}
+
+export const getInfluencerPhotoUploadUrl = (accessToken: string, ext: string) =>
+  request<InfluencerPhotoUploadResponse>("/admin/influencers/upload-photo", {
+    method: "POST",
+    body: JSON.stringify({ ext }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const createInfluencer = (accessToken: string, data: {
+  influencerId: string;
+  name: string;
+  photoFilename: string;
+  reelIds: string[];
+  active: boolean;
+}) =>
+  request<{ ok: boolean; influencer: InfluencerItem }>("/admin/influencers", {
+    method: "POST",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const updateInfluencer = (accessToken: string, id: string, data: Record<string, any>) =>
+  request<{ ok: boolean; influencer: InfluencerItem }>("/admin/influencers/" + encodeURIComponent(id), {
+    method: "PUT",
+    body: JSON.stringify(data),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const deleteInfluencer = (id: string, accessToken: string) =>
+  request<{ ok: boolean; deleted: string }>("/admin/influencers/" + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const reorderInfluencers = (accessToken: string, ids: string[]) =>
+  request<{ ok: boolean }>("/admin/influencers-order", {
+    method: "PUT",
+    body: JSON.stringify({ ids }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ═══════════════════════════════════════════════════════════════════════
+// INFRASTRUCTURE & SEO — Admin dashboard data
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface InfraStats {
+  vitalsP75: {
+    updatedAt: number;
+    metrics: Record<string, {
+      p75: number;
+      median: number;
+      samples: number;
+      good: number;
+      needsImprovement: number;
+      poor: number;
+    }>;
+  } | null;
+  vitalsData: Array<{
+    name: string;
+    value: number;
+    rating: string;
+    url: string;
+    navigationType: string;
+    timestamp: number;
+  }>;
+  errorSummary: Record<string, { count: number; lastSeen: number; type: string }>;
+  errorLog: Array<{
+    type: string;
+    message: string;
+    stack?: string;
+    url: string;
+    timestamp: number;
+    userAgent: string;
+    ip: string;
+  }>;
+  rateLimitStats: {
+    activeKeys: number;
+    failedLogins: number;
+  };
+  sitemapStats: {
+    static: number;
+    categories: number;
+    products: number;
+    brands: number;
+  };
+}
+
+export const getInfraStats = (accessToken: string) =>
+  request<InfraStats>("/admin/infra-stats", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const clearInfraErrors = (accessToken: string) =>
+  request<{ ok: boolean }>("/admin/infra-errors", {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const clearInfraVitals = (accessToken: string) =>
+  request<{ ok: boolean }>("/admin/infra-vitals", {
+    method: "DELETE",
+    headers: { "X-User-Token": accessToken },
+  });
+
+// ─── PageSpeed Insights ───
+
+export interface PsiScanResult {
+  id: string;
+  timestamp: number;
+  url: string;
+  strategy: string;
+  scores: Record<string, number>;
+  labMetrics: Record<string, { value: number; displayValue: string; score: number }>;
+  fieldMetrics: Record<string, any>;
+  opportunities: Array<{ id: string; title: string; savings: string; score: number }>;
+  diagnostics: Array<{ id: string; title: string; displayValue: string; score: number }>;
+  overallCategory: string;
+  fetchTime: string;
+  lighthouseVersion: string;
+}
+
+export async function runPsiScan(accessToken: string, options?: {
+  url?: string;
+  strategy?: "mobile" | "desktop";
+  categories?: string[];
+}): Promise<{ ok: boolean; scan: PsiScanResult }> {
+  // PSI scan can take up to 2 min on Google's servers — use a dedicated
+  // long-timeout fetch instead of the 45s default request() helper.
+  var path = "/admin/psi-scan";
+  var sep = path.includes("?") ? "&" : "?";
+  var fullUrl = BASE_URL + path + sep + "_ut=" + encodeURIComponent(accessToken);
+  var controller = new AbortController();
+  var tid = setTimeout(function () { controller.abort(); }, 150000); // 2.5 min timeout
+  try {
+    var res = await fetch(fullUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + publicAnonKey,
+      },
+      body: JSON.stringify(options || {}),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    if (!res.ok) {
+      var errBody = await res.json().catch(function () { return {} as any; });
+      var msg = errBody?.error || "HTTP " + res.status + " on " + path;
+      console.error("API Error [" + path + "]:", msg);
+      throw new Error(msg);
+    }
+    return await res.json();
+  } catch (e: any) {
+    clearTimeout(tid);
+    if (e.name === "AbortError") {
+      throw new Error("Timeout: a análise PSI excedeu 2.5 minutos. Tente novamente.");
+    }
+    throw e;
+  }
+}
+
+export const getPsiHistory = (accessToken: string) =>
+  request<{ history: PsiScanResult[] }>("/admin/psi-history", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const clearPsiHistory = (accessToken: string) =>
+  request<{ ok: boolean }>("/admin/psi-history", {
     method: "DELETE",
     headers: { "X-User-Token": accessToken },
   });

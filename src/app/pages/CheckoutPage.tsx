@@ -1,39 +1,39 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { useCatalogMode } from "../contexts/CatalogModeContext";
-import {
-  ShoppingCart,
-  Package,
-  Loader2,
-  ArrowLeft,
-  Trash2,
-  Plus,
-  Minus,
-  Home,
-  CheckCircle2,
-  AlertTriangle,
-  User,
-  MessageCircle,
-  FileText,
-  CreditCard,
-  LogIn,
-  QrCode,
-  Copy,
-  Check,
-  Clock,
-  ExternalLink,
-  Barcode,
-  RefreshCw,
-  Truck,
-  Wallet,
-  Ticket,
-  X,
-} from "lucide-react";
+import ShoppingCart from "lucide-react/dist/esm/icons/shopping-cart.js";
+import Package from "lucide-react/dist/esm/icons/package.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Minus from "lucide-react/dist/esm/icons/minus.js";
+import Home from "lucide-react/dist/esm/icons/home.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import User from "lucide-react/dist/esm/icons/user.js";
+import MessageCircle from "lucide-react/dist/esm/icons/message-circle.js";
+import FileText from "lucide-react/dist/esm/icons/file-text.js";
+import CreditCard from "lucide-react/dist/esm/icons/credit-card.js";
+import LogIn from "lucide-react/dist/esm/icons/log-in.js";
+import QrCode from "lucide-react/dist/esm/icons/qr-code.js";
+import Copy from "lucide-react/dist/esm/icons/copy.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import Clock from "lucide-react/dist/esm/icons/clock.js";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link.js";
+import Barcode from "lucide-react/dist/esm/icons/barcode.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Truck from "lucide-react/dist/esm/icons/truck.js";
+import Wallet from "lucide-react/dist/esm/icons/wallet.js";
+import Ticket from "lucide-react/dist/esm/icons/ticket.js";
+import X from "lucide-react/dist/esm/icons/x.js";
 import { useCart } from "../contexts/CartContext";
 import { supabase } from "../services/supabaseClient";
 import { getValidAccessToken } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { useGA4 } from "../components/GA4Provider";
+import { useMarketing } from "../components/MarketingPixels";
+import { getUtmEventParams } from "../utils/utmTracker";
 import { ShippingCalculator } from "../components/ShippingCalculator";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { ProductImage } from "../components/ProductImage";
@@ -86,6 +86,7 @@ export function CheckoutPage() {
   const { catalogMode } = useCatalogMode();
   const { items, totalItems, totalPrice, removeItem, updateQuantity, clearCart } = useCart();
   const { trackEvent } = useGA4();
+  const { trackMetaEvent, trackGoogleAdsConversion } = useMarketing();
   const { affiliateCode, clearAffiliateCode } = useAffiliate();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -115,6 +116,10 @@ export function CheckoutPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
 
+  // ANTI-DUPLICATE: Track whether this checkout session already submitted an order.
+  // Prevents double-submit on network glitch that briefly re-enables the button.
+  const [orderAlreadyCreated, setOrderAlreadyCreated] = useState(false);
+
   // Personal data inline edit
   const [nameEdit, setNameEdit] = useState("");
   const [cpfEdit, setCpfEdit] = useState("");
@@ -141,6 +146,16 @@ export function CheckoutPage() {
   // Shipping
   const [selectedShipping, setSelectedShipping] = useState<api.ShippingOption | null>(null);
   const shippingPrice = selectedShipping?.price ?? 0;
+
+  // Helper: mark cart as completed in WhatsApp abandoned-cart system
+  function _markWaCartCompleted() {
+    if (profile.phone || profile.email) {
+      api.markCartCompleted({
+        phone: (profile.phone || "").replace(/\D/g, ""),
+        email: profile.email || "",
+      }).catch(function () { /* non-critical */ });
+    }
+  }
 
   // Address
   const [selectedAddress, setSelectedAddress] = useState<api.UserAddress | null>(null);
@@ -319,7 +334,7 @@ export function CheckoutPage() {
 
     const checkMPStatus = async () => {
       try {
-        const result = await api.getMPPaymentStatus(paymentId);
+        const result = await api.getMPPaymentStatus(paymentId, pollAccessToken);
         setPaymentStatus(result.status);
         const statusLabels: Record<string, string> = {
           approved: "Aprovado",
@@ -339,8 +354,12 @@ export function CheckoutPage() {
             currency: "BRL",
             value: result.transaction_amount || totalWithShipping,
             payment_type: "mercadopago",
+            ...getUtmEventParams(),
           });
+          trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: result.transaction_amount || totalWithShipping, currency: "BRL", num_items: totalItems });
+          trackGoogleAdsConversion({ value: result.transaction_amount || totalWithShipping, currency: "BRL", transaction_id: paymentId });
           clearCart();
+          _markWaCartCompleted();
           // NOTE: "paid" status is set by MercadoPago webhook (server-side verified).
           // User endpoint blocks "paid" for security — just link transactionId.
           if (pollAccessToken && extRef && paymentId) {
@@ -381,12 +400,16 @@ export function CheckoutPage() {
       setStep("success");
       setPaymentMethod("mercadopago");
       clearCart();
+      _markWaCartCompleted();
       trackEvent("purchase", {
         transaction_id: collectionId || extRef || "",
         currency: "BRL",
         value: totalWithShipping,
         payment_type: "mercadopago",
+        ...getUtmEventParams(),
       });
+      trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: totalWithShipping, currency: "BRL", num_items: totalItems });
+      trackGoogleAdsConversion({ value: totalWithShipping, currency: "BRL", transaction_id: collectionId || extRef || "" });
       // NOTE: "paid" status is set by MercadoPago webhook (server-side verified).
       // User endpoint blocks "paid" for security. Save transactionId only.
       if (accessToken && extRef && collectionId) {
@@ -470,7 +493,7 @@ export function CheckoutPage() {
     setCouponValidating(true);
     setCouponError(null);
     try {
-      const result = await api.validateCoupon(code, totalPrice);
+      const result = await api.validateCoupon(code, totalPrice, effectiveCpfCnpj);
       if (result.valid) {
         setCouponApplied({
           code: result.code || code,
@@ -524,6 +547,11 @@ export function CheckoutPage() {
   // ─── Handle order + payment ───
   const handleSubmit = async () => {
     if (!accessToken || !canSubmitPayment) return;
+    // ANTI-DUPLICATE: Block if an order was already created in this session
+    if (orderAlreadyCreated) {
+      console.warn("[Checkout] Order already created in this session — blocking duplicate submit");
+      return;
+    }
     setSubmitting(true);
     setErrorMessage("");
     setErrorDetail("");
@@ -654,6 +682,8 @@ export function CheckoutPage() {
         ? `SIGE-${saleResult.orderId}`
         : generateOrderId();
       setOrderId(localOrderId);
+      // ANTI-DUPLICATE: Mark order as created to prevent re-submission
+      setOrderAlreadyCreated(true);
 
       const paghiperItems: Array<{ description: string; quantity: number; item_id: string; price_cents: number }> = [];
       for (var pi = 0; pi < items.length; pi++) {
@@ -741,7 +771,7 @@ export function CheckoutPage() {
         if (couponUsed || !couponApplied) return;
         couponUsed = true;
         try {
-          await api.useCoupon(couponApplied.code);
+          await api.useCoupon(couponApplied.code, accessToken, effectiveCpfCnpj);
         } catch (e) {
           console.error("Coupon use error (non-fatal):", e);
         }
@@ -759,7 +789,7 @@ export function CheckoutPage() {
           discount_cents: discountCentsForPayment > 0 ? discountCentsForPayment : undefined,
         };
 
-        const pixResult = await api.createPixCharge(pixPayload);
+        const pixResult = await api.createPixCharge(pixPayload, accessToken);
         if (pixResult.error) {
           throw new Error(pixResult.error);
         }
@@ -802,7 +832,7 @@ export function CheckoutPage() {
           discount_cents: discountCentsForPayment > 0 ? discountCentsForPayment : undefined,
         };
 
-        const boletoResult = await api.createBoletoCharge(boletoPayload);
+        const boletoResult = await api.createBoletoCharge(boletoPayload, accessToken);
         if (boletoResult.error) {
           throw new Error(boletoResult.error);
         }
@@ -872,7 +902,7 @@ export function CheckoutPage() {
           },
         };
 
-        const mpResult = await api.createMPPreference(mpPayload);
+        const mpResult = await api.createMPPreference(mpPayload, accessToken);
         if (mpResult.error || !mpResult.success) {
           throw new Error(mpResult.error || mpResult.detail || "Erro ao criar preferência no Mercado Pago.");
         }
@@ -902,6 +932,11 @@ export function CheckoutPage() {
           currency: "BRL",
           value: totalWithShipping,
           payment_type: "mercadopago",
+        });
+        trackMetaEvent("AddPaymentInfo", {
+          content_ids: items.map(function(i) { return i.sku; }),
+          value: totalWithShipping,
+          currency: "BRL",
         });
 
         // Redirect to Mercado Pago checkout
@@ -988,9 +1023,13 @@ export function CheckoutPage() {
             quantity: i.quantidade,
             price: i.precoUnitario ?? 0,
           })),
+          ...getUtmEventParams(),
         });
+        trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: totalWithShipping, currency: "BRL", num_items: totalItems });
+        trackGoogleAdsConversion({ value: totalWithShipping, currency: "BRL", transaction_id: chargeResult.chargeId || localOrderId });
 
         clearCart();
+        _markWaCartCompleted();
         setStep("success");
       }
     } catch (e: any) {
@@ -1010,7 +1049,7 @@ export function CheckoutPage() {
     const checkStatus = async () => {
       try {
         const statusFn = method === "pix" ? api.getPixStatus : api.getBoletoStatus;
-        const result = await statusFn(transactionId);
+        const result = await statusFn(transactionId, pollAccessToken);
         setPaymentStatus(result.status);
         setPaymentStatusLabel(result.status_label || result.status);
 
@@ -1030,8 +1069,12 @@ export function CheckoutPage() {
               quantity: i.quantidade,
               price: i.precoUnitario ?? 0,
             })),
+            ...getUtmEventParams(),
           });
+          trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: totalWithShipping, currency: "BRL", num_items: totalItems });
+          trackGoogleAdsConversion({ value: totalWithShipping, currency: "BRL", transaction_id: transactionId });
           clearCart();
+          _markWaCartCompleted();
           // NOTE: "paid" status is set by PagHiper/MP webhook (server-side verified).
           // User endpoint blocks "paid" for security — just update transactionId.
           if (pollAccessToken && pollOrderId) {
@@ -1458,7 +1501,7 @@ export function CheckoutPage() {
                   if (paymentMethod === "mercadopago" && txId) {
                     startMPPolling(txId, orderId, accessToken || undefined);
                   } else if (txId) {
-                    startPolling(txId, paymentMethod);
+                    startPolling(txId, paymentMethod, orderId ?? undefined, accessToken || undefined);
                   }
                 }}
                 className="w-full flex items-center justify-center gap-2 text-gray-400 hover:text-gray-600 py-2 transition-colors cursor-pointer"
@@ -2476,16 +2519,33 @@ export function CheckoutPage() {
                   <button
                     onClick={() => {
                       setStep("payment");
+                      var checkoutItems = items.map((i) => ({
+                        item_id: i.sku,
+                        item_name: i.titulo,
+                        quantity: i.quantidade,
+                        price: i.precoUnitario ?? 0,
+                      }));
                       trackEvent("begin_checkout", {
                         currency: "BRL",
                         value: totalWithShipping,
                         shipping: shippingPrice,
-                        items: items.map((i) => ({
-                          item_id: i.sku,
-                          item_name: i.titulo,
-                          quantity: i.quantidade,
-                          price: i.precoUnitario ?? 0,
-                        })),
+                        items: checkoutItems,
+                        ...getUtmEventParams(),
+                      });
+                      // GA4: add_shipping_info (shipping was selected in previous step)
+                      trackEvent("add_shipping_info", {
+                        currency: "BRL",
+                        value: totalWithShipping,
+                        shipping_tier: selectedShipping || "standard",
+                        items: checkoutItems,
+                      });
+                      // Meta Pixel: InitiateCheckout
+                      trackMetaEvent("InitiateCheckout", {
+                        content_ids: items.map((i) => i.sku),
+                        content_type: "product",
+                        num_items: totalItems,
+                        value: totalWithShipping,
+                        currency: "BRL",
                       });
                     }}
                     disabled={!canProceed}

@@ -1,19 +1,9 @@
 import { useState } from "react";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { Link } from "react-router";
-import {
-  Home,
-  Phone,
-  Mail,
-  MapPin,
-  Clock,
-  Send,
-  MessageSquare,
-  Loader2,
-  MessageCircle,
-  CheckCircle2,
-  ArrowRight,
-} from "lucide-react";
+import { useGA4 } from "../components/GA4Provider";
+import { useMarketing } from "../components/MarketingPixels";
+import { Home, Phone, Mail, MapPin, Clock, Send, MessageSquare, Loader2, MessageCircle, CheckCircle2, ArrowRight } from "lucide-react";
 import * as api from "../services/api";
 
 const subjectLabels: Record<string, string> = {
@@ -60,6 +50,8 @@ const CONTACT_INFO = [
 ];
 
 export function ContactPage() {
+  const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
 
   useDocumentMeta({
     title: "Fale Conosco - Carretão Auto Peças",
@@ -91,6 +83,9 @@ export function ContactPage() {
         message: formData.message,
       } as any);
       setSubmitted(true);
+      // GA4 + Meta: generate_lead / Lead event
+      trackEvent("generate_lead", { contact_method: "form", value: 0, currency: "BRL" });
+      trackMetaEvent("Lead", { content_name: "contact_form", content_category: formData.subject });
       setTimeout(() => {
         setSubmitted(false);
         setFormData({ name: "", email: "", phone: "", subject: "", message: "" });

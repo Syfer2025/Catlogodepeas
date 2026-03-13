@@ -1,5 +1,7 @@
 import { Link } from "react-router";
-import { Home, ChevronRight, FileText } from "lucide-react";
+import Home from "lucide-react/dist/esm/icons/home";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import FileText from "lucide-react/dist/esm/icons/file-text";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
 export function TermsPage() {

@@ -1,22 +1,21 @@
 import { useState, useEffect } from "react";
-import {
-  Shield,
-  ShieldCheck,
-  Crown,
-  Plus,
-  Trash2,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  Save,
-  ChevronDown,
-  ChevronUp,
-  Mail,
-} from "lucide-react";
+import Shield from "lucide-react/dist/esm/icons/shield.js";
+import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
+import Crown from "lucide-react/dist/esm/icons/crown.js";
+import Plus from "lucide-react/dist/esm/icons/plus.js";
+import Trash2 from "lucide-react/dist/esm/icons/trash-2.js";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Save from "lucide-react/dist/esm/icons/save.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Mail from "lucide-react/dist/esm/icons/mail.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import LogIn from "lucide-react/dist/esm/icons/log-in.js";
+import { clearAdminStorage, getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
-import { supabase } from "../../services/supabaseClient";
-import { getValidAdminToken } from "./adminAuth";
 
 interface AdminEntry {
   email: string;
@@ -64,6 +63,8 @@ export function AdminAdmins() {
   // Removing admin
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
 
   const getToken = async (): Promise<string | null> => {
     try {
@@ -76,17 +77,24 @@ export function AdminAdmins() {
   const loadAdmins = async () => {
     setLoading(true);
     setError(null);
+    setSessionExpired(false);
     try {
       const token = await getToken();
       if (!token) {
-        setError("Sessão expirada.");
+        setSessionExpired(true);
+        setError("Sessao expirada. O token JWT do admin expirou e nao foi possivel renovar automaticamente. Faca logout e login novamente no painel.");
         return;
       }
       const data = await api.getAdminList(token);
       setAdmins(data.admins || []);
       setAllTabs(data.allTabs || []);
     } catch (err: any) {
-      setError(err.message || "Erro ao carregar admins.");
+      var msg = err.message || "Erro ao carregar admins.";
+      if (msg.indexOf("403") >= 0 || msg.indexOf("Forbidden") >= 0) {
+        setError("Acesso negado: apenas o Admin Master pode gerenciar administradores. Voce esta logado como o email master?");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -105,8 +113,21 @@ export function AdminAdmins() {
       const token = await getToken();
       if (!token) throw new Error("Sessão expirada.");
       const permsToSend = newPerms.length > 0 ? newPerms : allTabs.filter(function(t) { return t !== "admins"; });
-      await api.manageAdmin(token, "add", newEmail.trim(), permsToSend);
-      setSuccess("Admin " + newEmail.trim() + " adicionado com sucesso!");
+      const result = await api.manageAdmin(token, "add", newEmail.trim(), permsToSend) as any;
+      if (result.userCreated) {
+        if (result.emailSent) {
+          setSuccess("Admin " + newEmail.trim() + " adicionado! A conta foi criada e o email com link para definir a senha foi enviado com sucesso. Peca para o novo admin verificar a caixa de entrada (e spam).");
+        } else if (result.emailError) {
+          setError("Admin adicionado e conta criada, porem o email NAO foi enviado. Erro: " + result.emailError);
+          setSuccess("Admin " + newEmail.trim() + " adicionado e conta criada. O email falhou — defina a senha manualmente pelo Supabase Dashboard ou corrija o SMTP e readicione.");
+        } else if (!result.smtpConfigured) {
+          setSuccess("Admin " + newEmail.trim() + " adicionado! A conta foi criada, porem o SMTP nao esta configurado, entao o email de boas-vindas NAO foi enviado. Configure o SMTP na aba 'Email Marketing' ou defina a senha manualmente pelo Supabase Dashboard.");
+        } else {
+          setSuccess("Admin " + newEmail.trim() + " adicionado! A conta foi criada. Verifique os logs do servidor para detalhes sobre o envio de email.");
+        }
+      } else {
+        setSuccess("Admin " + newEmail.trim() + " adicionado com sucesso! O usuario ja tinha conta no sistema e pode fazer login no painel com a mesma senha.");
+      }
       setNewEmail("");
       setNewPerms([]);
       setShowAddForm(false);
@@ -150,6 +171,26 @@ export function AdminAdmins() {
       setError(err.message || "Erro ao salvar permissões.");
     } finally {
       setSavingPerms(false);
+    }
+  };
+
+  const handleResendInvite = async (email: string) => {
+    setResendingEmail(email);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Sessão expirada.");
+      const result = await api.manageAdmin(token, "resend-invite", email) as any;
+      if (result.ok) {
+        setSuccess(result.message || "Email de convite reenviado para " + email + "!");
+      } else {
+        setError(result.error || "Erro ao reenviar convite.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Erro ao reenviar email de convite.");
+    } finally {
+      setResendingEmail(null);
     }
   };
 
@@ -232,11 +273,31 @@ export function AdminAdmins() {
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-          <div>
+          <div className="flex-1">
             <p className="text-red-700" style={{ fontSize: "0.85rem", fontWeight: 600 }}>Erro</p>
             <p className="text-red-600" style={{ fontSize: "0.8rem" }}>{error}</p>
+            {sessionExpired && (
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={loadAdmins}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg transition-colors cursor-pointer"
+                  style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Tentar novamente
+                </button>
+                <button
+                  onClick={() => { clearAdminStorage(); window.location.href = "/admin"; }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors cursor-pointer"
+                  style={{ fontSize: "0.75rem", fontWeight: 600 }}
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  Fazer login novamente
+                </button>
+              </div>
+            )}
           </div>
-          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600">
+          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600 shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -274,7 +335,7 @@ export function AdminAdmins() {
               />
             </div>
             <p className="text-gray-400 mt-1" style={{ fontSize: "0.7rem" }}>
-              O usuário deve ter uma conta cadastrada no sistema
+              Se o email ja tiver conta, o acesso e imediato. Caso contrario, uma conta sera criada e um email com link para definir a senha sera enviado.
             </p>
           </div>
 
@@ -389,6 +450,17 @@ export function AdminAdmins() {
                   {!admin.isMaster && (
                     <>
                       <button
+                        onClick={() => handleResendInvite(admin.email)}
+                        disabled={resendingEmail === admin.email}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Reenviar email de convite/troca de senha"
+                      >
+                        {resendingEmail === admin.email
+                          ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                          : <Mail className="w-4 h-4" />
+                        }
+                      </button>
+                      <button
                         onClick={() => toggleExpand(admin.email, admin.permissions)}
                         className="flex items-center gap-1.5 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                         style={{ fontSize: "0.8rem" }}
@@ -502,9 +574,10 @@ export function AdminAdmins() {
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
         <p className="text-blue-800" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Como funciona?</p>
         <ul className="mt-1.5 space-y-1 text-blue-700" style={{ fontSize: "0.75rem" }}>
-          <li>O <strong>Admin Master</strong> (alexmeira@protonmail.com) tem acesso irrevogável a todas as abas.</li>
-          <li>Outros admins podem ter acesso restrito a abas específicas.</li>
-          <li>Para adicionar um admin, o email deve pertencer a um usuário já cadastrado.</li>
+          <li>O <strong>Admin Master</strong> tem acesso irrevogavel a todas as abas.</li>
+          <li>Ao adicionar um email que <strong>ja tem conta</strong>, a pessoa pode fazer login imediatamente com a mesma senha.</li>
+          <li>Ao adicionar um email <strong>sem conta</strong>, uma conta e criada automaticamente e um email com link para definir a senha e enviado (requer SMTP configurado).</li>
+          <li>Outros admins podem ter acesso restrito a abas especificas.</li>
           <li>Remover um admin revoga imediatamente o acesso ao painel.</li>
         </ul>
       </div>

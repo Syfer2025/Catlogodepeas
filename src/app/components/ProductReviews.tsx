@@ -1,19 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import {
-  Star,
-  ThumbsUp,
-  Send,
-  Camera,
-  X,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  User,
-  ImageIcon,
-} from "lucide-react";
+import { Star, ThumbsUp, Send, Camera, X, Loader2, AlertCircle, CheckCircle2, Clock, ChevronDown, ChevronUp, User, Image as ImageIcon } from "lucide-react";
 import * as api from "../services/api";
 import type { Review, ReviewSummary } from "../services/api";
 import { supabase } from "../services/supabaseClient";
@@ -657,7 +643,7 @@ export function ProductReviews({ sku }: { sku: string }) {
                           <RatingBar
                             key={s}
                             stars={s}
-                            count={summary.distribution[s] || 0}
+                            count={summary!.distribution[s] || 0}
                             total={totalReviews}
                           />
                         );

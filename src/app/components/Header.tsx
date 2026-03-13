@@ -1,23 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useNavigate } from "react-router";
-import {
-  Menu,
-  X,
-  Wrench,
-  Headset,
-  ChevronDown,
-  MapPin,
-  Clock,
-  MessageCircle,
-  Building2,
-  User,
-  ShoppingCart,
-  Lock,
-  Package,
-  LogOut,
-  Heart,
-  Layers,
-} from "lucide-react";
+import { Menu, X, Wrench, Headset, ChevronDown, MapPin, Clock, MessageCircle, Building2, User, ShoppingCart, Lock, Package, LogOut, Heart, Layers } from "lucide-react";
 import { SearchAutocomplete } from "./SearchAutocomplete";
 import { supabase } from "../services/supabaseClient";
 import { getValidAccessToken } from "../services/supabaseClient";
@@ -33,6 +16,9 @@ const CategoryMegaMenu = lazy(function () {
 });
 const MobileCategoryMenu = lazy(function () {
   return import("./CategoryMegaMenu").then(function (m) { return { default: m.MobileCategoryMenu }; });
+});
+const CouponMegaMenu = lazy(function () {
+  return import("./CouponMegaMenu").then(function (m) { return { default: m.CouponMegaMenu }; });
 });
 
 /* Badge bounce keyframes — injected once */
@@ -135,12 +121,29 @@ export function Header() {
     });
 
     // Listen for auth state changes (login/logout from any tab or page)
+    // GUARD: Ignore auth events triggered by admin token refresh operations
+    // (the dedicated admin Supabase client shouldn't fire these, but defense-in-depth)
     var authSub = supabase.auth.onAuthStateChange(function (event, session) {
+      // Ignore events while on admin pages (admin has its own session management)
+      if (window.location.pathname.startsWith("/admin")) return;
+
+      // Ignore INITIAL_SESSION — we already checked getSession() above
+      if (event === "INITIAL_SESSION") return;
+
       if (event === "SIGNED_IN" && session && session.user) {
         setSessionWithAvatar(session.user, session.access_token);
+      } else if (event === "TOKEN_REFRESHED" && session && session.user) {
+        // Silently update token without re-fetching avatar (avoids flash)
+        setSessionWithAvatar(session.user, session.access_token);
       } else if (event === "SIGNED_OUT") {
-        setUserSession(null);
-        try { localStorage.removeItem(AVATAR_CACHE_KEY); } catch {}
+        // Only clear if there's no admin session contamination
+        // (admin token refresh used to pollute this listener)
+        var adminToken = null;
+        try { adminToken = localStorage.getItem("carretao_admin_at"); } catch {}
+        if (!adminToken) {
+          setUserSession(null);
+          try { localStorage.removeItem(AVATAR_CACHE_KEY); } catch {}
+        }
       }
     });
 
@@ -353,7 +356,7 @@ export function Header() {
                   </div>
 
                   {/* Quick links */}
-                  <nav className="py-1">
+                  <nav className="py-1" aria-label="Menu do usuário">
                     <Link
                       to="/minha-conta?tab=perfil"
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-red-50 transition-colors group/item"
@@ -487,12 +490,17 @@ export function Header() {
           </div>
         </div>
 
-        {/* Navigation — only Categories */}
-        <nav className="bg-gray-50/80 border-t border-gray-100 hidden md:block">
+        {/* Navigation — Categories + Cupons */}
+        <nav className="bg-gray-50/80 border-t border-gray-100 hidden md:block" aria-label="Categorias e promoções">
           <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-            <Suspense fallback={<div className="h-10 w-10 bg-gray-100 rounded-lg animate-pulse" />}>
-              <CategoryMegaMenu />
-            </Suspense>
+            <div className="flex items-center gap-1">
+              <Suspense fallback={<div className="h-10 w-10 bg-gray-100 rounded-lg animate-pulse" />}>
+                <CategoryMegaMenu />
+              </Suspense>
+              <Suspense fallback={null}>
+                <CouponMegaMenu />
+              </Suspense>
+            </div>
             <div className="shrink-0 ml-4">
               <HeaderCepInput />
             </div>

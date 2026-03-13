@@ -2,12 +2,16 @@ import { Outlet, useLocation } from "react-router";
 import { Header } from "./Header";
 import { HomepageInitProvider, useHomepageInit } from "../contexts/HomepageInitContext";
 import { GA4Provider } from "./GA4Provider";
+import { MarketingPixelsProvider } from "./MarketingPixels";
+import { GTMProvider } from "./GTMProvider";
+import "../utils/utmTracker"; // Auto-captures UTM params on load
 import { Suspense, lazy, useEffect, useState, Component } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import { seedPriceConfig } from "./PriceBadge";
 import { Toaster } from "sonner";
 import * as api from "../services/api";
 import { Wrench } from "lucide-react";
+import { useIdlePrefetch } from "../hooks/useIdlePrefetch";
 
 // ── Retry wrapper for lazy imports — retries up to 2× on network failure ──
 function lazyWithRetry(importFn: () => Promise<any>, retries?: number) {
@@ -74,6 +78,26 @@ const ScrollToTopButton = lazyWithRetry(function () {
   return import("./ScrollToTopButton").then(function (m) { return { default: m.ScrollToTopButton }; });
 });
 
+// Lazy-load ExitIntentPopup — not needed for initial render
+const ExitIntentPopup = lazyWithRetry(function () {
+  return import("./ExitIntentPopup").then(function (m) { return { default: m.ExitIntentPopup }; });
+});
+
+// Lazy-load GoogleReviewsBadge — not needed for initial render
+const GoogleReviewsBadge = lazyWithRetry(function () {
+  return import("./GoogleReviewsBadge").then(function (m) { return { default: m.GoogleReviewsBadge }; });
+});
+
+// Lazy-load CartAbandonedTracker — syncs cart snapshots for WhatsApp recovery
+const CartAbandonedTracker = lazyWithRetry(function () {
+  return import("./CartAbandonedTracker").then(function (m) { return { default: m.CartAbandonedTracker }; });
+});
+
+// Lazy-load WebVitalsReporter — field metrics collection (non-critical)
+const WebVitalsReporter = lazyWithRetry(function () {
+  return import("./WebVitalsReporter").then(function (m) { return { default: m.WebVitalsReporter }; });
+});
+
 // Lazy-load MobileBottomNav — only needed on mobile
 const MobileBottomNav = lazyWithRetry(function () {
   return import("./MobileBottomNav").then(function (m) { return { default: m.MobileBottomNav }; });
@@ -99,7 +123,7 @@ const Footer = lazyWithRetry(function () {
   // Set lang on HTML element (a11y + SEO requirement — PageSpeed flags missing lang)
   document.documentElement.lang = "pt-BR";
 
-  // ══════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════
   // Security meta tags — applied client-side because the CDN/edge layer
   // (Figma Sites / Cloudflare) serves the HTML without our custom headers.
   // These cover headers that support <meta> equivalents.
@@ -263,33 +287,37 @@ const Footer = lazyWithRetry(function () {
   if (root && root.children.length === 0) {
     root.innerHTML = [
       '<div style="min-height:100vh;display:flex;flex-direction:column;font-family:Inter Variable,Inter,system-ui,sans-serif">',
+      // ── Skip-to-content link (a11y) ──
+      '  <a href="#main-content" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;z-index:9999;background:#fff;color:#b91c1c;padding:8px 16px;font-weight:600;font-size:0.9rem;border-radius:0 0 8px 0" onfocus="this.style.position=\'fixed\';this.style.left=\'0\';this.style.top=\'0\';this.style.width=\'auto\';this.style.height=\'auto\';this.style.overflow=\'visible\'" onblur="this.style.position=\'absolute\';this.style.left=\'-9999px\';this.style.width=\'1px\';this.style.height=\'1px\';this.style.overflow=\'hidden\'">Pular para o conteúdo</a>',
       // ── Header skeleton ──
-      '  <header style="background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;align-items:center;gap:12px">',
+      '  <header role="banner" style="background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;align-items:center;gap:12px">',
       '    <div style="width:140px;height:40px;background:#f3f4f6;border-radius:8px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       '    <div style="flex:1;max-width:400px;height:40px;background:#f3f4f6;border-radius:8px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       '    <div style="width:40px;height:40px;background:#f3f4f6;border-radius:50%;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;margin-left:auto"></div>',
       '  </header>',
       // ── Banner skeleton ──
-      '  <div style="background:#1f2937;width:100%;padding-bottom:clamp(200px,32vw,500px);animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '  <main id="main-content" role="main" style="flex:1;display:flex;flex-direction:column">',
+      '    <div style="background:#1f2937;width:100%;padding-bottom:clamp(200px,32vw,500px);animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       // ── Benefits strip skeleton ──
-      '  <div style="padding:24px 16px;display:flex;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #f3f4f6">',
-      '    <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '    <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '    <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
-      '    <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
-      '  </div>',
+      '    <div style="padding:24px 16px;display:flex;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #f3f4f6">',
+      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
+      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
+      '    </div>',
       // ── Products skeleton ──
-      '  <div style="flex:1;background:#f9fafb;padding:48px 16px">',
-      '    <div style="max-width:1280px;margin:0 auto">',
-      '      <div style="width:200px;height:28px;background:#e5e7eb;border-radius:8px;margin-bottom:24px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px">',
-      '        <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '        <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '        <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '        <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '    <div style="background:#f9fafb;padding:48px 16px;flex:1">',
+      '      <div style="max-width:1280px;margin:0 auto">',
+      '        <div style="width:200px;height:28px;background:#e5e7eb;border-radius:8px;margin-bottom:24px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:20px">',
+      '          <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '          <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '          <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '          <div style="height:320px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
+      '        </div>',
       '      </div>',
       '    </div>',
-      '  </div>',
+      '  </main>',
       '</div>',
       // ── Pulse animation (CSS @keyframes injected inline) ──
       '<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style>',
@@ -402,14 +430,57 @@ function DeferredCartDrawer() {
 /** Checks maintenance mode and renders overlay if active */
 function MaintenanceGate({ children }: { children: ReactNode }) {
   var [maintenance, setMaintenance] = useState(false);
-  var [checked, setChecked] = useState(false);
+  var [bypassed, setBypassed] = useState(false);
 
   useEffect(function () {
+    // ── Maintenance Bypass ──────────────────────────────────────────────
+    // Access with ?preview=carretao2026 to bypass maintenance mode.
+    // The token is saved in a cookie so you don't need to add it on every page.
+    // To revoke access, clear cookies or use ?preview=off
+    // ────────────────────────────────────────────────────────────────────
+    var BYPASS_TOKEN = "carretao2026";
+    var COOKIE_NAME = "maint_bypass";
+
+    // Check URL param first
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var previewParam = params.get("preview");
+      if (previewParam === BYPASS_TOKEN) {
+        // Set cookie valid for 24 hours
+        document.cookie = COOKIE_NAME + "=" + BYPASS_TOKEN + ";path=/;max-age=86400;SameSite=Lax";
+        setBypassed(true);
+        // Clean URL (remove ?preview= without reload)
+        params.delete("preview");
+        var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+        window.history.replaceState({}, "", cleanUrl);
+        return;
+      }
+      if (previewParam === "off") {
+        // Revoke bypass
+        document.cookie = COOKIE_NAME + "=;path=/;max-age=0;SameSite=Lax";
+        params.delete("preview");
+        var cleanUrl2 = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+        window.history.replaceState({}, "", cleanUrl2);
+        // Don't return — continue to check maintenance normally
+      }
+    } catch (e) { /* ignore URL parsing errors */ }
+
+    // Check cookie
+    try {
+      var cookies = document.cookie.split(";");
+      for (var ci = 0; ci < cookies.length; ci++) {
+        var parts = cookies[ci].trim().split("=");
+        if (parts[0] === COOKIE_NAME && parts[1] === BYPASS_TOKEN) {
+          setBypassed(true);
+          return;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
     // Only enforce maintenance mode on production domains
     var host = window.location.hostname;
     var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br";
     if (!isProduction) {
-      setChecked(true);
       return;
     }
 
@@ -422,7 +493,6 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
         if (s && s.maintenanceMode) {
           setMaintenance(true);
         }
-        setChecked(true);
       }).catch(function () {
         if (attempts < maxAttempts) {
           // Retry after 2s — could be a transient network issue
@@ -432,7 +502,6 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
           // assume maintenance is active to protect the site
           console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — failing closed (showing maintenance)");
           setMaintenance(true);
-          setChecked(true);
         }
       });
     }
@@ -440,7 +509,62 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
     tryCheck();
   }, []);
 
-  if (!checked) return null;
+  // Bypass active — show site even in maintenance + floating indicator
+  if (bypassed && maintenance) {
+    return (
+      <>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 16,
+            zIndex: 99999,
+            background: "linear-gradient(135deg, #b91c1c, #dc2626)",
+            color: "#fff",
+            padding: "8px 16px",
+            borderRadius: 10,
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            letterSpacing: "0.02em",
+            userSelect: "none",
+          }}
+        >
+          <span style={{ fontSize: "1rem" }}>🔧</span>
+          <span>PREVIEW — Site em manutenção para visitantes</span>
+          <button
+            onClick={function () {
+              document.cookie = "maint_bypass=;path=/;max-age=0;SameSite=Lax";
+              window.location.reload();
+            }}
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "none",
+              color: "#fff",
+              padding: "2px 8px",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              marginLeft: 4,
+            }}
+            title="Desativar preview e ver tela de manutenção"
+          >
+            Sair
+          </button>
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  // Bypass active, no maintenance — just render normally
+  if (bypassed) {
+    return <>{children}</>;
+  }
 
   if (maintenance) {
     return (
@@ -506,17 +630,29 @@ function TesterBanner() {
 }
 
 export function Layout() {
+  // Prefetch route chunks during browser idle time for instant navigations
+  useIdlePrefetch();
+
   return (
     <MaintenanceGate>
       <HomepageInitProvider>
+        <GTMProvider>
         <GA4Provider>
+        <MarketingPixelsProvider>
           <div className="min-h-screen flex flex-col">
+            {/* Skip-to-content link (a11y — matches skeleton version) */}
+            <a
+              href="#main-content"
+              className="sr-only focus:not-sr-only focus:fixed focus:top-0 focus:left-0 focus:z-[9999] focus:bg-white focus:text-red-700 focus:px-4 focus:py-2 focus:font-semibold focus:text-sm focus:rounded-br-lg focus:shadow-lg"
+            >
+              Pular para o conteúdo
+            </a>
             <TesterBanner />
             <ScrollToTop />
             <PriceConfigSeeder />
             <FaviconLoader />
             <Header />
-            <main className="flex-1">
+            <main id="main-content" className="flex-1">
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center py-24">
@@ -555,9 +691,31 @@ export function Layout() {
                 <MobileBottomNav />
               </Suspense>
             </LazyBoundary>
+            <LazyBoundary>
+              <Suspense fallback={null}>
+                <ExitIntentPopup />
+              </Suspense>
+            </LazyBoundary>
+            <LazyBoundary>
+              <Suspense fallback={null}>
+                <GoogleReviewsBadge />
+              </Suspense>
+            </LazyBoundary>
+            <LazyBoundary>
+              <Suspense fallback={null}>
+                <CartAbandonedTracker />
+              </Suspense>
+            </LazyBoundary>
+            <LazyBoundary>
+              <Suspense fallback={null}>
+                <WebVitalsReporter />
+              </Suspense>
+            </LazyBoundary>
             <Toaster position="top-right" richColors closeButton duration={3500} />
           </div>
+        </MarketingPixelsProvider>
         </GA4Provider>
+        </GTMProvider>
       </HomepageInitProvider>
     </MaintenanceGate>
   );

@@ -1,40 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import {
-  Users,
-  Link2,
-  DollarSign,
-  TrendingUp,
-  Copy,
-  CheckCircle2,
-  Loader2,
-  AlertTriangle,
-  Home,
-  ChevronRight,
-  Eye,
-  MousePointerClick,
-  ShoppingCart,
-  Wallet,
-  Clock,
-  Award,
-  ArrowRight,
-  ExternalLink,
-  Phone,
-  AtSign,
-  KeyRound,
-  MessageCircle,
-  Edit3,
-  Save,
-  X,
-  BadgeCheck,
-  Ban,
-  Hourglass,
-  ShieldCheck,
-  Percent,
-  Calendar,
-  Hash,
-  Info,
-} from "lucide-react";
+import { Users, Link2, DollarSign, TrendingUp, Copy, CheckCircle2, Loader2, AlertTriangle, Home, ChevronRight, Eye, MousePointerClick, ShoppingCart, Wallet, Clock, Award, ArrowRight, ExternalLink, Phone, AtSign, KeyRound, MessageCircle, Edit3, Save, X, BadgeCheck, Ban, Hourglass, ShieldCheck, Percent, Calendar, Hash, Info } from "lucide-react";
 import { supabase } from "../services/supabaseClient";
 import * as api from "../services/api";
 import type { Affiliate, AffiliateCommission } from "../services/api";

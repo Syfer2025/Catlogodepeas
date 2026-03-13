@@ -1,25 +1,23 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import {
-  Loader2,
-  Play,
-  CheckCircle2,
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  ArrowRight,
-  FolderTree,
-  Zap,
-  AlertTriangle,
-  BarChart3,
-  Check,
-  X,
-  Download,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Info,
-} from "lucide-react";
+import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
+import Play from "lucide-react/dist/esm/icons/play.js";
+import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2.js";
+import Filter from "lucide-react/dist/esm/icons/filter.js";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down.js";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up.js";
+import Search from "lucide-react/dist/esm/icons/search.js";
+import ArrowRight from "lucide-react/dist/esm/icons/arrow-right.js";
+import FolderTree from "lucide-react/dist/esm/icons/folder-tree.js";
+import Zap from "lucide-react/dist/esm/icons/zap.js";
+import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle.js";
+import BarChart3 from "lucide-react/dist/esm/icons/bar-chart-3.js";
+import Check from "lucide-react/dist/esm/icons/check.js";
+import X from "lucide-react/dist/esm/icons/x.js";
+import Download from "lucide-react/dist/esm/icons/download.js";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw.js";
+import Eye from "lucide-react/dist/esm/icons/eye.js";
+import EyeOff from "lucide-react/dist/esm/icons/eye-off.js";
+import Info from "lucide-react/dist/esm/icons/info.js";
 import * as api from "../../services/api";
 import type { CategoryNode } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";

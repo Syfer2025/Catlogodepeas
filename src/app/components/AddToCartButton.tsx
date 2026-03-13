@@ -4,6 +4,7 @@ import { useCart } from "../contexts/CartContext";
 import * as api from "../services/api";
 import { getResolvedProductImageUrl } from "./ProductImage";
 import { useGA4 } from "./GA4Provider";
+import { useMarketing } from "./MarketingPixels";
 import { toast } from "sonner";
 import { useCatalogMode } from "../contexts/CatalogModeContext";
 
@@ -30,6 +31,7 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
   const { catalogMode } = useCatalogMode();
   const { addItem, items } = useCart();
   const { trackEvent } = useGA4();
+  const { trackMetaEvent } = useMarketing();
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
@@ -132,7 +134,7 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
         titulo,
         quantidade: qtyToAdd,
         precoUnitario: price,
-        imageUrl: getResolvedProductImageUrl(sku),
+        imageUrl: getResolvedProductImageUrl(sku) || "",
         isPromo: overridePrice !== undefined && overridePrice !== null,
         warranty: warranty,
       });
@@ -140,6 +142,13 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
         currency: "BRL",
         value: price ? price * qtyToAdd : 0,
         items: [{ item_id: sku, item_name: titulo, quantity: qtyToAdd, price: price ?? 0 }],
+      });
+      trackMetaEvent("AddToCart", {
+        content_ids: [sku],
+        content_name: titulo,
+        content_type: "product",
+        value: price ? price * qtyToAdd : 0,
+        currency: "BRL",
       });
       toast.success("Produto adicionado ao carrinho!", { description: titulo, duration: 2500 });
       setAdded(true);
@@ -153,7 +162,7 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
         titulo,
         quantidade: qtyToAdd,
         precoUnitario: price,
-        imageUrl: getResolvedProductImageUrl(sku),
+        imageUrl: getResolvedProductImageUrl(sku) || "",
         isPromo: overridePrice !== undefined && overridePrice !== null,
         warranty: warranty,
       });
@@ -162,13 +171,20 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
         value: price ? price * qtyToAdd : 0,
         items: [{ item_id: sku, item_name: titulo, quantity: qtyToAdd, price: price ?? 0 }],
       });
+      trackMetaEvent("AddToCart", {
+        content_ids: [sku],
+        content_name: titulo,
+        content_type: "product",
+        value: price ? price * qtyToAdd : 0,
+        currency: "BRL",
+      });
       toast.success("Produto adicionado ao carrinho!", { description: titulo, duration: 2500 });
       setAdded(true);
       setTimeout(() => setAdded(false), 2000);
     } finally {
       setValidating(false);
     }
-  }, [sku, titulo, price, existingItem, addItem, trackEvent, overridePrice, onStockUpdate, warranty]);
+  }, [sku, titulo, price, existingItem, addItem, trackEvent, trackMetaEvent, overridePrice, onStockUpdate, warranty]);
 
   const handleAdd = useCallback(() => {
     validateAndAdd(quantity);

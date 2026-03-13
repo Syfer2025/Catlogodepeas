@@ -8,6 +8,7 @@ import { AffiliateProvider } from "./contexts/AffiliateContext";
 import { CatalogModeProvider } from "./contexts/CatalogModeContext";
 import { prefetchCatalog, prefetchProductDetail } from "./utils/prefetch";
 
+// Force clean rebuild
 export default function App() {
   // Prefetch the most common route chunks after initial hydration
   useEffect(function () {

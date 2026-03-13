@@ -13,6 +13,7 @@ import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { ProductImage } from "./ProductImage";
 import { ReviewStars } from "./ReviewStars";
 import { useCatalogMode } from "../contexts/CatalogModeContext";
+import { useGA4 } from "./GA4Provider";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -120,7 +121,7 @@ function PromoPriceDisplay({ sku, promo, product, preloadedPrice, hidePrices }: 
 }
 
 /* ═══════ Product Card ═══════ */
-function PromoCard({ product, promo, preloadedPrice, preloadedBalance }: { product: api.SuperPromoProduct; promo: SuperPromo; preloadedPrice?: number | null; preloadedBalance?: ProductBalance | null }) {
+function PromoCard({ product, promo, preloadedPrice, preloadedBalance, onSelect }: { product: api.SuperPromoProduct; promo: SuperPromo; preloadedPrice?: number | null; preloadedBalance?: ProductBalance | null; onSelect?: () => void }) {
   const { catalogMode } = useCatalogMode();
 
   // Compute effective discount label for this product
@@ -153,6 +154,7 @@ function PromoCard({ product, promo, preloadedPrice, preloadedBalance }: { produ
         e.currentTarget.style.transform = "translateY(0)";
         e.currentTarget.style.boxShadow = "0 1px 8px rgba(0,0,0,0.08)";
       }}
+      onClick={onSelect}
     >
       {/* Image */}
       <div className="relative bg-white aspect-square flex items-center justify-center overflow-hidden">
@@ -235,6 +237,8 @@ export function SuperPromoSection() {
   const scrollDirRef = useRef<1 | -1>(1);
   const [priceMap, setPriceMap] = useState<Record<string, number | null>>({});
   const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance | null>>({});
+  const { trackEvent } = useGA4();
+  const viewPromoFiredRef = useRef(false);
 
   // Check if last visit had an active promo (to decide whether to reserve space while loading)
   const [hadPromoLastVisit] = useState<boolean>(() => {
@@ -414,6 +418,18 @@ export function SuperPromoSection() {
 
   if (!promo || !promo.products || promo.products.length === 0) return null;
 
+  // GA4: view_promotion (fire once per promo load)
+  if (!viewPromoFiredRef.current) {
+    viewPromoFiredRef.current = true;
+    trackEvent("view_promotion", {
+      promotion_id: "super_promo",
+      promotion_name: promo.title || "Super Promocao",
+      items: promo.products.slice(0, 10).map(function (p) {
+        return { item_id: p.sku, item_name: p.titulo };
+      }),
+    });
+  }
+
   const bg = promo.bgColor || "#e52020";
 
   return (
@@ -490,6 +506,13 @@ export function SuperPromoSection() {
                   promo={promo}
                   preloadedPrice={priceMap[p.sku]}
                   preloadedBalance={balanceMap[p.sku]}
+                  onSelect={() => {
+                    trackEvent("select_promotion", {
+                      promotion_id: "super_promo",
+                      promotion_name: promo.title || "Super Promocao",
+                      items: [{ item_id: p.sku, item_name: p.titulo }],
+                    });
+                  }}
                 />
               </div>
             ))}

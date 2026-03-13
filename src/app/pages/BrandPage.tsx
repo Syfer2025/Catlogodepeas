@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router";
-import { ArrowLeft, Award, Package, Loader2, AlertCircle } from "lucide-react";
+import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left";
+import Award from "lucide-react/dist/esm/icons/award";
+import Package from "lucide-react/dist/esm/icons/package";
+import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
+import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import * as api from "../services/api";
 import type { BrandItem } from "../services/api";
 import { ProductCard } from "../components/ProductCard";
@@ -38,8 +42,8 @@ export function BrandPage() {
             for (var i = 0; i < skus.length; i += 10) {
               var batch = skus.slice(i, i + 10);
               var batchPromises = batch.map(function (sku) {
-                return api.getProductDetail(sku)
-                  .then(function (detail) {
+                return api.getProductDetailInit(sku)
+                  .then(function (detail: any) {
                     if (detail && detail.produto) {
                       return detail.produto as ProdutoItem;
                     }

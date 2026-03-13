@@ -1,28 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
-import {
-  Layers,
-  Plus,
-  Edit3,
-  Trash2,
-  X,
-  Check,
-  ChevronRight,
-  ChevronDown,
-  Search,
-  Loader2,
-  RefreshCw,
-  FolderTree,
-  FolderOpen,
-  Folder,
-  Upload,
-  Save,
-  AlertCircle,
-  CheckCircle2,
-  PackagePlus,
-} from "lucide-react";
-import * as api from "../../services/api";
+import { Layers, Plus, Edit3, Trash2, X, Check, ChevronRight, ChevronDown, Search, Loader2, RefreshCw, FolderTree, FolderOpen, Folder, Upload, Save, AlertCircle, CheckCircle2, PackagePlus } from "lucide-react";
 import type { CategoryNode } from "../../services/api";
+import * as api from "../../services/api";
 import { defaultCategoryTree, countNodes } from "../../data/categoryTree";
+import { getValidAdminToken } from "./adminAuth";
 const AdminBulkCategoryAssign = lazy(function () { return import("./AdminBulkCategoryAssign").then(function (m) { return { default: m.AdminBulkCategoryAssign }; }); });
 
 type SubTab = "tree" | "bulk-assign";
@@ -93,7 +74,8 @@ export function AdminCategories() {
       if (!data || (Array.isArray(data) && data.length === 0)) {
         // seed from defaults
         data = defaultCategoryTree;
-        await api.saveCategoryTree(data);
+        var seedToken = await getValidAdminToken();
+        await api.saveCategoryTree(data, seedToken || undefined);
       }
       setTree(data);
       setDirty(false);
@@ -119,7 +101,8 @@ export function AdminCategories() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.saveCategoryTree(tree);
+      var token = await getValidAdminToken();
+      await api.saveCategoryTree(tree, token || undefined);
       setDirty(false);
       showToast("success", "Categorias salvas com sucesso!");
     } catch (e) {
@@ -251,7 +234,8 @@ export function AdminCategories() {
     if (!confirm("Tem certeza? Isso substituira todas as categorias pelas pre-cadastradas.")) return;
     setSaving(true);
     try {
-      await api.saveCategoryTree(defaultCategoryTree);
+      var token = await getValidAdminToken();
+      await api.saveCategoryTree(defaultCategoryTree, token || undefined);
       setTree(defaultCategoryTree);
       setDirty(false);
       showToast("success", "Categorias resetadas para o padrão!");

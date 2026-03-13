@@ -7,7 +7,7 @@ interface BrandCarouselProps {
   brands: BrandItem[];
 }
 
-export function BrandCarousel({ brands }: BrandCarouselProps) {
+export const BrandCarousel = React.memo(function BrandCarousel({ brands }: BrandCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   if (!brands || brands.length === 0) return null;
@@ -90,4 +90,4 @@ export function BrandCarousel({ brands }: BrandCarouselProps) {
       </div>
     </section>
   );
-}
+});

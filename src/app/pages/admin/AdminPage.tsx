@@ -1,45 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Link } from "react-router";
-import {
-  Package,
-  Layers,
-  Settings,
-  ExternalLink,
-  Menu,
-  X,
-  LogOut,
-  User,
-  ChevronRight,
-  Loader2,
-  Tag,
-  Users,
-  Plug,
-  CreditCard,
-  BarChart3,
-  Truck,
-  Wallet,
-  ShoppingCart,
-  ScrollText,
-  Image,
-  LayoutGrid,
-  Flame,
-  ShieldCheck,
-  AlertTriangle,
-  Shield,
-  Columns2,
-  BadgeCheck,
-  Mail,
-  LayoutDashboard,
-  Ticket,
-  FileCheck,
-  Award,
-  Zap,
-  Star,
-  Handshake,
-  Building2,
-  FlaskConical,
-  Bug,
-} from "lucide-react";
+import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -56,7 +17,6 @@ const AdminAttributes = lazy(function () { return import("./AdminAttributes").th
 const AdminClients = lazy(function () { return import("./AdminClients").then(function (m) { return { default: m.AdminClients }; }); });
 const AdminApiSige = lazy(function () { return import("./AdminApiSige").then(function (m) { return { default: m.AdminApiSige }; }); });
 const AdminPagHiper = lazy(function () { return import("./AdminPagHiper").then(function (m) { return { default: m.AdminPagHiper }; }); });
-const AdminGA4 = lazy(function () { return import("./AdminGA4").then(function (m) { return { default: m.AdminGA4 }; }); });
 const AdminShipping = lazy(function () { return import("./AdminShipping").then(function (m) { return { default: m.AdminShipping }; }); });
 const AdminMercadoPago = lazy(function () { return import("./AdminMercadoPago").then(function (m) { return { default: m.AdminMercadoPago }; }); });
 const AdminOrders = lazy(function () { return import("./AdminOrders").then(function (m) { return { default: m.AdminOrders }; }); });
@@ -76,13 +36,22 @@ const AdminAutoCateg = lazy(function () { return import("./AdminAutoCateg").then
 const AdminReviews = lazy(function () { return import("./AdminReviews").then(function (m) { return { default: m.AdminReviews }; }); });
 const AdminWarranty = lazy(function () { return import("./AdminWarranty").then(function (m) { return { default: m.AdminWarranty }; }); });
 const AdminAffiliates = lazy(function () { return import("./AdminAffiliates").then(function (m) { return { default: m.AdminAffiliates }; }); });
-const AdminSisfreteWT = lazy(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
-const AdminSafrapay = lazy(function () { return import("./AdminSafrapay").then(function (m) { return { default: m.AdminSafrapay }; }); });
 const AdminBranches = lazy(function () { return import("./AdminBranches").then(function (m) { return { default: m.AdminBranches }; }); });
+const AdminSafrapay = lazy(function () { return import("./AdminSafrapay").then(function (m) { return { default: m.AdminSafrapay }; }); });
+const AdminSisfreteWT = lazy(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
 const AdminRegressionTest = lazy(function () { return import("./AdminRegressionTest").then(function (m) { return { default: m.AdminRegressionTest }; }); });
 const AdminErrorScanner = lazy(function () { return import("./AdminErrorScanner").then(function (m) { return { default: m.AdminErrorScanner }; }); });
+const AdminMarketing = lazy(function () { return import("./AdminMarketing").then(function (m) { return { default: m.AdminMarketing }; }); });
+const AdminExitIntent = lazy(function () { return import("./AdminExitIntent").then(function (m) { return { default: m.AdminExitIntent }; }); });
+const AdminWhatsApp = lazy(function () { return import("./AdminWhatsApp").then(function (m) { return { default: m.AdminWhatsApp }; }); });
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "safrapay" | "shipping" | "sisfrete-wt" | "ga4" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner";
+const AdminReels = lazy(function () { return import("./AdminReels").then(function (m) { return { default: m.AdminReels }; }); });
+const AdminInfluencers = lazy(function () { return import("./AdminInfluencers").then(function (m) { return { default: m.AdminInfluencers }; }); });
+
+const AdminInfrastructure = lazy(function () { return import("./AdminInfrastructure").then(function (m) { return { default: m.AdminInfrastructure }; }); });
+const AdminFaq = lazy(function () { return import("./AdminFaq").then(function (m) { return { default: m.AdminFaq }; }); });
+
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "safrapay" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -91,48 +60,72 @@ const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "categories", label: "Categorias", icon: Layers },
   { id: "attributes", label: "Atributos", icon: Tag },
   { id: "brands", label: "Marcas", icon: Award },
-  { id: "auto-categ", label: "Auto-Categ.", icon: Zap },
+  { id: "auto-categ", label: "Auto-Categorias", icon: Zap },
   { id: "coupons", label: "Cupons", icon: Ticket },
-  { id: "warranty", label: "Garantia", icon: ShieldCheck },
+  { id: "warranty", label: "Garantia Estendida", icon: ShieldCheck },
   { id: "affiliates", label: "Afiliados", icon: Handshake },
   { id: "clients", label: "Clientes", icon: Users },
-  { id: "reviews", label: "Avaliações", icon: Star },
+  { id: "reviews", label: "Avaliacoes", icon: Star },
   { id: "email-marketing", label: "Email Marketing", icon: Mail },
-  { id: "banners", label: "Banners Topo", icon: Image },
-  { id: "mid-banners", label: "Banners Mid", icon: Columns2 },
-  { id: "hp-categories", label: "Categorias HP", icon: LayoutGrid },
+  { id: "whatsapp", label: "WhatsApp Cart", icon: MessageCircle },
+  { id: "exit-intent", label: "Popup de Saida", icon: MousePointerClick },
+  { id: "marketing", label: "Pixels & Analytics", icon: BarChart3 },
+  { id: "banners", label: "Banners Hero", icon: Image },
+  { id: "mid-banners", label: "Banners Central", icon: Columns2 },
+  { id: "hp-categories", label: "Vitrine Home", icon: LayoutGrid },
   { id: "super-promo", label: "Super Promo", icon: Flame },
-  { id: "footer-badges", label: "Selos Rodapé", icon: BadgeCheck },
-  { id: "api-sige", label: "API SIGE", icon: Plug },
-  { id: "paghiper", label: "PagHiper", icon: CreditCard },
-  { id: "mercadopago", label: "Mercado Pago", icon: Wallet },
-  { id: "safrapay", label: "SafraPay", icon: CreditCard },
-  { id: "shipping", label: "SisFrete", icon: Truck },
-  { id: "sisfrete-wt", label: "SisFrete WT", icon: Truck },
-  { id: "ga4", label: "Analytics", icon: BarChart3 },
-  { id: "settings", label: "Configurações", icon: Settings },
-  { id: "admins", label: "Administradores", icon: Shield },
-  { id: "audit-log", label: "Log de Alterações", icon: ScrollText },
-  { id: "lgpd-requests", label: "LGPD", icon: FileCheck },
+  { id: "footer-badges", label: "Selos & Badges", icon: BadgeCheck },
   { id: "branches", label: "Filiais", icon: Building2 },
-  { id: "regression-test", label: "Teste de Regressão", icon: FlaskConical },
+  { id: "paghiper", label: "PagHiper (PIX/Boleto)", icon: CreditCard },
+  { id: "mercadopago", label: "Mercado Pago", icon: Wallet },
+  { id: "safrapay", label: "SafraPay (Cartao)", icon: CreditCard },
+  { id: "shipping", label: "SisFrete Config", icon: Truck },
+  { id: "sisfrete-wt", label: "Tabela de Frete", icon: Truck },
+  { id: "api-sige", label: "API SIGE / ERP", icon: Plug },
+  { id: "settings", label: "Configuracoes", icon: Settings },
+  { id: "admins", label: "Administradores", icon: Shield },
+  { id: "audit-log", label: "Log de Auditoria", icon: ScrollText },
+  { id: "lgpd-requests", label: "LGPD & Privacidade", icon: FileCheck },
+  { id: "regression-test", label: "Teste de Regressao", icon: FlaskConical },
   { id: "error-scanner", label: "Error Scanner", icon: Bug },
+  { id: "reels", label: "Reels", icon: Video },
+  { id: "influencers", label: "Influencers", icon: Sparkles },
+  { id: "infrastructure", label: "Infraestrutura", icon: Wrench },
+  { id: "faq", label: "FAQ", icon: HelpCircle },
 ];
 
 // Grouped navigation for sidebar sections
 interface NavSection {
   label: string;
+  icon: typeof Package;
   items: Tab[];
+  collapsible?: boolean;
+}
+
+var COLLAPSED_KEY = "carretao_admin_collapsed";
+
+function loadCollapsedSections(): Record<string, boolean> {
+  try {
+    var raw = localStorage.getItem(COLLAPSED_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveCollapsedSections(state: Record<string, boolean>): void {
+  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(state)); } catch {}
 }
 
 const navSections: NavSection[] = [
-  { label: "Geral", items: ["dashboard"] },
-  { label: "Vendas", items: ["orders", "coupons", "warranty", "affiliates"] },
-  { label: "Catálogo", items: ["products", "categories", "attributes", "brands", "auto-categ"] },
-  { label: "Clientes", items: ["clients", "reviews", "email-marketing"] },
-  { label: "Aparência", items: ["banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches"] },
-  { label: "Integrações", items: ["api-sige", "paghiper", "mercadopago", "safrapay", "shipping", "sisfrete-wt", "ga4"] },
-  { label: "Sistema", items: ["settings", "admins", "audit-log", "lgpd-requests", "regression-test", "error-scanner"] },
+  { label: "Geral", icon: LayoutDashboard, items: ["dashboard"], collapsible: false },
+  { label: "Vendas", icon: ShoppingCart, items: ["orders", "coupons", "warranty"], collapsible: true },
+  { label: "Catalogo", icon: Package, items: ["products", "categories", "attributes", "brands", "auto-categ"], collapsible: true },
+  { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
+  { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
+  { label: "Aparencia", icon: Palette, items: ["reels", "influencers", "banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches", "faq"], collapsible: true },
+  { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "safrapay", "shipping", "sisfrete-wt"], collapsible: true },
+  { label: "Integracoes", icon: Plug, items: ["api-sige"], collapsible: true },
+  { label: "Sistema", icon: Wrench, items: ["settings", "admins", "audit-log", "lgpd-requests", "regression-test", "error-scanner", "infrastructure"], collapsible: true },
 ];
 
 function getNavItem(id: Tab) {
@@ -160,6 +153,8 @@ export function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [navSearch, setNavSearch] = useState("");
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(loadCollapsedSections);
 
   // Logo state
   const [logoUrl, setLogoUrl] = useState<string | null>(() => {
@@ -558,8 +553,6 @@ export function AdminPage() {
         return <AdminShipping />;
       case "sisfrete-wt":
         return <AdminSisfreteWT />;
-      case "ga4":
-        return <AdminGA4 />;
       case "audit-log":
         return <AdminAuditLog />;
       case "settings":
@@ -582,6 +575,20 @@ export function AdminPage() {
         return <AdminRegressionTest />;
       case "error-scanner":
         return <AdminErrorScanner />;
+      case "marketing":
+        return <AdminMarketing />;
+      case "exit-intent":
+        return <AdminExitIntent />;
+      case "whatsapp":
+        return <AdminWhatsApp />;
+      case "reels":
+        return <AdminReels />;
+      case "influencers":
+        return <AdminInfluencers />;
+      case "infrastructure":
+        return <AdminInfrastructure />;
+      case "faq":
+        return <AdminFaq />;
     }
   };
 
@@ -774,51 +781,135 @@ export function AdminPage() {
 
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navSections.map((section) => {
-            const visibleItems = section.items.filter((id) => {
-              if (isMaster) return true;
-              return allowedTabs.indexOf(id) >= 0;
+          {/* Search filter */}
+          <div className="px-1 pb-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              <input
+                type="text"
+                value={navSearch}
+                onChange={function (e) { setNavSearch(e.target.value); }}
+                placeholder="Buscar..."
+                className="w-full pl-8 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600"
+                style={{ fontSize: "0.78rem" }}
+              />
+              {navSearch && (
+                <button onClick={function () { setNavSearch(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {navSections.map(function (section) {
+            var visibleItems = section.items.filter(function (id) {
+              if (!isMaster && allowedTabs.indexOf(id) < 0) return false;
+              return true;
             });
             if (visibleItems.length === 0) return null;
+
+            // Apply search filter
+            var searchLower = navSearch.trim().toLowerCase();
+            var filteredItems = searchLower
+              ? visibleItems.filter(function (id) {
+                  var item = getNavItem(id);
+                  if (!item) return false;
+                  return item.label.toLowerCase().indexOf(searchLower) >= 0 || id.toLowerCase().indexOf(searchLower) >= 0;
+                })
+              : visibleItems;
+
+            if (filteredItems.length === 0) return null;
+
+            // Aggregate badge count for section header
+            var sectionBadgeCount = 0;
+            visibleItems.forEach(function (id) { sectionBadgeCount += getNewCount(id); });
+
+            var isCollapsed = section.collapsible !== false && !!collapsedSections[section.label] && !searchLower;
+            // Auto-expand if active tab is in this section
+            var activeInSection = section.items.indexOf(activeTab) >= 0;
+            var showItems = !isCollapsed || activeInSection || !!searchLower;
+
+            function toggleSection() {
+              if (section.collapsible === false) return;
+              setCollapsedSections(function (prev) {
+                var next = { ...prev, [section.label]: !prev[section.label] };
+                saveCollapsedSections(next);
+                return next;
+              });
+            }
+
             return (
-              <div key={section.label}>
-                <p className="text-gray-600 px-3 pt-3 pb-1" style={{ fontSize: "0.6rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  {section.label}
-                </p>
-                {visibleItems.map((id) => {
-                  const item = getNavItem(id);
-                  if (!item) return null;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        markTabAsSeen(item.id);
-                        setSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                        activeTab === item.id
-                          ? "bg-red-600 text-white"
-                          : "text-gray-400 hover:text-white hover:bg-gray-800"
-                      }`}
-                      style={{ fontSize: "0.82rem" }}
-                    >
-                      <item.icon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{item.label}</span>
-                      {getNewCount(item.id) > 0 && (
-                        <span
-                          className={"ml-auto shrink-0 flex items-center justify-center rounded-full " + (activeTab === item.id ? "bg-white text-red-600" : "bg-red-500 text-white")}
-                          style={{ fontSize: "0.6rem", fontWeight: 700, minWidth: "18px", height: "18px", padding: "0 5px", lineHeight: 1 }}
+              <div key={section.label} className="mb-0.5">
+                <button
+                  onClick={toggleSection}
+                  className={"w-full flex items-center gap-2 px-3 pt-3 pb-1.5 group transition-colors " + (section.collapsible !== false ? "cursor-pointer hover:bg-gray-800/50 rounded-md" : "cursor-default")}
+                >
+                  <section.icon className="w-3 h-3 text-gray-600 shrink-0" />
+                  <span className="text-gray-500 group-hover:text-gray-400 transition-colors flex-1 text-left" style={{ fontSize: "0.62rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    {section.label}
+                  </span>
+                  {sectionBadgeCount > 0 && isCollapsed && !activeInSection && (
+                    <span className="bg-red-500 text-white rounded-full flex items-center justify-center" style={{ fontSize: "0.55rem", fontWeight: 700, minWidth: "16px", height: "16px", padding: "0 4px" }}>
+                      {sectionBadgeCount > 99 ? "99+" : sectionBadgeCount}
+                    </span>
+                  )}
+                  {section.collapsible !== false && (
+                    <ChevronDown className={"w-3 h-3 text-gray-600 transition-transform duration-200 " + (showItems ? "rotate-0" : "-rotate-90")} />
+                  )}
+                </button>
+
+                {showItems && (
+                  <div className="mt-0.5 space-y-0.5">
+                    {filteredItems.map(function (id) {
+                      var item = getNavItem(id);
+                      if (!item) return null;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={function () {
+                            setActiveTab(item!.id);
+                            markTabAsSeen(item!.id);
+                            setSidebarOpen(false);
+                          }}
+                          className={"w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors " + (
+                            activeTab === item.id
+                              ? "bg-red-600 text-white"
+                              : "text-gray-400 hover:text-white hover:bg-gray-800"
+                          )}
+                          style={{ fontSize: "0.82rem" }}
                         >
-                          {getNewCount(item.id) > 99 ? "99+" : getNewCount(item.id)}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                          <item.icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                          {getNewCount(item.id) > 0 && (
+                            <span
+                              className={"ml-auto shrink-0 flex items-center justify-center rounded-full " + (activeTab === item.id ? "bg-white text-red-600" : "bg-red-500 text-white")}
+                              style={{ fontSize: "0.6rem", fontWeight: 700, minWidth: "18px", height: "18px", padding: "0 5px", lineHeight: 1 }}
+                            >
+                              {getNewCount(item.id) > 99 ? "99+" : getNewCount(item.id)}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {/* No results message */}
+          {navSearch.trim() && navSections.every(function (section) {
+            var searchLower = navSearch.trim().toLowerCase();
+            return section.items.every(function (id) {
+              var item = getNavItem(id);
+              return !item || (item.label.toLowerCase().indexOf(searchLower) < 0 && id.toLowerCase().indexOf(searchLower) < 0);
+            });
+          }) && (
+            <div className="px-3 py-6 text-center">
+              <Search className="w-5 h-5 text-gray-600 mx-auto mb-2" />
+              <p className="text-gray-500" style={{ fontSize: "0.75rem" }}>Nenhum item encontrado</p>
+            </div>
+          )}
 
           <div className="pt-3 mt-3 border-t border-gray-800">
             <p className="text-gray-600 px-3 pt-1 pb-1" style={{ fontSize: "0.6rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -871,6 +962,18 @@ export function AdminPage() {
               <div className="flex items-center gap-1.5 text-gray-400" style={{ fontSize: "0.8rem" }}>
                 <span>Admin</span>
                 <ChevronRight className="w-3.5 h-3.5" />
+                {(function () {
+                  var sec = navSections.find(function (s) { return s.items.indexOf(activeTab) >= 0; });
+                  if (sec && sec.label !== "Geral") {
+                    return (
+                      <>
+                        <span>{sec.label}</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
                 <span className="text-gray-700" style={{ fontWeight: 500 }}>
                   {navItems.find((n) => n.id === activeTab)?.label}
                 </span>

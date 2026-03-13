@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import { MapPin, Check, X, Loader2, ChevronRight, Navigation } from "lucide-react";
-
 export var CEP_STORAGE_KEY = "carretao_user_cep";
 export var CEP_CITY_STORAGE_KEY = "carretao_user_cep_city";
 
