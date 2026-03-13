@@ -1,7 +1,5 @@
 ---
 deployment:
   tasks:
-    - /opt/cpanel/ea-nodejs22/bin/npm install --prefix /home/autopecascarreta/repositories/Catlogodepeas --production=false
-    - /opt/cpanel/ea-nodejs22/bin/npm run build --prefix /home/autopecascarreta/repositories/Catlogodepeas
     - rm -rf /home/autopecascarreta/public_html/assets
     - cp -r /home/autopecascarreta/repositories/Catlogodepeas/dist/* /home/autopecascarreta/public_html/
