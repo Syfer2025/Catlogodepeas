@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/cp -R /home/autopecascarreta/repositories/Catlogodepeas/* /home/autopecascarreta/public_html/
+    - /bin/cp -R /home/autopecascarreta/repositories/Catlogodepeas/*  /home/autopecascarreta/public_html/
