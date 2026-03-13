@@ -1,5 +1,0 @@
----
-deployment:
-  tasks:
-    - rm -rf /home/autopecascarreta/public_html/assets
-    - cp -r /home/autopecascarreta/repositories/Catlogodepeas/dist/* /home/autopecascarreta/public_html/
