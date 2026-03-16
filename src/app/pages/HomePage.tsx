@@ -356,6 +356,12 @@ const DefaultHero = React.memo(function DefaultHero() {
   );
 });
 
+// ── Client-side cache for destaques (5 min TTL) ──
+// Prevents re-fetching featured products on every back-navigation to homepage.
+// Within the same session, the homepage shows the same products for 5 minutes.
+var _destaquesCache: { data: ProdutoItem[]; ts: number } | null = null;
+var DESTAQUES_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export function HomePage() {
   useDocumentMeta({
     title: "Carretão Auto Peças - Peças para Caminhões | Catálogo Online",
@@ -414,10 +420,17 @@ export function HomePage() {
   }, [initData, initLoading]);
 
   useEffect(() => {
+    // PERF: Use client-side cache if fresh (< 5 min) — avoids refetch on back-navigation
+    if (_destaquesCache && (Date.now() - _destaquesCache.ts) < DESTAQUES_CACHE_TTL) {
+      setProdutos(_destaquesCache.data);
+      setLoading(false);
+      return;
+    }
     const load = async () => {
       try {
         const result = await api.getDestaques(10);
         setProdutos(result.data);
+        _destaquesCache = { data: result.data, ts: Date.now() };
       } catch (e) {
         console.error("Erro ao carregar produtos do catalogo:", e);
       } finally {

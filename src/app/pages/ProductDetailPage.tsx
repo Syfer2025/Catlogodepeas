@@ -87,6 +87,12 @@ function PromoCountdown({ endDate }: { endDate: number }) {
   );
 }
 
+// ── Client-side cache for related products (10 min TTL, per SKU) ──
+// Prevents re-fetching related products when user navigates Product A → B → back to A.
+var _relatedCache: Map<string, { data: ProdutoItem[]; ts: number }> = new Map();
+var RELATED_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+var RELATED_CACHE_MAX = 30; // max cached SKUs
+
 export function ProductDetailPage() {
   const { id } = useParams();
   const sku = id ? decodeURIComponent(id) : "";
@@ -387,8 +393,16 @@ export function ProductDetailPage() {
   // ═══════ STOCK VALIDATION LAYER 1: Background force-refresh ═══════
   // After initial cached load, fetch real-time stock from SIGE (bypassing cache)
   // to ensure the customer sees the true balance, not stale cached data.
+  // OPTIMIZATION: Only force-refresh if cached data is older than 5 minutes.
+  // If cache is fresh (< 5 min), trust it — avoids redundant SIGE calls.
+  // The checkout flow still does its own force-refresh for final validation.
   useEffect(function () {
     if (loading || !product || !sku) return;
+    // Skip force-refresh if we already have fresh cached balance (< 5 min old)
+    var FORCE_REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    if (mainBalance && (mainBalance as any)._cachedAt && (Date.now() - (mainBalance as any)._cachedAt) < FORCE_REFRESH_THRESHOLD_MS) {
+      return; // Cache is fresh enough, no need to hit SIGE again
+    }
     var cancelled = false;
     // Small delay so the page renders first with cached data
     var timer = setTimeout(function () {
@@ -504,6 +518,14 @@ export function ProductDetailPage() {
   // ═══════════════════════════════════════════════════════════════════════
   useEffect(function () {
     if (!sku || notFound || !product) return;
+
+    // PERF: Check client-side cache for related products (10 min TTL)
+    var cached = _relatedCache.get(sku);
+    if (cached && (Date.now() - cached.ts) < RELATED_CACHE_TTL) {
+      setRelated(cached.data);
+      return;
+    }
+
     var cancelled = false;
 
     // Extract meaningful keywords from product title (skip short/common words)
@@ -524,6 +546,12 @@ export function ProductDetailPage() {
         if (cancelled) return;
         var filtered = res.data.filter(function (p) { return p.sku !== sku; }).slice(0, 4);
         setRelated(filtered);
+        // Store in cache (evict oldest if over max)
+        if (_relatedCache.size >= RELATED_CACHE_MAX) {
+          var oldestKey = _relatedCache.keys().next().value;
+          if (oldestKey) _relatedCache.delete(oldestKey);
+        }
+        _relatedCache.set(sku, { data: filtered, ts: Date.now() });
       })
       .catch(function (e) { console.error("[ProductDetail] Related products error:", e); });
     return function () { cancelled = true; };

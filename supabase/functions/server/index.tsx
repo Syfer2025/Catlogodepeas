@@ -18220,12 +18220,27 @@ app.get(BASE + "/homepage-init", async (c) => {
 
 // ═══════════════════════════════════════════════════════════════════════
 // ─── PRODUCT DETAIL INIT (Combined endpoint — reduces 6 API calls to 1)
+// ─── Per-SKU in-memory cache (60s TTL, max 200 entries) — same pattern
+// ─── as homepage-init. Product/images/meta/attrs rarely change; price &
+// ─── balance have their own KV caches and the frontend force-refreshes
+// ─── balance separately via Layer 1 stock validation.
 // ═══════════════════════════════════════════════════════════════════════
+
+var _productDetailCache: Map<string, { json: any; ts: number }> = new Map();
+var PRODUCT_DETAIL_CACHE_TTL = 60 * 1000; // 60 seconds
+var PRODUCT_DETAIL_CACHE_MAX = 200; // max cached SKUs (LRU-style eviction)
 
 app.get(BASE + "/produto-detail-init/:sku", async (c) => {
   try {
     var sku = decodeURIComponent(c.req.param("sku")).trim().substring(0, 100);
     if (!sku) return c.json({ error: "SKU obrigatório." }, 400);
+
+    // Check per-SKU cache — return cached response if fresh (< 60s)
+    var _now = Date.now();
+    var _cached = _productDetailCache.get(sku);
+    if (_cached && (_now - _cached.ts) < PRODUCT_DETAIL_CACHE_TTL) {
+      return c.json({ ..._cached.json, _fromCache: true });
+    }
 
     var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     var supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -18345,7 +18360,7 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
     var _revCount = reviewSummary ? reviewSummary.totalReviews : 0;
     // produto-detail-init: completed
 
-    return c.json({
+    var responseJson = {
       product: product,
       meta: meta,
       images: images,
@@ -18354,7 +18369,16 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
       balance: balance,
       reviewSummary: reviewSummary,
       _elapsed: elapsed,
-    });
+    };
+
+    // Store in per-SKU cache (evict oldest if over max)
+    if (_productDetailCache.size >= PRODUCT_DETAIL_CACHE_MAX) {
+      var _oldestKey = _productDetailCache.keys().next().value;
+      if (_oldestKey) _productDetailCache.delete(_oldestKey);
+    }
+    _productDetailCache.set(sku, { json: responseJson, ts: Date.now() });
+
+    return c.json(responseJson);
   } catch (e: any) {
     console.error("[produto-detail-init] Exception:", e);
     return c.json({ error: "Erro interno ao buscar detalhes do produto." }, 500);

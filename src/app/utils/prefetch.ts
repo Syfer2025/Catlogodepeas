@@ -65,16 +65,19 @@ export function prefetchAccount() {
 // Each SKU is fetched at most once. A 200ms delay prevents prefetch
 // on fast scroll-throughs.
 
-var _dataCache: Record<string, any> = {};
+var _dataCache: Record<string, { data: any; fetchedAt: number }> = {};
 var _dataInFlight: Record<string, boolean> = {};
 var _hoverTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+var DATA_CACHE_TTL = 2 * 60 * 1000; // 2 minutes — keep prefetched data for revisits
 
 /**
  * Schedule a data prefetch for a product SKU.
  * Call on mouseEnter; cancel with cancelProductDataPrefetch on mouseLeave.
  */
 export function scheduleProductDataPrefetch(sku: string) {
-  if (!sku || _dataCache[sku] || _dataInFlight[sku]) return;
+  if (!sku || _dataInFlight[sku]) return;
+  // Skip if cache entry exists and is still fresh
+  if (_dataCache[sku] && (Date.now() - _dataCache[sku].fetchedAt) < DATA_CACHE_TTL) return;
   // Debounce: only fetch if hover persists 200ms
   _hoverTimers[sku] = setTimeout(function () {
     _fireDataPrefetch(sku);
@@ -90,13 +93,14 @@ export function cancelProductDataPrefetch(sku: string) {
 }
 
 function _fireDataPrefetch(sku: string) {
-  if (_dataCache[sku] || _dataInFlight[sku]) return;
+  if (_dataInFlight[sku]) return;
+  if (_dataCache[sku] && (Date.now() - _dataCache[sku].fetchedAt) < DATA_CACHE_TTL) return;
   _dataInFlight[sku] = true;
   // Dynamic import to avoid circular dependency with api.ts at module level
   import("../services/api").then(function (api) {
     return api.getProductDetailInit(sku);
   }).then(function (data) {
-    _dataCache[sku] = data;
+    _dataCache[sku] = { data: data, fetchedAt: Date.now() };
     delete _dataInFlight[sku];
   }).catch(function () {
     delete _dataInFlight[sku];
@@ -104,17 +108,28 @@ function _fireDataPrefetch(sku: string) {
 }
 
 /**
- * Consume prefetched data for a SKU (one-shot: returns & removes from cache).
- * Returns null if not available.
+ * Consume prefetched data for a SKU.
+ * NON-DESTRUCTIVE: keeps the data in cache (with TTL) so revisiting
+ * the same product within 2 minutes is instant (back/forward navigation).
+ * Returns null if not available or expired.
  */
 export function consumeProductDataCache(sku: string): any | null {
-  if (!_dataCache[sku]) return null;
-  var data = _dataCache[sku];
-  delete _dataCache[sku];
-  return data;
+  var entry = _dataCache[sku];
+  if (!entry) return null;
+  if ((Date.now() - entry.fetchedAt) > DATA_CACHE_TTL) {
+    delete _dataCache[sku];
+    return null;
+  }
+  return entry.data;
 }
 
 /** Check if data is available without consuming it. */
 export function hasProductDataCache(sku: string): boolean {
-  return !!_dataCache[sku];
+  var entry = _dataCache[sku];
+  if (!entry) return false;
+  if ((Date.now() - entry.fetchedAt) > DATA_CACHE_TTL) {
+    delete _dataCache[sku];
+    return false;
+  }
+  return true;
 }

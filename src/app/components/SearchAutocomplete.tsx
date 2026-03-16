@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
 import "../utils/emptyStateAnimations";
+import { prefetchCatalog, prefetchProductDetail } from "../utils/prefetch";
+import * as api from "../services/api";
+import type { AutocompleteResult } from "../services/api";
+import { ProductImage } from "./ProductImage";
 
 // ── Search History (localStorage) ──
 var SEARCH_HISTORY_KEY = "carretao_search_history";

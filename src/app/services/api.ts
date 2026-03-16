@@ -1964,14 +1964,67 @@ export const getProductBalance = (sku: string, opts?: { force?: boolean; debug?:
 // simultaneously (HomePage, SuperPromo, RecentlyViewed, etc.)
 // they may all call getProductBalances with overlapping SKU sets.
 // We dedup by cacheKey so identical requests share one fetch.
+//
+// OPTIMIZATION: Per-SKU client-side cache (2 min TTL) — when
+// HomePage fetches 10 SKU balances and SuperPromo then requests
+// 6 SKUs (4 overlapping), only the 2 missing SKUs hit the server.
+// Force calls (checkout) always bypass this cache.
 // ═══════════════════════════════════════════════════════════
 var _bulkBalanceInflight: Map<string, Promise<{ results: ProductBalance[]; total: number }>> = new Map();
+var _balanceSkuCache: Map<string, { data: ProductBalance; ts: number }> = new Map();
+var BALANCE_SKU_CACHE_TTL = 2 * 60 * 1000; // 2 min — client dedup, server KV is source of truth
 
 /** Get stock balances for multiple SKUs in bulk.
  *  Non-force calls use fast-fail (25s, no retry) and resolve with empty results on error.
  *  Force calls (checkout validation) use full retry logic. */
 export const getProductBalances = (skus: string[], opts?: { force?: boolean; signal?: AbortSignal }): Promise<{ results: ProductBalance[]; total: number }> => {
   var force = opts?.force || false;
+
+  // PERF: For non-force calls, check per-SKU client cache and only request missing SKUs
+  if (!force) {
+    var now = Date.now();
+    var cachedResults: ProductBalance[] = [];
+    var missingSkus: string[] = [];
+    for (var i = 0; i < skus.length; i++) {
+      var entry = _balanceSkuCache.get(skus[i]);
+      if (entry && (now - entry.ts) < BALANCE_SKU_CACHE_TTL) {
+        cachedResults.push(entry.data);
+      } else {
+        missingSkus.push(skus[i]);
+      }
+    }
+    // All SKUs were cached — return immediately, no server call
+    if (missingSkus.length === 0) {
+      return Promise.resolve({ results: cachedResults, total: cachedResults.length });
+    }
+    // Some SKUs missing — fetch only those, then merge with cached
+    if (missingSkus.length < skus.length) {
+      return _fetchBalancesBulk(missingSkus, false, opts?.signal).then(function (resp) {
+        // Cache fresh results per-SKU
+        var freshNow = Date.now();
+        for (var r = 0; r < (resp.results || []).length; r++) {
+          _balanceSkuCache.set(resp.results[r].sku, { data: resp.results[r], ts: freshNow });
+        }
+        var merged = cachedResults.concat(resp.results || []);
+        return { results: merged, total: merged.length };
+      });
+    }
+  }
+
+  // Full fetch (all SKUs missing from cache, or force mode)
+  return _fetchBalancesBulk(skus, force, opts?.signal).then(function (resp) {
+    // Cache per-SKU results (non-force only)
+    if (!force) {
+      var cacheNow = Date.now();
+      for (var r = 0; r < (resp.results || []).length; r++) {
+        _balanceSkuCache.set(resp.results[r].sku, { data: resp.results[r], ts: cacheNow });
+      }
+    }
+    return resp;
+  });
+};
+
+function _fetchBalancesBulk(skus: string[], force: boolean, signal?: AbortSignal): Promise<{ results: ProductBalance[]; total: number }> {
   // Build a stable cache key from sorted SKUs + force flag
   var sortedKey = skus.slice().sort().join(",") + (force ? ":f" : "");
 
@@ -1987,7 +2040,7 @@ export const getProductBalances = (skus: string[], opts?: { force?: boolean; sig
   var promise = reqFn<{ results: ProductBalance[]; total: number }>("/produtos/saldos", {
     method: "POST",
     body: JSON.stringify({ skus: skus, force: force }),
-    signal: opts?.signal,
+    signal: signal,
   }).then(function (resp) {
     _bulkBalanceInflight.delete(sortedKey);
     return resp;
@@ -2008,7 +2061,7 @@ export const getProductBalances = (skus: string[], opts?: { force?: boolean; sig
     _bulkBalanceInflight.set(sortedKey, promise);
   }
   return promise;
-};
+}
 
 /** Clear balance cache for all SKUs (admin, requires auth) */
 export const clearBalanceCache = (accessToken: string) =>
@@ -2628,13 +2681,51 @@ export const getProductPrice = (sku: string, options?: { signal?: AbortSignal })
   _requestFastFail<ProductPrice>("/produtos/preco/" + encodeURIComponent(sku), options);
 
 /** Bulk fetch prices for multiple SKUs in one call (public, no auth).
- *  Uses fast-fail (25s, no retry) — display-only, not checkout-critical. */
-export const getProductPricesBulk = (skus: string[], opts?: { signal?: AbortSignal }) =>
-  _requestFastFail<{ results: ProductPrice[]; config: PriceConfig | null }>("/produtos/precos-bulk", {
+ *  Uses fast-fail (25s, no retry) — display-only, not checkout-critical.
+ *  OPTIMIZATION: Per-SKU client cache (5 min TTL) — avoids redundant server
+ *  calls when multiple components (HomePage, SuperPromo, RecentlyViewed)
+ *  request overlapping SKU sets. */
+var _priceSkuCache: Map<string, { data: ProductPrice; ts: number }> = new Map();
+var _lastPriceConfig: PriceConfig | null = null;
+var PRICE_SKU_CACHE_TTL = 5 * 60 * 1000; // 5 min — client dedup
+
+export const getProductPricesBulk = (skus: string[], opts?: { signal?: AbortSignal }): Promise<{ results: ProductPrice[]; config: PriceConfig | null }> => {
+  var now = Date.now();
+  var cachedResults: ProductPrice[] = [];
+  var missingSkus: string[] = [];
+  for (var i = 0; i < skus.length; i++) {
+    var entry = _priceSkuCache.get(skus[i]);
+    if (entry && (now - entry.ts) < PRICE_SKU_CACHE_TTL) {
+      cachedResults.push(entry.data);
+    } else {
+      missingSkus.push(skus[i]);
+    }
+  }
+  // All SKUs cached — return immediately
+  if (missingSkus.length === 0) {
+    return Promise.resolve({ results: cachedResults, config: _lastPriceConfig });
+  }
+  // Fetch only missing SKUs
+  var fetchSkus = missingSkus.length < skus.length ? missingSkus : skus;
+  return _requestFastFail<{ results: ProductPrice[]; config: PriceConfig | null }>("/produtos/precos-bulk", {
     method: "POST",
-    body: JSON.stringify({ skus }),
+    body: JSON.stringify({ skus: fetchSkus }),
     signal: opts?.signal,
+  }).then(function (resp) {
+    // Cache per-SKU
+    var cacheNow = Date.now();
+    for (var r = 0; r < (resp.results || []).length; r++) {
+      _priceSkuCache.set(resp.results[r].sku, { data: resp.results[r], ts: cacheNow });
+    }
+    if (resp.config) _lastPriceConfig = resp.config;
+    // Merge if we had partial cache
+    if (cachedResults.length > 0) {
+      var merged = cachedResults.concat(resp.results || []);
+      return { results: merged, config: resp.config || _lastPriceConfig };
+    }
+    return resp;
   });
+};
 
 /** Safe wrapper for getProductPricesBulk — never throws for display-only usage.
  *  On total failure (edge function down, timeout, network error), returns empty results
