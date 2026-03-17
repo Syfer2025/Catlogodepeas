@@ -1,7 +1,7 @@
 /**
  * CHECKOUT PAGE — Fluxo de compra completo.
  * Etapas: resumo do carrinho → endereco → frete → cupom → pagamento.
- * Pagamentos: PIX (PagHiper/Safrapay), Boleto (PagHiper), Mercado Pago.
+ * Pagamentos: PIX (PagHiper), Boleto (PagHiper), Mercado Pago.
  * Integra: CartContext, Auth, GA4 (begin_checkout, purchase), Marketing.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -186,17 +186,6 @@ export function CheckoutPage() {
   const [mpSandbox, setMpSandbox] = useState(false);
   const [mpReturnHandled, setMpReturnHandled] = useState(false);
 
-  // SafraPay (Credit Card)
-  const [spEnabled, setSpEnabled] = useState(false);
-  const [spConfig, setSpConfig] = useState<api.SafrapayPublicConfig | null>(null);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [cardExpMonth, setCardExpMonth] = useState("");
-  const [cardExpYear, setCardExpYear] = useState("");
-  const [cardInstallments, setCardInstallments] = useState(1);
-  const [cardBrand, setCardBrand] = useState<string | null>(null);
-
   // ═══════ STOCK VALIDATION LAYER 3: Checkout entry validation ═══════
   const [stockValidation, setStockValidation] = useState<{
     loading: boolean;
@@ -268,29 +257,7 @@ export function CheckoutPage() {
       .catch(() => setMpEnabled(false));
   }, []);
 
-  // ─── Check if SafraPay (credit card) is enabled ───
-  useEffect(() => {
-    api.safrapayPublicConfig()
-      .then((res) => {
-        setSpEnabled(res.enabled);
-        setSpConfig(res);
-      })
-      .catch(() => setSpEnabled(false));
-  }, []);
 
-  // ─── Card brand detection ───
-  useEffect(() => {
-    const digits = cardNumber.replace(/\D/g, "");
-    if (digits.length >= 4) {
-      if (digits.startsWith("4")) setCardBrand("visa");
-      else if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits)) setCardBrand("mastercard");
-      else if (digits.startsWith("34") || digits.startsWith("37")) setCardBrand("amex");
-      else if (/^(636|438|504|451|5067|4576|4011|506)/.test(digits)) setCardBrand("elo");
-      else setCardBrand(null);
-    } else {
-      setCardBrand(null);
-    }
-  }, [cardNumber]);
 
   // ─── LAYER 3: Validate stock for all cart items on checkout entry ───
   useEffect(() => {
@@ -954,89 +921,6 @@ export function CheckoutPage() {
           throw new Error("URL de checkout do Mercado Pago não disponível.");
         }
         return; // Don't set submitting=false, page will redirect
-      } else if (paymentMethod === "cartao_credito") {
-        // ─── SafraPay Credit Card ───
-        const cardDigits = cardNumber.replace(/\D/g, "");
-        if (!cardDigits || cardDigits.length < 13) throw new Error("Número do cartão inválido.");
-        if (!cardCvv || cardCvv.length < 3) throw new Error("CVV inválido.");
-        if (!cardName) throw new Error("Nome do titular obrigatório.");
-        if (!cardExpMonth || !cardExpYear) throw new Error("Validade do cartão obrigatória.");
-
-        const chargeResult = await api.safrapayCharge(accessToken, {
-          cardNumber: cardDigits,
-          cvv: cardCvv,
-          cardholderName: cardName,
-          cardholderDocument: effectiveCpf.replace(/\D/g, ""),
-          expirationMonth: Number(cardExpMonth),
-          expirationYear: Number(cardExpYear),
-          amount: Math.round(totalWithShipping * 100), // reais → centavos
-          installmentNumber: cardInstallments,
-          installmentType: cardInstallments > 1 ? 1 : 0, // 1=Merchant (sem juros)
-          customerName: effectiveName,
-          customerEmail: profile.email,
-          customerPhone: effectivePhone.replace(/\D/g, ""),
-          merchantChargeId: localOrderId,
-        });
-
-        if (!chargeResult.success || !chargeResult.transaction?.isApproved) {
-          throw new Error(chargeResult.error || "Pagamento com cartão não aprovado. Verifique os dados e tente novamente.");
-        }
-
-        // Save order with credit card info
-        try {
-          await api.saveUserOrder(accessToken, {
-            localOrderId,
-            sigeOrderId: saleResult?.orderId || null,
-            items: orderItems,
-            total: totalWithShipping,
-            paymentMethod: "cartao_credito",
-            transactionId: chargeResult.chargeId || chargeResult.transaction?.transactionId || null,
-            observacao: observacao.trim() || undefined,
-            shippingAddress: orderShippingAddr,
-            shippingOption: orderShippingOpt,
-            coupon: orderCouponInfo,
-            safrapayChargeId: chargeResult.chargeId,
-            safrapayNsu: chargeResult.nsu,
-            cardBrand: chargeResult.transaction?.brandName,
-            cardLastFour: chargeResult.transaction?.cardNumber?.slice(-4),
-            installments: cardInstallments,
-          } as any);
-          trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
-          _useCouponOnce();
-        } catch (e) {
-          console.error("Save user order error (non-fatal):", e);
-        }
-
-        // NOTE: Credit card orders are saved with initialStatus="paid" by save-order.
-        // The user endpoint blocks "paid" status for security — webhooks are authoritative.
-        // This transactionId update is still useful for linking the charge ID.
-        try {
-          await api.updateOrderStatus(accessToken, localOrderId, "awaiting_payment", chargeResult.chargeId || "");
-        } catch (e) {
-          console.error("Update order transactionId error (non-fatal):", e);
-        }
-
-        // GA4: track purchase
-        trackEvent("purchase", {
-          transaction_id: chargeResult.chargeId || localOrderId,
-          currency: "BRL",
-          value: totalWithShipping,
-          shipping: shippingPrice,
-          payment_type: "cartao_credito",
-          items: items.map((i) => ({
-            item_id: i.sku,
-            item_name: i.titulo,
-            quantity: i.quantidade,
-            price: i.precoUnitario ?? 0,
-          })),
-          ...getUtmEventParams(),
-        });
-        trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: totalWithShipping, currency: "BRL", num_items: totalItems });
-        trackGoogleAdsConversion({ value: totalWithShipping, currency: "BRL", transaction_id: chargeResult.chargeId || localOrderId });
-
-        clearCart();
-        _markWaCartCompleted();
-        setStep("success");
       }
     } catch (e: any) {
       console.error("Checkout submission error:", e);
@@ -2090,165 +1974,9 @@ export function CheckoutPage() {
                       </button>
                     )}
 
-                    {/* Cartão de Crédito (SafraPay) */}
-                    {spEnabled && (
-                      <button
-                        onClick={() => setPaymentMethod("cartao_credito")}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                          paymentMethod === "cartao_credito"
-                            ? "border-orange-500 bg-orange-50 shadow-md"
-                            : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/50"
-                        }`}
-                      >
-                        <div className={`rounded-full p-3 ${paymentMethod === "cartao_credito" ? "bg-orange-100" : "bg-gray-100"}`}>
-                          <CreditCard className={`w-6 h-6 ${paymentMethod === "cartao_credito" ? "text-orange-600" : "text-gray-400"}`} />
-                        </div>
-                        <span
-                          className={paymentMethod === "cartao_credito" ? "text-orange-700" : "text-gray-600"}
-                          style={{ fontSize: "0.9rem", fontWeight: 700 }}
-                        >
-                          Cartão
-                        </span>
-                        <span
-                          className={paymentMethod === "cartao_credito" ? "text-orange-600" : "text-gray-400"}
-                          style={{ fontSize: "0.72rem" }}
-                        >
-                          {spConfig?.sandbox ? "Sandbox (teste)" : "Até " + (spConfig?.maxInstallments || 12) + "x"}
-                        </span>
-                      </button>
-                    )}
                   </div>
 
-                  {/* Credit Card Form — shown when cartao_credito is selected */}
-                  {paymentMethod === "cartao_credito" && (
-                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-                      {/* Card Number */}
-                      <div>
-                        <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Número do Cartão</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={19}
-                            value={cardNumber}
-                            onChange={(e) => {
-                              const v = e.target.value.replace(/\D/g, "").slice(0, 16);
-                              const formatted = v.replace(/(.{4})/g, "$1 ").trim();
-                              setCardNumber(formatted);
-                            }}
-                            placeholder="0000 0000 0000 0000"
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all pr-16"
-                            style={{ fontSize: "0.95rem", letterSpacing: "0.05em" }}
-                          />
-                          {cardBrand && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                                cardBrand === "visa" ? "bg-blue-100 text-blue-700" :
-                                cardBrand === "mastercard" ? "bg-red-100 text-red-700" :
-                                cardBrand === "amex" ? "bg-indigo-100 text-indigo-700" :
-                                cardBrand === "elo" ? "bg-yellow-100 text-yellow-700" :
-                                "bg-gray-100 text-gray-700"
-                              }`}>
-                                {cardBrand === "visa" ? "VISA" : cardBrand === "mastercard" ? "MC" : cardBrand === "amex" ? "AMEX" : cardBrand === "elo" ? "ELO" : ""}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
 
-                      {/* Card Holder Name */}
-                      <div>
-                        <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Nome no Cartão</label>
-                        <input
-                          type="text"
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                          placeholder="NOME COMO ESTÁ NO CARTÃO"
-                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all uppercase"
-                          style={{ fontSize: "0.9rem" }}
-                        />
-                      </div>
-
-                      {/* Expiry + CVV row */}
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Mês</label>
-                          <select
-                            value={cardExpMonth}
-                            onChange={(e) => setCardExpMonth(e.target.value)}
-                            className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all"
-                            style={{ fontSize: "0.9rem" }}
-                          >
-                            <option value="">MM</option>
-                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                              <option key={m} value={String(m)}>{String(m).padStart(2, "0")}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Ano</label>
-                          <select
-                            value={cardExpYear}
-                            onChange={(e) => setCardExpYear(e.target.value)}
-                            className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all"
-                            style={{ fontSize: "0.9rem" }}
-                          >
-                            <option value="">AAAA</option>
-                            {Array.from({ length: 12 }, (_, i) => new Date().getFullYear() + i).map((y) => (
-                              <option key={y} value={String(y)}>{y}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>CVV</label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={4}
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                            placeholder="123"
-                            className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all text-center"
-                            style={{ fontSize: "0.9rem" }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Installments */}
-                      {totalWithShipping > 0 && (
-                        <div>
-                          <label className="text-gray-600 block mb-1" style={{ fontSize: "0.8rem", fontWeight: 500 }}>Parcelas</label>
-                          <select
-                            value={cardInstallments}
-                            onChange={(e) => setCardInstallments(Number(e.target.value))}
-                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-all"
-                            style={{ fontSize: "0.9rem" }}
-                          >
-                            {Array.from({ length: spConfig?.maxInstallments || 12 }, (_, i) => i + 1)
-                              .filter((n) => {
-                                const minVal = (spConfig?.minInstallmentValue || 500) / 100;
-                                return totalWithShipping / n >= minVal;
-                              })
-                              .map((n) => (
-                                <option key={n} value={n}>
-                                  {n === 1
-                                    ? `1x de ${formatPrice(totalWithShipping)} (à vista)`
-                                    : `${n}x de ${formatPrice(totalWithShipping / n)} sem juros`}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      )}
-
-                      {spConfig?.sandbox && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                          <p className="text-yellow-700" style={{ fontSize: "0.75rem" }}>
-                            <strong>Modo Sandbox:</strong> Use cartão de teste. Visa: 4111 1111 1111 1111 | MC: 5491 6702 1409 5346 | CVV: 123 | Validade futura.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* Payer data — compact summary */}

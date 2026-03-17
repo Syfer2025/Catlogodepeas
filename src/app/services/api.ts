@@ -1414,66 +1414,6 @@ export const updateOrderStatus = (accessToken: string, localOrderId: string, sta
     body: JSON.stringify({ localOrderId, status, transactionId }),
   });
 
-// ─── SafraPay: Credit Card ───
-export interface SafrapayPublicConfig {
-  enabled: boolean;
-  maxInstallments: number;
-  minInstallmentValue: number;
-  sandbox: boolean;
-}
-
-export const safrapayPublicConfig = () =>
-  request<SafrapayPublicConfig>("/safrapay/public-config");
-
-export interface SafrapayChargePayload {
-  cardNumber: string;
-  cvv: string;
-  cardholderName: string;
-  cardholderDocument: string;
-  expirationMonth: number;
-  expirationYear: number;
-  amount: number; // centavos
-  installmentNumber: number;
-  installmentType: number; // 0=None, 1=Merchant(sem juros), 2=Issuer(com juros)
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  merchantChargeId: string;
-}
-
-export interface SafrapayChargeResult {
-  success: boolean;
-  chargeId?: string;
-  nsu?: string;
-  chargeStatus?: string;
-  merchantChargeId?: string;
-  customerId?: string;
-  error?: string;
-  errors?: Array<{ errorCode: number; message: string }>;
-  traceKey?: string;
-  transaction?: {
-    isApproved: boolean;
-    transactionId: string | null;
-    transactionStatus: string | null;
-    amount: number;
-    installmentNumber: number;
-    installmentType: string | null;
-    isCapture: boolean;
-    cardNumber: string | null;
-    brandName: string | null;
-    authorizationCode: string | null;
-    acquirer: string | null;
-    softDescriptor: string | null;
-  };
-}
-
-export const safrapayCharge = (accessToken: string, data: SafrapayChargePayload) =>
-  request<SafrapayChargeResult>("/safrapay/charge", {
-    method: "POST",
-    headers: { "X-User-Token": accessToken },
-    body: JSON.stringify(data),
-  });
-
 // Debug: diagnostic endpoint for POST /order
 export const sigeDebugCreateOrder = async (accessToken: string, data: { codCliFor: number; codTipoMv?: string; items?: any[] }): Promise<any> => {
   const res = await fetch(_authUrl("/sige/debug-create-order", accessToken), {

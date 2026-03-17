@@ -229,7 +229,6 @@ var sections: DocSection[] = [
         ["POST", "/payment/paghiper/pix", "Gera QR code PIX"],
         ["POST", "/payment/paghiper/boleto", "Gera boleto"],
         ["POST", "/payment/mercadopago/preference", "Cria preferencia MP"],
-        ["POST", "/payment/safrapay/pix", "Gera PIX Safrapay"],
         ["POST", "/payment/*/webhook", "Webhooks de pagamento"],
       ]},
       { type: "subtitle", value: "Frete" },
@@ -336,7 +335,7 @@ var sections: DocSection[] = [
         "1. Usuario adiciona produtos ao carrinho (CartContext → localStorage)",
         "2. CartDrawer mostra resumo → clica 'Finalizar'",
         "3. CheckoutPage: verifica auth → seleciona endereco → calcula frete → aplica cupom",
-        "4. Escolhe pagamento: PIX (PagHiper/Safrapay), Boleto (PagHiper), ou Mercado Pago",
+        "4. Escolhe pagamento: PIX (PagHiper), Boleto (PagHiper), ou Mercado Pago",
         "5. POST /orders → cria pedido → backend sincroniza com SIGE",
         "6. CartAbandonedTracker: se sair sem finalizar, salva snapshot para recuperacao via WhatsApp",
       ]},
@@ -555,6 +554,170 @@ var sections: DocSection[] = [
       ]},
     ]
   },
+  {
+    id: "integrations",
+    title: "Mapa de Integracoes",
+    icon: ExternalLink,
+    color: "purple",
+    content: [
+      { type: "text", value: "O sistema integra com diversos servicos externos, todos intermediados pelo servidor Hono (nunca acessados diretamente pelo frontend)." },
+      { type: "table", headers: ["Servico", "Finalidade", "Onde e usado"], rows: [
+        ["API SIGE (ERP)", "Catalogo, precos (V1-V5), saldos, clientes, pedidos", "Servidor: /sige/*, /produtos, /orders"],
+        ["Supabase Auth", "Cadastro/login de clientes e admins, JWT tokens", "Frontend (signIn) + Servidor (createUser)"],
+        ["Supabase Storage", "Imagens de produtos, banners, avatares, logos", "Servidor: upload/download com signed URLs"],
+        ["Supabase PostgreSQL", "Tabela KV unica (kv_store_b7b07654)", "Servidor: kv_store.tsx (get/set/del)"],
+        ["PagHiper", "Pagamento via PIX e Boleto", "Servidor: /payment/paghiper/*"],
+        ["Mercado Pago", "Pagamento via cartao/redirect", "Servidor: /payment/mercadopago/*"],
+
+        ["ViaCEP", "Consulta de enderecos por CEP", "Servidor: /shipping/cep/:cep"],
+        ["Sisfrete / Frete API", "Calculo de frete (transportadoras)", "Servidor: /shipping/calculate"],
+        ["Google Analytics 4", "Rastreamento de eventos e conversoes", "Frontend: GA4Provider.tsx"],
+        ["Google Tag Manager", "Container de tags (marketing)", "Frontend: GTMProvider.tsx"],
+        ["Meta / TikTok Pixel", "Rastreamento de Ads", "Frontend: MarketingPixels.tsx"],
+        ["reCAPTCHA v3", "Protecao anti-bot (desativado)", "Frontend + Servidor: /captcha/verify"],
+        ["Receita Federal (CNPJ)", "Consulta dados empresa por CNPJ", "Servidor: /auth/cnpj-lookup"],
+      ]},
+      { type: "callout", variant: "warning", value: "IMPORTANTE: Nenhuma API externa e chamada diretamente pelo frontend. Todas passam pelo servidor Hono que atua como proxy, adicionando autenticacao, cache e validacao." },
+    ]
+  },
+  {
+    id: "api-examples",
+    title: "Exemplos de API",
+    icon: FileCode,
+    color: "blue",
+    content: [
+      { type: "text", value: "Exemplos de request/response das APIs mais importantes para facilitar integracao e debug." },
+      { type: "subtitle", value: "GET /homepage-init" },
+      { type: "code", language: "json", value: "// Response (200 OK) — retorna ~15 campos em 1 chamada:\n{\n  \"banners\": [{ \"id\": \"b1\", \"imageUrl\": \"...\", \"link\": \"/catalogo\" }],\n  \"logo\": \"https://...supabase.co/storage/...\",\n  \"categoryTree\": [{ \"id\": \"c1\", \"name\": \"Motor\", \"children\": [...] }],\n  \"categoryCounts\": { \"Motor\": 342, \"Suspensao\": 128 },\n  \"promo\": { \"title\": \"Super Promo\", \"endDate\": 1742400000, \"items\": [...] },\n  \"priceConfig\": { \"tier\": \"precoV1\", \"label\": \"Atacado\" },\n  \"brands\": [{ \"name\": \"Bosch\", \"slug\": \"bosch\", \"logoUrl\": \"...\" }],\n  // + ga4Config, footerLogo, midBanners, footerBadges, marketingConfig, ...\n}" },
+      { type: "subtitle", value: "POST /sige/precos/bulk" },
+      { type: "code", language: "json", value: "// Request:\n{ \"skus\": [\"SKU001\", \"SKU002\", \"SKU003\"] }\n\n// Response (200 OK):\n{\n  \"prices\": [\n    { \"sku\": \"SKU001\", \"price\": 189.90, \"found\": true },\n    { \"sku\": \"SKU002\", \"price\": 45.50, \"found\": true },\n    { \"sku\": \"SKU003\", \"price\": null, \"found\": false }\n  ],\n  \"tier\": \"precoV1\"\n}" },
+      { type: "subtitle", value: "GET /produto-detail-init/:sku" },
+      { type: "code", language: "json", value: "// Response (200 OK) — todos os dados do produto em 1 chamada:\n{\n  \"meta\": { \"title\": \"Filtro de Oleo Motor\", \"brand\": \"Bosch\" },\n  \"images\": [\"https://...signed-url-1.jpg\", \"https://...signed-url-2.jpg\"],\n  \"price\": { \"sku\": \"SKU001\", \"price\": 189.90, \"found\": true },\n  \"balance\": { \"sku\": \"SKU001\", \"quantity\": 42 },\n  \"attributes\": { \"Peso\": \"0.8kg\", \"Aplicacao\": \"Scania R 440\" },\n  \"reviewSummary\": { \"average\": 4.7, \"total\": 23 },\n  \"warranty\": [{ \"name\": \"12 meses\", \"price\": 29.90 }],\n  \"reels\": [{ \"videoUrl\": \"...\", \"thumbnailUrl\": \"...\" }]\n}" },
+      { type: "subtitle", value: "POST /shipping/calculate" },
+      { type: "code", language: "json", value: "// Request:\n{ \"cepDestino\": \"01310-100\", \"items\": [{ \"sku\": \"SKU001\", \"quantity\": 2 }] }\n\n// Response (200 OK):\n{\n  \"options\": [\n    { \"carrier\": \"PAC\", \"price\": 32.50, \"days\": 8 },\n    { \"carrier\": \"SEDEX\", \"price\": 58.90, \"days\": 3 },\n    { \"carrier\": \"Braspress\", \"price\": 45.00, \"days\": 5 }\n  ]\n}" },
+    ]
+  },
+  {
+    id: "kv-schema",
+    title: "Schema do KV Store",
+    icon: Database,
+    color: "indigo",
+    content: [
+      { type: "text", value: "O banco e uma tabela KV unica (kv_store_b7b07654). Operacoes via kv_store.tsx: get, set, del, mget, mset, mdel, getByPrefix." },
+      { type: "table", headers: ["Chave (key)", "Tipo do Valor", "Descricao"], rows: [
+        ["product:<sku>", "{title, sku, codRef, category}", "Dados basicos do produto"],
+        ["product_meta:<sku>", "{description, seoTitle, brand}", "Metadados e SEO"],
+        ["product_images:<sku>", "string[] (signed URLs)", "Imagens do produto"],
+        ["product_physical:<sku>", "{weight, width, height, length}", "Dimensoes para frete"],
+        ["super_promo", "{title, startDate, endDate, items}", "Super Promocao ativa"],
+        ["settings", "{maintenanceMode, whatsapp, cep}", "Configuracoes gerais"],
+        ["price_config", "{tier, label}", "Tier de preco ativo"],
+        ["admin_emails", "string[]", "Whitelist de admins"],
+        ["admin_perms:<email>", "{tabs: string[]}", "Permissoes por admin"],
+        ["category_tree", "TreeNode[]", "Arvore de categorias"],
+        ["banner:<id>", "{imageUrl, link, order}", "Banners homepage"],
+        ["coupon:<id>", "{code, discount, type}", "Cupons de desconto"],
+        ["order:<id>", "{items, total, status, userId}", "Pedidos"],
+        ["review:<sku>:<id>", "{author, rating, text}", "Avaliacoes"],
+        ["brand:<id>", "{name, slug, logoUrl}", "Marcas"],
+        ["ga4_config", "{measurementId, enabled}", "Config GA4"],
+        ["shipping_config", "{apiKey, method, cepOrigem}", "Config frete"],
+        ["audit_log:<ts>", "{action, admin, details}", "Log auditoria"],
+        ["cart_abandoned:<id>", "{items, userId, timestamp}", "Carrinhos abandonados"],
+      ]},
+    ]
+  },
+  {
+    id: "deploy",
+    title: "Deploy & Infraestrutura",
+    icon: Truck,
+    color: "green",
+    content: [
+      { type: "text", value: "O deploy e automatizado via script bash no servidor cPanel, com push para GitHub." },
+      { type: "subtitle", value: "Fluxo de Deploy" },
+      { type: "list", items: [
+        "1. Alteracoes feitas no Figma Make (desenvolvimento)",
+        "2. Codigo exportado/comitado para o repositorio GitHub",
+        "3. No servidor cPanel: bash ~/build-and-push.sh",
+        "4. Script: git pull → npm install → npm run build (Vite) → copia dist/ para public_html/",
+        "5. Script commita e pusha de volta ao GitHub (backup do build)",
+        "6. cPanel serve arquivos estaticos via Apache",
+      ]},
+      { type: "subtitle", value: "Ambientes" },
+      { type: "table", headers: ["Ambiente", "URL", "Proposito"], rows: [
+        ["Producao", "autopecascarretao.com.br", "Site publico (cPanel)"],
+        ["Testes", "cafe-puce-47800704.figma.site", "Preview Figma Make"],
+        ["Backend", "aztdgagxvrlylszieujs.supabase.co", "Edge Functions + DB + Storage"],
+      ]},
+      { type: "subtitle", value: "Script de Deploy" },
+      { type: "code", language: "bash", value: "#!/bin/bash\n# /home/autopecascarreta/build-and-push.sh\ncd /home/autopecascarreta/repositorio\ngit pull origin main\nnpm install --legacy-peer-deps\nnpm run build\ncp -r dist/* /home/autopecascarreta/public_html/\ngit add -A && git commit -m \"build: deploy $(date +%Y-%m-%d_%H:%M)\"\ngit push origin main" },
+      { type: "callout", variant: "warning", value: "O .htaccess no public_html deve ter RewriteRule para redirecionar todas as rotas para index.html (SPA fallback), caso contrario rotas como /catalogo retornam 404." },
+    ]
+  },
+  {
+    id: "env-vars",
+    title: "Variaveis de Ambiente",
+    icon: Lock,
+    color: "red",
+    content: [
+      { type: "text", value: "Variaveis configuradas no Supabase Edge Functions. O frontend NAO acessa nenhuma diretamente." },
+      { type: "table", headers: ["Variavel", "Onde", "Descricao"], rows: [
+        ["SUPABASE_URL", "Servidor", "URL do projeto Supabase"],
+        ["SUPABASE_ANON_KEY", "Frontend + Servidor", "Chave publica anon (segura)"],
+        ["SUPABASE_SERVICE_ROLE_KEY", "Servidor APENAS", "Chave admin — NUNCA expor no frontend!"],
+        ["SUPABASE_DB_URL", "Servidor", "Connection string PostgreSQL"],
+        ["RECAPTCHA_SITE_KEY", "Frontend", "Site key reCAPTCHA v3"],
+        ["RECAPTCHA_SECRET_KEY", "Servidor APENAS", "Secret key reCAPTCHA v3"],
+
+        ["GOOGLE_PSI_API_KEY", "Servidor", "API key PageSpeed Insights"],
+      ]},
+      { type: "callout", variant: "warning", value: "A SUPABASE_SERVICE_ROLE_KEY NUNCA deve ser exposta no frontend. Daria acesso total ao banco de dados." },
+      { type: "subtitle", value: "Credenciais Dinamicas (KV)" },
+      { type: "text", value: "Credenciais salvas no KV pelo admin, lidas pelo servidor em runtime:" },
+      { type: "list", items: [
+        "SIGE Token/URL: KV 'sige_config' (AdminApiSige)",
+        "PagHiper Key/Token: KV 'paghiper_config' (AdminPagHiper)",
+        "Mercado Pago Token: KV 'mercadopago_config' (AdminMercadoPago)",
+        "Frete API Key: KV 'shipping_config' (AdminShipping)",
+        "GA4 ID: KV 'ga4_config' (AdminGA4)",
+      ]},
+    ]
+  },
+  {
+    id: "glossary",
+    title: "Glossario",
+    icon: BookOpen,
+    color: "slate",
+    content: [
+      { type: "text", value: "Termos tecnicos usados na documentacao e no codigo." },
+      { type: "table", headers: ["Termo", "Significado"], rows: [
+        ["SPA", "Single Page Application — app web que roda no browser sem recarregar"],
+        ["BFF", "Backend For Frontend — servidor que agrega dados para o frontend"],
+        ["KV", "Key-Value — banco chave-valor simples (chave → valor JSON)"],
+        ["SIGE", "Sistema Integrado de Gestao Empresarial — ERP externo"],
+        ["SKU", "Stock Keeping Unit — codigo unico do produto"],
+        ["codRef", "Codigo de Referencia — ID do produto na API SIGE"],
+        ["Tier de Preco", "Tabela de preco (V1-V5) — atacado, varejo, etc."],
+        ["TTL", "Time To Live — tempo de validade no cache"],
+        ["Edge Function", "Funcao serverless no edge (Supabase + Deno)"],
+        ["Hono", "Framework web leve para JS/TS (Deno, Bun, Workers)"],
+        ["Lazy Loading", "Carregamento sob demanda (codigo so baixa quando necessario)"],
+        ["Code Splitting", "Divisao do bundle JS em chunks (1 arquivo por pagina)"],
+        ["CLS", "Cumulative Layout Shift — mudancas visuais inesperadas"],
+        ["LCP", "Largest Contentful Paint — maior elemento visivel renderizado"],
+        ["Prefetch", "Carregar recursos antecipadamente em background"],
+        ["Bulk Seed", "Dados em lote plantados nos caches individuais"],
+        ["Semaphore", "Controle de concorrencia (max 8 requests simultaneos)"],
+        ["LGPD", "Lei Geral de Protecao de Dados (privacidade brasileira)"],
+        ["CSP", "Content Security Policy — controla recursos do browser"],
+        ["JWT", "JSON Web Token — token assinado para autenticacao"],
+        ["Signed URL", "URL temporaria com assinatura para arquivo privado"],
+        ["Isolate", "Instancia isolada da Edge Function"],
+        ["PIX", "Pagamento instantaneo brasileiro via QR code"],
+        ["Webhook", "URL que recebe notificacoes automaticas de servicos"],
+      ]},
+    ]
+  },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════ */
@@ -745,7 +908,30 @@ export function DocsPage() {
   var [activeSection, setActiveSection] = useState(sections[0].id);
   var [search, setSearch] = useState("");
   var [sidebarOpen, setSidebarOpen] = useState(false);
+  var [readProgress, setReadProgress] = useState(0);
+  var [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   var sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Reading progress bar
+  useEffect(function () {
+    function handleScroll() {
+      var scrollTop = window.scrollY;
+      var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight > 0) {
+        setReadProgress(Math.min((scrollTop / docHeight) * 100, 100));
+      }
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return function () { window.removeEventListener("scroll", handleScroll); };
+  }, []);
+
+  var toggleCollapse = useCallback(function (id: string) {
+    setCollapsedSections(function (prev) {
+      var next = Object.assign({}, prev);
+      next[id] = !prev[id];
+      return next;
+    });
+  }, []);
 
   // Search filter
   var filteredSections = useMemo(function () {
@@ -795,6 +981,14 @@ export function DocsPage() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
+      {/* Reading progress bar */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-gray-200/50">
+        <div
+          className="h-full bg-gradient-to-r from-red-500 to-red-600 transition-all duration-150"
+          style={{ width: readProgress + "%" }}
+        />
+      </div>
+
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-3">
@@ -906,6 +1100,17 @@ export function DocsPage() {
               })}
             </nav>
 
+            {/* Section count */}
+            <div className="mt-4 px-3 py-2 bg-gray-100 rounded-lg">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-gray-500" style={{ fontSize: "0.7rem", fontWeight: 600 }}>Progresso de leitura</span>
+                <span className="text-gray-700" style={{ fontSize: "0.7rem", fontWeight: 700 }}>{Math.round(readProgress)}%</span>
+              </div>
+              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 rounded-full transition-all duration-300" style={{ width: readProgress + "%" }} />
+              </div>
+            </div>
+
             {/* Legend */}
             <div className="mt-8 pt-6 border-t border-gray-200">
               <h2 className="text-gray-400 mb-3" style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Legenda</h2>
@@ -949,20 +1154,28 @@ export function DocsPage() {
                     className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
                     style={{ scrollMarginTop: "100px" }}
                   >
-                    {/* Section header */}
-                    <div className={"flex items-center gap-3 px-6 py-4 border-b " + c.border + " " + c.bgLight}>
+                    {/* Section header — click to collapse */}
+                    <button
+                      onClick={function () { toggleCollapse(sec.id); }}
+                      className={"flex items-center gap-3 px-6 py-4 border-b w-full text-left cursor-pointer hover:brightness-95 transition-all " + c.border + " " + c.bgLight}
+                    >
                       <div className={"p-2 rounded-xl " + c.bg + " text-white"}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <h2 className="text-gray-900" style={{ fontSize: "1.25rem", fontWeight: 800 }}>{sec.title}</h2>
-                    </div>
+                      <h2 className="text-gray-900 flex-1" style={{ fontSize: "1.25rem", fontWeight: 800 }}>{sec.title}</h2>
+                      <span className="text-gray-400 shrink-0">
+                        {collapsedSections[sec.id] ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+                      </span>
+                    </button>
 
-                    {/* Section content */}
-                    <div className="px-6 py-5">
-                      {sec.content.map(function (block, i) {
-                        return <RenderBlock key={i} block={block} />;
-                      })}
-                    </div>
+                    {/* Section content (collapsible) */}
+                    {!collapsedSections[sec.id] && (
+                      <div className="px-6 py-5">
+                        {sec.content.map(function (block, i) {
+                          return <RenderBlock key={i} block={block} />;
+                        })}
+                      </div>
+                    )}
                   </section>
                 );
               })}

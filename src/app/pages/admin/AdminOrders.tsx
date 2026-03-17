@@ -320,7 +320,6 @@ export function AdminOrders() {
               <option value="pix">PIX</option>
               <option value="boleto">Boleto</option>
               <option value="credit_card">Cartão</option>
-              <option value="cartao_credito">Cartão Crédito (SafraPay)</option>
               <option value="mercadopago">Mercado Pago</option>
             </select>
             <button
@@ -448,13 +447,13 @@ export function AdminOrders() {
                         <DetailField icon={FileText} label="ID SIGE" value={order.sigeOrderId || "Não registrado"} mono />
                         <DetailField icon={Calendar} label="Criado em" value={formatDate(order.createdAt)} />
                         {order.updatedAt && <DetailField icon={Calendar} label="Atualizado em" value={formatDate(order.updatedAt)} />}
-                        <DetailField icon={CreditCard} label="Metodo Pagamento" value={order.paymentMethod === "cartao_credito" ? "Cartao de Credito (SafraPay)" : (order.paymentMethod || "\u2014")} />
+                        <DetailField icon={CreditCard} label="Metodo Pagamento" value={order.paymentMethod || "\u2014"} />
                         {order.transactionId && <DetailField icon={Hash} label="Transaction ID" value={order.transactionId} mono />}
                         <DetailField icon={DollarSign} label="Total" value={formatBRL(order.total)} highlight />
                         {(order as any).cardBrand && <DetailField icon={CreditCard} label="Bandeira" value={(order as any).cardBrand} />}
                         {(order as any).cardLastFour && <DetailField icon={CreditCard} label="Final do Cartao" value={"**** " + (order as any).cardLastFour} mono />}
                         {(order as any).installments && (order as any).installments > 1 && <DetailField icon={CreditCard} label="Parcelas" value={(order as any).installments + "x"} />}
-                        {(order as any).safrapayChargeId && <DetailField icon={Hash} label="SafraPay Charge ID" value={(order as any).safrapayChargeId} mono />}
+
                       </div>
                     </div>
 

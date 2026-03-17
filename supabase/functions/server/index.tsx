@@ -6,7 +6,7 @@
  * Backend completo: Proxy/BFF entre frontend React e Supabase DB + API SIGE.
  *
  * FUNCOES: Cache em memoria, auth JWT, validacao/sanitizacao, Supabase Storage,
- * pagamentos (PagHiper/MercadoPago/Safrapay), frete, email (nodemailer).
+ * pagamentos (PagHiper/MercadoPago), frete, email (nodemailer).
  *
  * DB: Tabela KV unica (kv_store_b7b07654). Chaves: products, super_promo,
  * category_tree, settings, admin_emails, price_config, banner_*, order_*, etc.
@@ -82,7 +82,7 @@ var MASTER_ADMIN_EMAIL = "alexmeira@protonmail.com";
 var ALL_ADMIN_TABS = [
   "dashboard", "orders", "products", "categories", "attributes", "clients",
   "coupons", "banners", "mid-banners", "hp-categories", "super-promo",
-  "footer-badges", "api-sige", "paghiper", "mercadopago", "safrapay",
+  "footer-badges", "api-sige", "paghiper", "mercadopago",
   "shipping", "sisfrete-wt", "ga4", "audit-log", "settings", "admins",
   "email-marketing", "brands", "auto-categ", "reviews", "warranty",
   "affiliates", "lgpd-requests", "branches"
@@ -756,17 +756,6 @@ app.use(BASE + "/mercadopago/webhook", async (c: any, next: any) => {
   }
   return next();
 });
-app.use(BASE + "/safrapay/webhook", async (c: any, next: any) => {
-  if (c.req.method === "OPTIONS") return next();
-  var rlKey = _getRateLimitKey(c, "webhook_safrapay");
-  var rlResult = _checkRateLimit(rlKey, 60);
-  if (!rlResult.allowed) {
-    console.warn("[RateLimit] BLOCKED SafraPay webhook from " + rlKey);
-    return _rl429(c, "Too many requests", rlResult);
-  }
-  return next();
-});
-
 // ── Rate limit login via /auth/user/login (10 req/min per IP) ──
 app.use(BASE + "/auth/user/login", async (c: any, next: any) => {
   if (c.req.method === "OPTIONS") return next();
@@ -856,11 +845,6 @@ app.use(BASE + "/paghiper/config", async (c: any, next: any) => {
 });
 // MercadoPago config: all methods require admin
 app.use(BASE + "/mercadopago/config", async (c: any, next: any) => {
-  if (c.req.method === "OPTIONS") return next();
-  return adminGuard(c, next);
-});
-// SafraPay config: all methods require admin
-app.use(BASE + "/safrapay/config", async (c: any, next: any) => {
   if (c.req.method === "OPTIONS") return next();
   return adminGuard(c, next);
 });
@@ -977,12 +961,7 @@ app.use(BASE + "/mercadopago/search-payments", async (c: any, next: any) => {
   if (c.req.method === "OPTIONS") return next();
   return adminGuard(c, next);
 });
-// SafraPay activate: admin only
-app.use(BASE + "/safrapay/activate", async (c: any, next: any) => {
-  if (c.req.method === "OPTIONS") return next();
-  return adminGuard(c, next);
-});
-// NOTE: /safrapay/config already guarded above (line ~715)
+
 
 // ─── Health ───
 // ═══════════════════════════════════════════════════════════════════════
@@ -14941,28 +14920,8 @@ app.post(BASE + "/user/save-order", async (c) => {
 
     if (!localOrderId) return c.json({ error: "localOrderId obrigatório." }, 400);
 
-    // Credit card payments: verify the charge was actually approved server-side
+    // Payment status: all payments start as awaiting_payment (MP webhook confirms later)
     var initialStatus = "awaiting_payment";
-    if (paymentMethod === "cartao_credito") {
-      var claimedChargeId = body.safrapayChargeId || "";
-      if (claimedChargeId) {
-        var chargeRecord = await kv.get("safrapay_charge:" + claimedChargeId);
-        if (chargeRecord) {
-          var parsedCharge = typeof chargeRecord === "string" ? JSON.parse(chargeRecord) : chargeRecord;
-          // Verify the charge belongs to this user and was approved
-          if (parsedCharge.userId === userId && parsedCharge.isApproved) {
-            initialStatus = "paid";
-            // save-order: SafraPay charge verified
-          } else {
-            console.warn("[save-order] SafraPay charge NOT approved or wrong user");
-          }
-        } else {
-          console.warn("[save-order] SafraPay charge NOT FOUND in KV, keeping awaiting_payment");
-        }
-      } else {
-        console.warn("[save-order] paymentMethod=cartao_credito but no safrapayChargeId");
-      }
-    }
 
     const orderRecord: any = {
       localOrderId,
@@ -15007,12 +14966,6 @@ app.post(BASE + "/user/save-order", async (c) => {
       })),
     };
 
-    // Add SafraPay credit card fields if present
-    if (body.safrapayChargeId) orderRecord.safrapayChargeId = body.safrapayChargeId;
-    if (body.safrapayNsu) orderRecord.safrapayNsu = body.safrapayNsu;
-    if (body.cardBrand) orderRecord.cardBrand = body.cardBrand;
-    if (body.cardLastFour) orderRecord.cardLastFour = body.cardLastFour;
-    if (body.installments) orderRecord.installments = Number(body.installments);
     // Coupon info
     if (body.coupon) orderRecord.coupon = body.coupon;
 
@@ -17309,7 +17262,6 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
     if (body.external_reference) queryParts.push("external_reference=" + encodeURIComponent(body.external_reference));
     queryParts.push("sort=date_created");
     queryParts.push("criteria=desc");
-    queryParts.push("range=date_created");
     queryParts.push("limit=" + (body.limit || 30));
     queryParts.push("offset=" + (body.offset || 0));
 
@@ -17317,10 +17269,10 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
     const result = await mpApiFetch(searchPath, creds.accessToken);
 
     if (!result.ok) {
-      console.error("[MercadoPago] search-payments error: HTTP " + result.status);
+      console.error("[MercadoPago] search-payments error: HTTP " + result.status + " | Response: " + (result.text || "empty"));
       return c.json({
-        error: "Erro ao buscar pagamentos.",
-      }, 400);
+        error: "Erro ao buscar pagamentos: HTTP " + result.status + (result.json?.message ? " — " + result.json.message : ""),
+      }, result.status === 401 ? 401 : 400);
     }
 
     var payments = (result.json?.results || []).map((p: any) => ({
@@ -24514,438 +24466,6 @@ app.delete(BASE + "/admin/sisfrete-delivery/deliveryman", async function (c) {
   } catch (e) {
     console.error("[SisFrete Delivery] delete deliveryman error: " + String(e));
     return c.json({ error: "Erro ao remover entregador." }, 500);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// ███ SAFRAPAY — CREDIT CARD PAYMENT GATEWAY ███
-// ═══════════════════════════════════════════════════════════════════════
-
-var SAFRAPAY_GATEWAY_URL = "https://payment.safrapay.com.br";
-var SAFRAPAY_GATEWAY_HML_URL = "https://payment-hml.safrapay.com.br";
-
-var _safrapayTokenCache: { accessToken: string; refreshToken: string; expiresAt: number } | null = null;
-
-async function _getSafrapayConfig(): Promise<{ merchantToken: string; merchantId: string; sandbox: boolean; maxInstallments: number; minInstallmentValue: number; softDescriptor: string; enabled: boolean } | null> {
-  try {
-    var raw = await kv.get("safrapay_config");
-    if (raw) {
-      var cfg = typeof raw === "string" ? JSON.parse(raw) : raw;
-      var mt = cfg.merchantToken || Deno.env.get("SAFRAPAY_MERCHANT_TOKEN") || "";
-      var mi = cfg.merchantId || Deno.env.get("SAFRAPAY_MERCHANT_ID") || "";
-      if (!mt) return null;
-      return { merchantToken: mt, merchantId: mi, sandbox: cfg.sandbox !== false, maxInstallments: cfg.maxInstallments || 12, minInstallmentValue: cfg.minInstallmentValue || 500, softDescriptor: cfg.softDescriptor || "CARRETAO", enabled: cfg.enabled !== false };
-    }
-    var envMT = Deno.env.get("SAFRAPAY_MERCHANT_TOKEN") || "";
-    var envMI = Deno.env.get("SAFRAPAY_MERCHANT_ID") || "";
-    if (!envMT) return null;
-    return { merchantToken: envMT, merchantId: envMI, sandbox: true, maxInstallments: 12, minInstallmentValue: 500, softDescriptor: "CARRETAO", enabled: true };
-  } catch (e) {
-    console.error("[SafraPay] Config read error: " + String(e));
-    return null;
-  }
-}
-
-function _safrapayGwUrl(sandbox: boolean): string {
-  return sandbox ? SAFRAPAY_GATEWAY_HML_URL : SAFRAPAY_GATEWAY_URL;
-}
-
-async function _safrapayGatewayAuth(cfg: { merchantToken: string; sandbox: boolean }): Promise<{ accessToken: string; refreshToken: string }> {
-  if (_safrapayTokenCache && Date.now() < _safrapayTokenCache.expiresAt) {
-    return { accessToken: _safrapayTokenCache.accessToken, refreshToken: _safrapayTokenCache.refreshToken };
-  }
-  if (_safrapayTokenCache && _safrapayTokenCache.refreshToken) {
-    try {
-      var rr = await fetch(_safrapayGwUrl(cfg.sandbox) + "/v2/refreshtoken", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + _safrapayTokenCache.accessToken, "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken: _safrapayTokenCache.accessToken, refreshToken: _safrapayTokenCache.refreshToken })
-      });
-      if (rr.ok) {
-        var rd = await rr.json();
-        if (rd.success && rd.accessToken) {
-          _safrapayTokenCache = { accessToken: rd.accessToken, refreshToken: rd.refreshToken || _safrapayTokenCache.refreshToken, expiresAt: Date.now() + 25 * 60 * 1000 };
-          // SafraPay: token refreshed
-          return { accessToken: _safrapayTokenCache.accessToken, refreshToken: _safrapayTokenCache.refreshToken };
-        }
-      }
-    } catch (re) { console.error("[SafraPay] Refresh failed, re-auth: " + String(re)); }
-  }
-  var authUrl = _safrapayGwUrl(cfg.sandbox) + "/v2/merchant/auth";
-  // SafraPay: authenticating
-  var ar = await fetch(authUrl, { method: "POST", headers: { "Authorization": cfg.merchantToken } });
-  if (!ar.ok) { var et = await ar.text(); console.error("[SafraPay] Auth FAILED status=" + ar.status); throw new Error("SafraPay auth failed (" + ar.status + "): " + et); }
-  var ad = await ar.json();
-  if (!ad.success) throw new Error("SafraPay auth error: " + JSON.stringify(ad.errors || []));
-  _safrapayTokenCache = { accessToken: ad.accessToken, refreshToken: ad.refreshToken, expiresAt: Date.now() + 25 * 60 * 1000 };
-  // SafraPay: authenticated
-  return { accessToken: ad.accessToken, refreshToken: ad.refreshToken };
-}
-
-function _detectCardBrand(n: string): number {
-  var d = n.replace(/\D/g, "");
-  if (d.startsWith("4")) return 1;
-  if (/^5[1-5]/.test(d) || /^2[2-7]/.test(d)) return 2;
-  if (d.startsWith("34") || d.startsWith("37")) return 3;
-  if (/^(636368|438935|504175|451416|636297|5067|4576|4011|506699)/.test(d)) return 4;
-  if (/^(606282|3841|637|628)/.test(d)) return 5;
-  return 1;
-}
-
-// POST /safrapay/charge — Process credit card payment
-app.post(BASE + "/safrapay/charge", async function (c) {
-  try {
-    var userId = await getAuthUserId(c.req.raw);
-    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var cfg = await _getSafrapayConfig();
-    if (!cfg || !cfg.enabled) return c.json({ error: "Pagamento com cartao nao disponivel." }, 400);
-    var body = await c.req.json();
-    // Input validation for SafraPay charge
-    var chgValid = validate(body, {
-      cardNumber: { required: true, type: "string", minLen: 13, maxLen: 25 },
-      cvv: { required: true, type: "string", minLen: 3, maxLen: 4 },
-      cardholderName: { required: true, type: "string", minLen: 2, maxLen: 200 },
-      cardholderDocument: { required: true, type: "string", maxLen: 20 },
-      expirationMonth: { required: true, type: "number", min: 1, max: 12 },
-      expirationYear: { required: true, type: "number", min: 2024, max: 2050 },
-      amount: { required: true, type: "number", min: 100, max: 99999999 },
-      installmentNumber: { type: "number", min: 1, max: 24 },
-      installmentType: { type: "number", min: 0, max: 10 },
-      customerName: { type: "string", maxLen: 200 },
-      customerEmail: { type: "string", maxLen: 254 },
-      customerPhone: { type: "string", maxLen: 30 },
-      merchantChargeId: { type: "string", maxLen: 100 },
-    });
-    if (!chgValid.ok) return c.json({ error: chgValid.errors[0] || "Dados do cartao invalidos." }, 400);
-    var cardNum = String(body.cardNumber || "").replace(/\D/g, "");
-    var cvv = String(body.cvv || "");
-    var holderName = String(body.cardholderName || "");
-    var holderDoc = String(body.cardholderDocument || "").replace(/\D/g, "");
-    var expMonth = Number(body.expirationMonth || 0);
-    var expYear = Number(body.expirationYear || 0);
-    var amt = Number(body.amount || 0);
-    var instNum = Number(body.installmentNumber || 1);
-    var instType = Number(body.installmentType || 0);
-    var custName = String(body.customerName || "");
-    var custEmail = String(body.customerEmail || "");
-    var custPhone = String(body.customerPhone || "").replace(/\D/g, "");
-    var mChargeId = String(body.merchantChargeId || ("CRT-" + Date.now()));
-
-    if (!cardNum || cardNum.length < 13) return c.json({ error: "Numero do cartao invalido." }, 400);
-    if (!cvv || cvv.length < 3) return c.json({ error: "CVV invalido." }, 400);
-    if (!holderName) return c.json({ error: "Nome do titular obrigatorio." }, 400);
-    if (!holderDoc) return c.json({ error: "CPF do titular obrigatorio." }, 400);
-    if (!expMonth || !expYear) return c.json({ error: "Validade obrigatoria." }, 400);
-    if (amt < 100) return c.json({ error: "Valor minimo R$1,00." }, 400);
-    if (instNum < 1 || instNum > cfg.maxInstallments) return c.json({ error: "Parcelas devem ser entre 1 e " + cfg.maxInstallments + "." }, 400);
-
-    var brand = _detectCardBrand(cardNum);
-    var fInstType = 0;
-    if (instNum > 1) fInstType = instType || 1;
-
-    var tokens = await _safrapayGatewayAuth(cfg);
-    var payload = {
-      charge: {
-        merchantChargeId: mChargeId,
-        customer: {
-          name: custName,
-          email: custEmail,
-          document: holderDoc,
-          documentType: 1,
-          phone: { countryCode: "55", areaCode: custPhone.length >= 2 ? custPhone.substring(0, 2) : "11", number: custPhone.length > 2 ? custPhone.substring(2) : custPhone, type: 5 }
-        },
-        transactions: [{
-          card: { cardNumber: cardNum, cvv: cvv, brand: brand, cardholderName: holderName, cardholderDocument: holderDoc, expirationMonth: expMonth, expirationYear: expYear },
-          paymentType: 2,
-          amount: amt,
-          installmentNumber: instNum,
-          installmentType: fInstType,
-          softDescriptor: cfg.softDescriptor
-        }],
-        source: 8
-      },
-      capture: true
-    };
-
-    // SafraPay: processing charge
-    var cr = await fetch(_safrapayGwUrl(cfg.sandbox) + "/v2/charge/authorization", {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + tokens.accessToken, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    var cd = await cr.json();
-    // SafraPay: charge response received
-
-    if (!cd.success) {
-      var em = "Pagamento nao aprovado.";
-      if (cd.errors && cd.errors.length > 0) em = cd.errors.map(function(e: any) { return e.message || String(e.errorCode); }).join("; ");
-      console.error("[SafraPay] Charge failed: " + em);
-      return c.json({ success: false, error: em, errors: cd.errors || [], traceKey: cd.traceKey || null });
-    }
-
-    var ch = cd.charge || {};
-    var tx = ch.transactions && ch.transactions[0] ? ch.transactions[0] : {};
-
-    // SECURITY: Persist verified charge ID so save-order can validate credit card payments
-    if (ch.id) {
-      await kv.set("safrapay_charge:" + ch.id, JSON.stringify({
-        userId: userId,
-        chargeId: ch.id,
-        amount: tx.amount || amt,
-        isApproved: tx.isApproved || false,
-        chargeStatus: ch.chargeStatus,
-        createdAt: Date.now(),
-      }));
-    }
-
-    return c.json({
-      success: true,
-      chargeId: ch.id || null,
-      nsu: ch.nsu || null,
-      chargeStatus: ch.chargeStatus || null,
-      merchantChargeId: ch.merchantChargeId || null,
-      customerId: ch.customerId || null,
-      transaction: {
-        isApproved: tx.isApproved || false,
-        transactionId: tx.transactionId || null,
-        transactionStatus: tx.transactionStatus || null,
-        amount: tx.amount || amt,
-        installmentNumber: tx.installmentNumber || instNum,
-        installmentType: tx.installmentType || null,
-        isCapture: tx.isCapture || false,
-        cardNumber: tx.card ? tx.card.cardNumber : null,
-        brandName: tx.card ? tx.card.brandName : null,
-        authorizationCode: tx.authorizationCode || null,
-        acquirer: tx.acquirer || null,
-        softDescriptor: tx.softDescriptor || null
-      },
-      traceKey: cd.traceKey || null
-    });
-  } catch (e) {
-    console.error("[SafraPay] Charge exception: " + String(e));
-    return c.json({ success: false, error: "Erro ao processar cartao." }, 500);
-  }
-});
-
-// GET /safrapay/config — Admin get config
-app.get(BASE + "/safrapay/config", async function (c) {
-  try {
-    var userId = await getAuthUserId(c.req.raw);
-    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var isAdmin = await checkAdmin(userId);
-    if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
-    var cfg = await _getSafrapayConfig();
-    return c.json({ configured: !!cfg, sandbox: cfg ? cfg.sandbox : true, merchantId: cfg ? cfg.merchantId : null, hasToken: cfg ? !!cfg.merchantToken : false, maxInstallments: cfg ? cfg.maxInstallments : 12, minInstallmentValue: cfg ? cfg.minInstallmentValue : 500, softDescriptor: cfg ? cfg.softDescriptor : "CARRETAO", enabled: cfg ? cfg.enabled : false });
-  } catch (e) { console.error("[SafraPay] Config GET error:", e); return c.json({ error: "Erro ao buscar configuracao SafraPay." }, 500); }
-});
-
-// POST /safrapay/config — Admin save config
-app.post(BASE + "/safrapay/config", async function (c) {
-  try {
-    var userId = await getAuthUserId(c.req.raw);
-    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var isAdmin = await checkAdmin(userId);
-    if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
-    var body = await c.req.json();
-    // Input validation for SafraPay config
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return c.json({ error: "Body deve ser um objeto JSON." }, 400);
-    }
-    var spCfgValid = validate(body, {
-      merchantToken: { type: "string", maxLen: 500 },
-      merchantId: { type: "string", maxLen: 200 },
-      sandbox: { type: "boolean" },
-      maxInstallments: { type: "number", min: 1, max: 24 },
-      minInstallmentValue: { type: "number", min: 0, max: 99999999 },
-      softDescriptor: { type: "string", maxLen: 50 },
-      enabled: { type: "boolean" },
-    });
-    if (!spCfgValid.ok) return c.json({ error: spCfgValid.errors[0] || "Dados invalidos." }, 400);
-    await kv.set("safrapay_config", JSON.stringify({
-      merchantToken: String(body.merchantToken || ""),
-      merchantId: String(body.merchantId || ""),
-      sandbox: body.sandbox !== false,
-      maxInstallments: Number(body.maxInstallments) || 12,
-      minInstallmentValue: Number(body.minInstallmentValue) || 500,
-      softDescriptor: String(body.softDescriptor || "CARRETAO"),
-      enabled: body.enabled !== false
-    }));
-    _safrapayTokenCache = null;
-    return c.json({ success: true });
-  } catch (e) { console.error("[SafraPay] Config PUT error:", e); return c.json({ error: "Erro ao salvar configuracao SafraPay." }, 500); }
-});
-
-// POST /safrapay/activate — Activate merchant with activation code to get MerchantToken
-app.post(BASE + "/safrapay/activate", async function (c) {
-  try {
-    var userId = await getAuthUserId(c.req.raw);
-    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var isAdmin = await checkAdmin(userId);
-    if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
-    var body = await c.req.json();
-    // Input validation for SafraPay activate
-    var spActValid = validate(body, {
-      merchantId: { required: true, type: "string", minLen: 1, maxLen: 200 },
-      activationCode: { required: true, type: "string", minLen: 1, maxLen: 200 },
-      sandbox: { type: "boolean" },
-    });
-    if (!spActValid.ok) return c.json({ error: spActValid.errors[0] || "merchantId e activationCode sao obrigatorios." }, 400);
-    var merchantId = (spActValid.sanitized.merchantId || "").trim();
-    var activationCode = (spActValid.sanitized.activationCode || "").trim();
-    var sandbox = body.sandbox !== false;
-    if (!merchantId || !activationCode) return c.json({ error: "merchantId e activationCode sao obrigatorios." }, 400);
-    var sfDomain = "safrapay.com.br";
-    var candidateUrls = sandbox ? [
-      "https://api-hml." + sfDomain + "/v2/Merchant/Activate",
-      "https://api-hml." + sfDomain + "/v1/Merchant/Activate",
-      "https://api-hml." + sfDomain + "/v2/merchant/activate",
-      "https://api-hml." + sfDomain + "/v1/merchant/activate",
-      "https://payment-hml." + sfDomain + "/v2/Merchant/Activate",
-      "https://payment-hml." + sfDomain + "/v1/Merchant/Activate"
-    ] : [
-      "https://api." + sfDomain + "/v2/Merchant/Activate",
-      "https://api." + sfDomain + "/v1/Merchant/Activate",
-      "https://api." + sfDomain + "/v2/merchant/activate",
-      "https://api." + sfDomain + "/v1/merchant/activate",
-      "https://payment." + sfDomain + "/v2/Merchant/Activate",
-      "https://payment." + sfDomain + "/v1/Merchant/Activate"
-    ];
-    var payloadStr = JSON.stringify({ merchantId: merchantId, activationCode: activationCode });
-    var lastStatus = 0;
-    var lastBody = "";
-    var successData: any = null;
-    for (var ci = 0; ci < candidateUrls.length; ci++) {
-      var tryUrl = candidateUrls[ci];
-      // SafraPay: activate attempt
-      try {
-        var resp = await fetch(tryUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: payloadStr });
-        var respText = await resp.text();
-        lastStatus = resp.status;
-        lastBody = respText;
-        // SafraPay: activate response received
-        if (resp.status === 404 || resp.status === 405) continue;
-        if (resp.ok) {
-          try { successData = JSON.parse(respText); } catch (pe) { successData = null; }
-          if (successData) { break; }
-        }
-        if (resp.status !== 404 && resp.status !== 405) break;
-      } catch (fetchErr) {
-        console.error("[SafraPay] Activate fetch error: " + String(fetchErr));
-        lastBody = String(fetchErr);
-        continue;
-      }
-    }
-    if (!successData) {
-      return c.json({ error: "Ativacao falhou em todas URLs tentadas. Ultimo status=" + lastStatus + " resposta=" + lastBody }, 400);
-    }
-    var newToken = successData.merchantToken || successData.token || successData.MerchantToken || successData.Token || "";
-    if (!newToken) {
-      return c.json({ error: "Token nao encontrado na resposta. Campos: " + Object.keys(successData).join(", ") + " Resposta: " + JSON.stringify(successData) }, 400);
-    }
-    var existingRaw = await kv.get("safrapay_config");
-    var existingCfg: any = {};
-    if (existingRaw) { try { existingCfg = typeof existingRaw === "string" ? JSON.parse(existingRaw) : existingRaw; } catch (x) {} }
-    existingCfg.merchantToken = newToken;
-    existingCfg.merchantId = merchantId;
-    existingCfg.sandbox = sandbox;
-    if (!existingCfg.maxInstallments) existingCfg.maxInstallments = 12;
-    if (!existingCfg.minInstallmentValue) existingCfg.minInstallmentValue = 500;
-    if (!existingCfg.softDescriptor) existingCfg.softDescriptor = "CARRETAO";
-    existingCfg.enabled = true;
-    await kv.set("safrapay_config", JSON.stringify(existingCfg));
-    _safrapayTokenCache = null;
-    return c.json({ success: true, merchantToken: newToken, message: "Merchant ativado com sucesso! Token salvo automaticamente." });
-  } catch (e) { console.error("[SafraPay] Activate error: " + String(e)); return c.json({ error: "Erro ao ativar merchant SafraPay." }, 500); }
-});
-
-// GET /safrapay/test-auth — Test connection with SafraPay gateway
-app.get(BASE + "/safrapay/test-auth", async function (c) {
-  try {
-    var userId = await getAuthUserId(c.req.raw);
-    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    var isAdmin = await checkAdmin(userId);
-    if (!isAdmin) return c.json({ error: "Acesso negado." }, 403);
-    var cfg = await _getSafrapayConfig();
-    if (!cfg || !cfg.merchantToken) return c.json({ error: "MerchantToken nao configurado. Salve a Chave de Acesso primeiro.", success: false }, 400);
-    _safrapayTokenCache = null;
-    var auth = await _safrapayGatewayAuth(cfg);
-    if (auth && auth.accessToken) {
-      return c.json({ success: true, message: "Autenticacao OK! AccessToken gerado com sucesso. Expira em 30min." });
-    }
-    return c.json({ error: "Auth retornou sem accessToken.", success: false }, 400);
-  } catch (e) {
-    console.error("[SafraPay] Test auth error: " + String(e));
-    return c.json({ error: "Falha na autenticacao SafraPay.", success: false }, 400);
-  }
-});
-
-// GET /safrapay/public-config — Public: is credit card enabled + rules
-app.get(BASE + "/safrapay/public-config", async function (c) {
-  try {
-    var raw = await kv.get("safrapay_config");
-    if (!raw) {
-      var envMT = Deno.env.get("SAFRAPAY_MERCHANT_TOKEN") || "";
-      if (envMT) return c.json({ enabled: true, maxInstallments: 12, minInstallmentValue: 500, sandbox: true });
-      return c.json({ enabled: false });
-    }
-    var cfg = typeof raw === "string" ? JSON.parse(raw) : raw;
-    var hasT = !!(cfg.merchantToken || Deno.env.get("SAFRAPAY_MERCHANT_TOKEN"));
-    return c.json({ enabled: cfg.enabled !== false && hasT, maxInstallments: cfg.maxInstallments || 12, minInstallmentValue: cfg.minInstallmentValue || 500, sandbox: cfg.sandbox !== false });
-  } catch (e) { return c.json({ enabled: false }); }
-});
-
-// POST /safrapay/webhook — Receive SafraPay notifications
-app.post(BASE + "/safrapay/webhook", async function (c) {
-  try {
-    var body = await c.req.json();
-    // Input validation for SafraPay webhook payload
-    if (!body || typeof body !== "object") return c.json({ received: true, warning: "invalid body" });
-    if (JSON.stringify(body).length > 50000) return c.json({ received: true, warning: "payload too large" });
-    // SafraPay WH: payload received
-    var authH = c.req.header("Authorization") || "";
-    var cfg = await _getSafrapayConfig();
-    // SECURITY: Always require merchantToken for webhook auth — reject if not configured
-    if (!cfg || !cfg.merchantToken) {
-      console.warn("[SafraPay WH] REJECTED: merchantToken not configured");
-      return c.json({ received: false, error: "Webhook auth not configured" }, 403);
-    }
-    try { var dec = atob(authH); if (dec !== cfg.merchantToken) { console.warn("[SafraPay WH] Auth mismatch"); return c.json({ received: false }, 403); } } catch (de) { console.warn("[SafraPay WH] Auth decode failed"); return c.json({ received: false }, 403); }
-    var cId = body.ChargeId || body.chargeId || "";
-    var cSt = body.ChargeStatus || body.chargeStatus || "";
-    // SafraPay WH: processing
-    if (cId) {
-      var allK = await kv.getByPrefix("user_order:");
-      if (Array.isArray(allK)) {
-        for (var i = 0; i < allK.length; i++) {
-          try {
-            var od = typeof allK[i].value === "string" ? JSON.parse(allK[i].value) : allK[i].value;
-            if (od && od.safrapayChargeId === cId) {
-              var ns = od.status;
-              if (cSt === "Authorized" || cSt === 2) ns = "paid";
-              else if (cSt === "Canceled" || cSt === 6) ns = "cancelled";
-              else if (cSt === "Refunded" || cSt === 7) ns = "refunded";
-              if (ns !== od.status) {
-                od.status = ns;
-                od.updatedAt = new Date().toISOString();
-                od.safrapayWebhookStatus = cSt;
-                await kv.set(allK[i].key, JSON.stringify(od));
-                // SafraPay WH: order status updated
-                if (ns === "paid" && !od.emailSent) {
-                  od.emailSent = true;
-                  await kv.set(allK[i].key, JSON.stringify(od));
-                  _sendPaymentApprovedEmail(od).catch(function(ee) { console.error("[SafraPay WH] Email err: " + ee); });
-                }
-              }
-              break;
-            }
-          } catch (pe) {}
-        }
-      }
-    }
-    return c.json({ received: true });
-  } catch (e) {
-    console.error("[SafraPay WH] Exception: " + String(e));
-    return c.json({ received: true });
   }
 });
 

@@ -24,7 +24,7 @@
  * - Clientes, Cupons, Banners, Mid-Banners, Super Promo, HP Categories
  * - Marcas, Auto-Categ, Reviews, Garantia, Afiliados, Filiais
  * - Reels, Influenciadores, FAQ
- * - API SIGE, PagHiper, Mercado Pago, Safrapay, Frete, Sisfrete
+ * - API SIGE, PagHiper, Mercado Pago, Frete, Sisfrete
  * - GA4, Marketing, Email Marketing, Exit Intent, WhatsApp
  * - Footer Badges, Selos, Logo
  * - Audit Log, Admins, LGPD, Configuracoes
@@ -33,7 +33,7 @@
  */
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Link } from "react-router";
-import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler } from "lucide-react";
+import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -71,7 +71,6 @@ const AdminReviews = lazyWithRetry(function () { return import("./AdminReviews")
 const AdminWarranty = lazyWithRetry(function () { return import("./AdminWarranty").then(function (m) { return { default: m.AdminWarranty }; }); });
 const AdminAffiliates = lazyWithRetry(function () { return import("./AdminAffiliates").then(function (m) { return { default: m.AdminAffiliates }; }); });
 const AdminBranches = lazyWithRetry(function () { return import("./AdminBranches").then(function (m) { return { default: m.AdminBranches }; }); });
-const AdminSafrapay = lazyWithRetry(function () { return import("./AdminSafrapay").then(function (m) { return { default: m.AdminSafrapay }; }); });
 const AdminSisfreteWT = lazyWithRetry(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
 const AdminRegressionTest = lazyWithRetry(function () { return import("./AdminRegressionTest").then(function (m) { return { default: m.AdminRegressionTest }; }); });
 const AdminErrorScanner = lazyWithRetry(function () { return import("./AdminErrorScanner").then(function (m) { return { default: m.AdminErrorScanner }; }); });
@@ -86,7 +85,7 @@ const AdminInfrastructure = lazyWithRetry(function () { return import("./AdminIn
 const AdminFaq = lazyWithRetry(function () { return import("./AdminFaq").then(function (m) { return { default: m.AdminFaq }; }); });
 const AdminDimensions = lazyWithRetry(function () { return import("./AdminDimensions").then(function (m) { return { default: m.AdminDimensions }; }); });
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "safrapay" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -113,7 +112,6 @@ const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "branches", label: "Filiais", icon: Building2 },
   { id: "paghiper", label: "PagHiper (PIX/Boleto)", icon: CreditCard },
   { id: "mercadopago", label: "Mercado Pago", icon: Wallet },
-  { id: "safrapay", label: "SafraPay (Cartao)", icon: CreditCard },
   { id: "dimensions", label: "Dimensoes & Peso", icon: Ruler },
   { id: "shipping", label: "SisFrete Config", icon: Truck },
   { id: "sisfrete-wt", label: "Tabela de Frete", icon: Truck },
@@ -159,7 +157,7 @@ const navSections: NavSection[] = [
   { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
   { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
   { label: "Aparencia", icon: Palette, items: ["reels", "influencers", "banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches", "faq"], collapsible: true },
-  { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "safrapay", "dimensions", "shipping", "sisfrete-wt"], collapsible: true },
+  { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "dimensions", "shipping", "sisfrete-wt"], collapsible: true },
   { label: "Integracoes", icon: Plug, items: ["api-sige"], collapsible: true },
   { label: "Sistema", icon: Wrench, items: ["settings", "admins", "audit-log", "lgpd-requests", "regression-test", "error-scanner", "infrastructure"], collapsible: true },
 ];
@@ -583,8 +581,6 @@ export function AdminPage() {
         return <AdminPagHiper />;
       case "mercadopago":
         return <AdminMercadoPago />;
-      case "safrapay":
-        return <AdminSafrapay />;
       case "shipping":
         return <AdminShipping />;
       case "sisfrete-wt":
@@ -972,8 +968,18 @@ export function AdminPage() {
           </div>
         </nav>
 
-        {/* Logout */}
-        <div className="p-3 border-t border-gray-800">
+        {/* Docs + Logout */}
+        <div className="p-3 border-t border-gray-800 space-y-1">
+          <Link
+            to="/docs"
+            target="_blank"
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-blue-400 hover:bg-gray-800 rounded-lg transition-colors"
+            style={{ fontSize: "0.85rem" }}
+          >
+            <BookOpen className="w-4 h-4" />
+            Documentacao Tecnica
+            <ExternalLink className="w-3 h-3 ml-auto opacity-50" />
+          </Link>
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"

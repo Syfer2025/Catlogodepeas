@@ -64,7 +64,7 @@ var CATEGORIES: TestCategory[] = [
   { key: "admin-core", label: "Admin Core", icon: Settings, description: "Dashboard, pedidos, clientes, configs", requiresAuth: true },
   { key: "admin-content", label: "Admin Conteudo", icon: FileCheck, description: "Banners, categorias, marcas, reels, FAQ", requiresAuth: true },
   { key: "sige", label: "Integracao SIGE", icon: Database, description: "Status, conexao, mapeamentos", requiresAuth: true },
-  { key: "payments", label: "Pagamentos", icon: CreditCard, description: "PagHiper, MercadoPago, SafraPay", requiresAuth: true },
+  { key: "payments", label: "Pagamentos", icon: CreditCard, description: "PagHiper, MercadoPago", requiresAuth: true },
   { key: "marketing", label: "Marketing", icon: Mail, description: "Email marketing, cupons, afiliados, GA4", requiresAuth: true },
   { key: "reviews", label: "Avaliacoes & Garantia", icon: Star, description: "Reviews, moderacao, garantia estendida", requiresAuth: true },
   { key: "advanced", label: "Avancado", icon: Shield, description: "LGPD, auditoria, SisFrete WT, filiais", requiresAuth: true },
@@ -284,11 +284,6 @@ export function AdminRegressionTest() {
     await runTest("public-api", "MercadoPago habilitado?", async function () {
       var r = await api.checkMPEnabled();
       return { ok: true, message: "Enabled: " + r.enabled + (r.sandbox ? " (SANDBOX)" : ""), warn: r.sandbox };
-    });
-
-    await runTest("public-api", "SafraPay config publica", async function () {
-      var r = await api.safrapayPublicConfig();
-      return { ok: true, message: "Enabled: " + r.enabled + ", Max parcelas: " + r.maxInstallments, warn: r.sandbox };
     });
 
     await runTest("public-api", "Google Reviews Config", async function () {
@@ -589,7 +584,6 @@ export function AdminRegressionTest() {
       { name: "AdminApiSige", fn: function () { return import("./AdminApiSige"); } },
       { name: "AdminPagHiper", fn: function () { return import("./AdminPagHiper"); } },
       { name: "AdminMercadoPago", fn: function () { return import("./AdminMercadoPago"); } },
-      { name: "AdminSafrapay", fn: function () { return import("./AdminSafrapay"); } },
       { name: "AdminGA4", fn: function () { return import("./AdminGA4"); } },
       { name: "AdminSisfreteWT", fn: function () { return import("./AdminSisfreteWT"); } },
       { name: "AdminWhatsApp", fn: function () { return import("./AdminWhatsApp"); } },
@@ -842,11 +836,6 @@ export function AdminRegressionTest() {
     await runTest("payments", "MercadoPago Transactions", async function () {
       var r = await api.getMPTransactions(at);
       return { ok: true, message: r.transactions.length + " transacoes MP" };
-    });
-
-    await runTest("payments", "SafraPay Config publica", async function () {
-      var r = await api.safrapayPublicConfig();
-      return { ok: true, message: "Enabled: " + r.enabled + ", Parcelas: " + r.maxInstallments, warn: !r.enabled };
     });
 
     await runTest("payments", "Shipping Config", async function () {

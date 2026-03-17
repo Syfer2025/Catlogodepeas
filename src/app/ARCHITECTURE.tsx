@@ -148,7 +148,6 @@
  * │       ├── AdminApiSige.tsx    # Painel de integracao SIGE (testes, debug)
  * │       ├── AdminPagHiper.tsx   # Config gateway PagHiper (boleto/pix)
  * │       ├── AdminMercadoPago.tsx # Config Mercado Pago
- * │       ├── AdminSafrapay.tsx   # Config Safrapay
  * │       ├── AdminAffiliates.tsx # Gestao de afiliados
  * │       ├── AdminWarranty.tsx   # Planos de garantia estendida
  * │       ├── AdminAuditLog.tsx   # Log de auditoria (acoes do admin)
@@ -435,8 +434,7 @@
  * POST /payment/paghiper/webhook  → Webhook de notificacao PagHiper
  * POST /payment/mercadopago/preference → Cria preferencia Mercado Pago
  * POST /payment/mercadopago/webhook    → Webhook Mercado Pago
- * POST /payment/safrapay/pix      → Gera PIX (Safrapay)
- * GET  /payment/safrapay/status/:id → Status pagamento Safrapay
+
  *
  * ── CUPONS ──
  * GET  /coupons/public            → Lista cupons publicos
@@ -773,7 +771,7 @@
  *    c. Calcula frete (POST /shipping/calculate)
  *    d. Aplica cupom opcional (POST /coupons/validate)
  *    e. Escolhe forma de pagamento:
- *       - PIX (PagHiper ou Safrapay)
+ *       - PIX (PagHiper)
  *       - Boleto (PagHiper)
  *       - Mercado Pago (redirect)
  *    f. POST /orders → cria pedido no backend
