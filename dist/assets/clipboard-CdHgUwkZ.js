@@ -1,1 +1,0 @@
-function o(t){try{const e=document.createElement("textarea");e.value=t,e.setAttribute("readonly",""),e.style.position="fixed",e.style.left="-9999px",e.style.top="-9999px",e.style.opacity="0",document.body.appendChild(e),e.select(),document.execCommand("copy"),document.body.removeChild(e)}catch(e){console.warn("[clipboard] fallback copy failed:",e)}}export{o as c};
