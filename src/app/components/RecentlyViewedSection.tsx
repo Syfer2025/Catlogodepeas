@@ -1,3 +1,9 @@
+/**
+ * RECENTLY VIEWED SECTION — Secao "Vistos Recentemente" exibida no detalhe do produto.
+ * Dados: localStorage via useRecentlyViewed hook (max 10 produtos).
+ * Bulk-fetch de precos e saldos para seeding dos caches de PriceBadge/StockBar.
+ * Carousel horizontal com arrows. Botao "Limpar historico".
+ */
 import { useState, useEffect, useRef } from "react";
 import { Clock, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { ProductCard } from "./ProductCard";

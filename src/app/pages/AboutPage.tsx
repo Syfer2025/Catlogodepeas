@@ -1,3 +1,9 @@
+/**
+ * ABOUT PAGE (/sobre) — Pagina institucional "Nossas Filiais".
+ * Exibe filiais com mapa Google Maps, endereco, telefone, whatsapp, horario.
+ * Dados: GET /admin/branches (com fallback para lista hardcoded).
+ * Televendas 0800 no rodape. SEO meta tags via useDocumentMeta.
+ */
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import Home from "lucide-react/dist/esm/icons/home";

@@ -1,3 +1,8 @@
+/**
+ * CATEGORY CARD — Card visual de categoria para exibicao na homepage/catalogo.
+ * Mostra: imagem, nome da categoria, seta de navegacao.
+ * Linka para /catalogo?categoria=slug. Prefetch do chunk do catalogo no hover.
+ */
 import { Link } from "react-router";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { ArrowRight } from "lucide-react";

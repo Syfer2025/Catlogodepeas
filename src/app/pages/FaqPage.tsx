@@ -6,7 +6,6 @@ import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import Search from "lucide-react/dist/esm/icons/search";
 import HelpCircle from "lucide-react/dist/esm/icons/help-circle";
 import MessageCircle from "lucide-react/dist/esm/icons/message-circle";
-import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import * as api from "../services/api";
 
 // ─── Default FAQ items shown while loading / if none configured ───
@@ -38,11 +37,6 @@ function getCategoryClass(cat: string): string {
 }
 
 export function FaqPage() {
-  useDocumentMeta({
-    title: "Perguntas Frequentes (FAQ) | Carretao Auto Pecas",
-    description: "Tire suas duvidas sobre pagamentos, entregas, garantia, trocas e mais. FAQ completo da Carretao Auto Pecas.",
-  });
-
   var [items, setItems] = useState<api.FaqItem[]>([]);
   var [loading, setLoading] = useState(true);
   var [search, setSearch] = useState("");

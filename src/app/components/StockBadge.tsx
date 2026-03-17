@@ -1,3 +1,9 @@
+/**
+ * STOCK BADGE — Badge textual de estoque com cores semanticas.
+ * Modos: "full" (quantidade + detalhes), "compact" (dot colorido + label), "inline" (para tabelas).
+ * Verde = em estoque, amarelo = estoque baixo (<=5), vermelho = esgotado.
+ * Busca saldo via GET /sige/saldo/:sku com cache.
+ */
 import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, AlertTriangle, PackageCheck, PackageX, RefreshCw } from "lucide-react";
 import * as api from "../services/api";

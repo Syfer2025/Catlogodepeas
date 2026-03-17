@@ -1,3 +1,9 @@
+/**
+ * BRAND CAROUSEL — Carousel horizontal de marcas parceiras na homepage.
+ * Dados: array de BrandItem do HomepageInitContext (logo + slug + nome).
+ * Scroll com botoes seta (desktop) ou touch drag (mobile).
+ * Cada marca linka para /marca/:slug (BrandPage com produtos filtrados).
+ */
 import React, { useRef } from "react";
 import { Link } from "react-router";
 import { ChevronLeft, ChevronRight, Award } from "lucide-react";

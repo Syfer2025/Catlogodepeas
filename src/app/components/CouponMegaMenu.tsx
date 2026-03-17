@@ -1,3 +1,9 @@
+/**
+ * COUPON MEGA MENU — Mega menu de cupons no Header (dropdown hover/click).
+ * Exibe cupons ativos com codigo, desconto e countdown de validade.
+ * Botao "Copiar codigo" com feedback visual (toast). Link para /cupons.
+ * Lazy-loaded: so carrega quando usuario interage com o icone de cupom.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
 import { Ticket, Copy, Check, Clock, Scissors, ArrowRight, Loader2, ChevronDown } from "lucide-react";

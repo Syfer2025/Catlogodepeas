@@ -103,6 +103,10 @@ export const router = createBrowserRouter([
         lazy: function () { return import("./pages/FaqPage").then(function (m) { return { Component: m.FaqPage }; }); },
       },
       {
+        path: "docs",
+        lazy: function () { return import("./pages/DocsPage").then(function (m) { return { Component: m.DocsPage }; }); },
+      },
+      {
         path: "*",
         lazy: function () { return import("./pages/NotFoundPage").then(function (m) { return { Component: m.NotFoundPage }; }); },
       },

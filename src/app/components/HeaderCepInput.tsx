@@ -1,3 +1,9 @@
+/**
+ * HEADER CEP INPUT — Input de CEP no header para calculo de frete global.
+ * Salva CEP em localStorage (CEP_STORAGE_KEY) para uso em toda a aplicacao.
+ * Consulta ViaCEP para validar e obter cidade. Exibe cidade ao lado do CEP.
+ * Formato: 00000-000 com mascara automatica.
+ */
 import { useState, useRef, useEffect } from "react";
 import { MapPin, Check, X, Loader2, ChevronRight, Navigation } from "lucide-react";
 export var CEP_STORAGE_KEY = "carretao_user_cep";

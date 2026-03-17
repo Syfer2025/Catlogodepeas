@@ -1,3 +1,9 @@
+/**
+ * COUPON CAROUSEL — Carousel de cupons de desconto na homepage.
+ * Busca cupons publicos via GET /coupons/public. Cada card mostra:
+ * codigo, desconto (% ou R$), validade com countdown, botao "Copiar".
+ * Auto-scroll com pausa no hover. Arrows para navegacao manual.
+ */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router";
 import { Ticket, Copy, Check, Clock, ChevronLeft, ChevronRight, AlertCircle, Scissors, ArrowRight } from "lucide-react";

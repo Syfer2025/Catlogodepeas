@@ -1,3 +1,8 @@
+/**
+ * WISHLIST BUTTON — Botao de favoritar (coracao) para ProductCard e ProductDetailPage.
+ * Integra: WishlistContext (toggle + check). Animacao de pulse ao favoritar.
+ * Se usuario nao logado: salva em localStorage; se logado: sincroniza com servidor.
+ */
 import React, { useState } from "react";
 import { Heart } from "lucide-react";
 import { useWishlist } from "../contexts/WishlistContext";
