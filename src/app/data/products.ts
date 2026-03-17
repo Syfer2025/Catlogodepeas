@@ -1,3 +1,7 @@
+/**
+ * PRODUCTS DATA — Tipos TypeScript para produtos e categorias.
+ * Usado como fallback/tipo base. Os dados reais vem do servidor (KV + SIGE).
+ */
 export interface Product {
   id: string;
   name: string;

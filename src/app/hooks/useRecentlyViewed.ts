@@ -28,8 +28,8 @@ function saveItems(items: RecentlyViewedItem[]): void {
 }
 
 /**
- * Hook to manage recently viewed products.
- * Stores the last 10 viewed products in localStorage.
+ * useRecentlyViewed — Gerencia lista de produtos vistos recentemente.
+ * Salva em localStorage (max 10 itens). Usado no ProductDetailPage e RecentlyViewedSection.
  */
 export function useRecentlyViewed() {
   var [items, setItems] = useState<RecentlyViewedItem[]>(loadItems);

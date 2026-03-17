@@ -1,3 +1,8 @@
+/**
+ * ADMIN DASHBOARD — Painel de metricas e graficos do admin.
+ * Mostra: total de pedidos, faturamento, produtos, clientes, ultimos pedidos,
+ * graficos de vendas (Recharts). Dados via API /admin/dashboard-stats.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import React from "react";
 import ShoppingCart from "lucide-react/dist/esm/icons/shopping-cart.js";

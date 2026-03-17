@@ -1,3 +1,9 @@
+/**
+ * ADD TO CART BUTTON — Botao "Adicionar ao Carrinho" com feedback visual.
+ * Verifica estoque antes de adicionar. Mostra spinner durante a operacao.
+ * Se produto esgotado: botao desabilitado com icone de "indisponivel".
+ * Integra: CartContext (addItem), GA4 (add_to_cart), Marketing (AddToCart pixel).
+ */
 import { useState, useEffect, useCallback } from "react";
 import { ShoppingCart, Plus, Minus, Check, Loader2, Ban } from "lucide-react";
 import { useCart } from "../contexts/CartContext";

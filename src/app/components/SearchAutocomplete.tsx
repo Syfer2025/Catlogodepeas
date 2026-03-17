@@ -1,3 +1,9 @@
+/**
+ * SEARCH AUTOCOMPLETE — Campo de busca com autocomplete, historico e sugestoes.
+ * Debounce de 300ms; consulta GET /produtos/autocomplete; mostra resultados com
+ * imagem, titulo e SKU. Historico salvo em localStorage (max 5). Versoes: header e mobile.
+ * Prefetch: ao selecionar, prefetcha chunk do catalogo e detalhe do produto.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
@@ -117,7 +123,7 @@ export function SearchAutocomplete({
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(query), 280);
+    debounceRef.current = setTimeout(() => doSearch(query), 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };

@@ -1,3 +1,9 @@
+/**
+ * VIRTUAL PRODUCT GRID — Grid virtualizado para grandes listas de produtos.
+ * Renderiza apenas os cards visiveis na viewport (intersection observer).
+ * Aceita balanceMap, priceMap, reviewMap para passar preloaded data aos cards.
+ * Usado no CatalogPage quando ha muitos produtos por pagina.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ProductCard } from "./ProductCard";
 import type { ProdutoItem } from "./ProductCard";

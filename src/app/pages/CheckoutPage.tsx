@@ -1,3 +1,9 @@
+/**
+ * CHECKOUT PAGE — Fluxo de compra completo.
+ * Etapas: resumo do carrinho → endereco → frete → cupom → pagamento.
+ * Pagamentos: PIX (PagHiper/Safrapay), Boleto (PagHiper), Mercado Pago.
+ * Integra: CartContext, Auth, GA4 (begin_checkout, purchase), Marketing.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { useCatalogMode } from "../contexts/CatalogModeContext";

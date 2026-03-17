@@ -1,3 +1,9 @@
+/**
+ * CATEGORY MEGA MENU — Menu expansivo de categorias (hover/click no Header).
+ * Exibe arvore hierarquica: categorias pai → filhos → netos.
+ * Dados: GET /categories ou cache do HomepageInitContext.
+ * Lazy-loaded: so carrega o chunk JS quando o usuario interage com o menu.
+ */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import { Layers, ChevronDown, ChevronRight, Loader2 } from "lucide-react";

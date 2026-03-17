@@ -1,3 +1,9 @@
+/**
+ * USER ACCOUNT PAGE — Painel "Minha Conta" do cliente (/minha-conta).
+ * Abas: Perfil, Senha, Enderecos, Pedidos, Favoritos.
+ * Requer autenticacao; redireciona para /conta se nao logado.
+ * Consome API: /auth/user/me, /auth/user/profile, /auth/user/addresses, etc.
+ */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
 import User from "lucide-react/dist/esm/icons/user";

@@ -1,3 +1,27 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * PRODUCT CARD — Card de produto reutilizado em grids (homepage, catalogo, busca)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Exibe: imagem, titulo, SKU, marca, estrelas, preco, estoque, botao carrinho.
+ *
+ * PERFORMANCE:
+ * - React.memo: so re-renderiza se props mudarem (evita re-render de grid inteiro)
+ * - onMouseEnter → scheduleProductDataPrefetch(sku): prefetch dos dados do detalhe
+ *   com 200ms debounce (cancelado no mouseLeave)
+ * - prefetchProductDetail(): precarrega chunk JS da pagina de detalhe
+ *
+ * SUB-COMPONENTES:
+ * - ProductImage: imagem com fallback visual
+ * - PriceBadge: preco com loading/cache proprio
+ * - StockBar: barra visual de estoque
+ * - StockBadge: badge textual de estoque
+ * - WishlistButton: coracao de favoritar
+ * - ReviewStars: estrelas de avaliacao
+ *
+ * GA4: Dispara select_item ao clicar no card.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { Link } from "react-router";
 import React from "react";
 import { Package, ShoppingCart } from "lucide-react";

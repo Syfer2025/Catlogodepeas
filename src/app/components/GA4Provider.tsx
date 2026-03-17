@@ -1,3 +1,9 @@
+/**
+ * GA4 PROVIDER — Injeta Google Analytics 4 e expoe trackEvent() via context.
+ * Le config (measurementId) do HomepageInitContext. Respeita consentimento LGPD.
+ * Se GTM esta ativo, pula injecao do gtag.js (GTM ja gerencia GA4).
+ * Eventos: page_view (auto), view_item, add_to_cart, purchase, search, etc.
+ */
 import { useEffect, useRef, createContext, useContext, useCallback, useState } from "react";
 import { useLocation } from "react-router";
 import type { GA4Config } from "../services/api";

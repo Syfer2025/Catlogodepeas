@@ -1,3 +1,20 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * WISHLIST CONTEXT — Lista de desejos (favoritos) sincronizada com servidor
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * COMO FUNCIONA:
+ * - Se usuario esta logado: carrega favoritos do servidor via GET /auth/user/favorites
+ * - toggleFavorite(sku): adiciona/remove favorito via POST/DELETE no servidor
+ * - isFavorite(sku): verificacao O(1) via Set<string>
+ * - Se nao logado: favoritos ficam vazios (nao persiste localmente)
+ *
+ * INTEGRACAO:
+ * - WishlistButton.tsx: botao de coracao em cada ProductCard
+ * - UserAccountPage.tsx: aba "Favoritos" mostra a lista completa
+ * - Header.tsx: badge com contagem de favoritos
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../services/supabaseClient";
 import { getValidAccessToken } from "../services/supabaseClient";

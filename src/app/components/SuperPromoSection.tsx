@@ -1,3 +1,43 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * SUPER PROMO SECTION — Secao de ofertas com countdown na homepage
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * VISAO GERAL:
+ * Carousel horizontal de produtos em promocao com countdown regressivo,
+ * badges de desconto, precos "De X por Y", barra de estoque e auto-scroll.
+ *
+ * ESTRATEGIA DUAL-SOURCE (resiliencia):
+ * 1. FAST-PATH: Usa initData.promo do HomepageInitContext (resposta imediata)
+ * 2. AUTORITATIVO: SEMPRE chama GET /promo/active em paralelo
+ * 3. Se /promo/active falhar: retry automatico apos 2 segundos
+ * Isso garante que a promo aparece mesmo se o cache do homepage-init estiver stale.
+ *
+ * VALIDACAO CLIENT-SIDE:
+ * - Verifica enabled, startDate, endDate, products.length
+ * - Se promo expirada: nao mostra e limpa localStorage hint
+ * - Auto-hide quando endDate chega (setTimeout)
+ *
+ * CLS PREVENTION:
+ * - localStorage "carretao_had_promo": se na ultima visita havia promo,
+ *   reserva 320px de altura durante loading para evitar layout shift.
+ *
+ * PRECOS:
+ * - Bulk-fetch via POST /sige/precos/bulk (staggered 800ms apos mount)
+ * - Seeds o PriceBadge module cache (evita re-fetch individual)
+ * - computePromoPrice(): aplica desconto (% ou fixo) sobre preco original
+ *
+ * SUB-COMPONENTES:
+ * - Countdown: timer regressivo com blocos de dia/hora/min/seg
+ * - PromoPriceDisplay: "De R$ X" (tachado) + "R$ Y" (verde) + badge de desconto
+ * - PromoCard: card individual com imagem, titulo, preco, estoque, CTA
+ *
+ * CAROUSEL:
+ * - 7 cards visiveis no desktop (VISIBLE_DESKTOP)
+ * - Auto-scroll bidirecional quando > 7 produtos (pausa no hover)
+ * - Botoes de navegacao e indicadores de pagina
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
 import { Flame, ChevronLeft, ChevronRight, Package, Zap, ArrowRight, Loader2 } from "lucide-react";

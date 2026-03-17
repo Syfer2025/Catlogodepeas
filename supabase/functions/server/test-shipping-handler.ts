@@ -1,3 +1,8 @@
+/**
+ * TEST SHIPPING HANDLER — Handler isolado para teste de integracao com Sisfrete.
+ * Separado do index.tsx para evitar problemas com template literals no bundler Deno.
+ * Simula calculo de frete com dados de teste configurados pelo admin.
+ */
 // Test Shipping API handler - separate file to avoid Deno bundler template literal issues
 // All string building uses concatenation only (NO template literals)
 

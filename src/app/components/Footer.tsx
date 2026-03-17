@@ -1,3 +1,9 @@
+/**
+ * FOOTER — Rodape do site com links institucionais, contato, redes sociais,
+ * badges de seguranca/pagamento, e informacoes de copyright.
+ * Dados: config do HomepageInitContext (badges, telefone, email, whatsapp).
+ * Responsivo: 4 colunas desktop, empilhado mobile.
+ */
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
 import { Phone, Mail, Clock, MessageCircle, ExternalLink, ArrowUpRight, Cookie } from "lucide-react";

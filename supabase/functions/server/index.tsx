@@ -1,3 +1,23 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * SERVER/INDEX.TSX — Servidor Hono (Supabase Edge Function) — ~23k linhas
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Backend completo: Proxy/BFF entre frontend React e Supabase DB + API SIGE.
+ *
+ * FUNCOES: Cache em memoria, auth JWT, validacao/sanitizacao, Supabase Storage,
+ * pagamentos (PagHiper/MercadoPago/Safrapay), frete, email (nodemailer).
+ *
+ * DB: Tabela KV unica (kv_store_b7b07654). Chaves: products, super_promo,
+ * category_tree, settings, admin_emails, price_config, banner_*, order_*, etc.
+ *
+ * CACHE: _homepageInitCache (10s), _productDetailInitCache (60s/SKU),
+ * _sigePriceCache (30min), _sigePriceBulkCache (5min), _sigeBalanceCache (15min).
+ * Cada isolate Deno tem cache proprio; invalida pelo TTL natural.
+ *
+ * PREFIXO: /make-server-b7b07654  |  ~400 rotas  |  Ver ARCHITECTURE.tsx
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";

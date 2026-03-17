@@ -1,3 +1,42 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * LAYOUT.TSX — Shell principal da aplicacao (Header + Outlet + Footer + overlays)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Este componente envolve TODAS as paginas publicas via React Router <Outlet>.
+ * O admin (/admin) tem layout proprio — nao passa por aqui.
+ *
+ * ESTRUTURA:
+ * <MaintenanceGate>           → Bloqueia acesso se modo manutencao ativo
+ *   <HomepageInitProvider>    → Cache centralizado dos dados da homepage
+ *     <GTMProvider>           → Google Tag Manager
+ *       <GA4Provider>         → Google Analytics 4
+ *         <MarketingPixelsProvider> → Meta/TikTok Pixel
+ *           <Header />        → Cabecalho com busca, carrinho, menu
+ *           <Outlet />        → Conteudo da pagina atual (rota ativa)
+ *           <Footer />        → Rodape (lazy)
+ *           +overlays lazy:   CartDrawer, WhatsApp, Cookie, ExitIntent,
+ *                             MobileNav, ScrollToTop, WebVitals, CartTracker
+ *
+ * IIFE (RUNS AT MODULE LOAD TIME, antes do React):
+ * - Injeta meta tags SEO (title, description, OG, JSON-LD)
+ * - Injeta security headers (CSP, X-Frame-Options, etc.)
+ * - Injeta pre-render skeleton shell (evita flash branco, melhora FCP)
+ * - Define document.lang = "pt-BR"
+ *
+ * LAZY LOADING:
+ * ~10 componentes sao lazy-loaded com lazyWithRetry (retry ate 3x).
+ * Componentes nao-criticos (Footer, WhatsApp, ScrollToTop) so carregam
+ * apos o conteudo principal estar renderizado.
+ *
+ * COMPONENTES INTERNOS:
+ * - MaintenanceGate: verifica GET /settings para modo manutencao
+ * - ScrollToTop: reseta scroll no topo ao navegar entre rotas
+ * - PriceConfigSeeder: injeta config de tier de preco no PriceBadge
+ * - FaviconLoader: carrega favicon dinamico do Supabase Storage
+ * - TesterBanner: banner de "ambiente de teste" (removido em prod)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { Outlet, useLocation } from "react-router";
 import { Header } from "./Header";
 import { HomepageInitProvider, useHomepageInit } from "../contexts/HomepageInitContext";

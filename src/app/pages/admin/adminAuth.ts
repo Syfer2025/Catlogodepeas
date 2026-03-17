@@ -1,13 +1,31 @@
 /**
- * Centralised admin-token helpers.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ADMIN AUTH — Helpers de autenticacao do painel administrativo
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- * The admin session is stored **exclusively** in admin-specific localStorage
- * keys so it NEVER leaks into the Supabase client session used by the
- * customer-facing side of the site.
+ * ISOLAMENTO DE SESSAO:
+ * A sessao admin e armazenada em chaves localStorage SEPARADAS
+ * (carretao_admin_at, carretao_admin_rt, etc.) para NUNCA contaminar
+ * a sessao do cliente. Um Supabase client DEDICADO (non-persisting)
+ * e usado para refresh de token — nao dispara onAuthStateChange nem
+ * escreve em localStorage do client padrao.
  *
- * CRITICAL: Token refresh uses a DEDICATED Supabase client so it never
- * pollutes the shared customer-side client — preventing cross-tab session
- * corruption that caused recurring auth errors.
+ * FUNCOES EXPORTADAS:
+ * - getAdminToken(): retorna access token ou null
+ * - saveAdminSession(): salva AT, RT, expiry, email, nome
+ * - clearAdminStorage(): limpa tudo (logout)
+ * - refreshAdminToken(): renova token via RT (com dedup)
+ * - getValidAdminToken(): retorna token valido, renovando se necessario
+ * - clearSupabaseLocalSession(): limpa sessao Supabase do localStorage
+ *
+ * DEDUP DE REFRESH:
+ * Se multiplas chamadas pedem refresh simultaneamente, apenas 1 executa
+ * (refresh tokens sao single-use). As demais piggyback na mesma Promise.
+ *
+ * AUTO-REFRESH:
+ * getValidAdminToken() verifica expiracao e renova automaticamente
+ * se faltam menos de 60 segundos para expirar.
+ * ═══════════════════════════════════════════════════════════════════════════════
  */
 
 import { createClient } from "@supabase/supabase-js";

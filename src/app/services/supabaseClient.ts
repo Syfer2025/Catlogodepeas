@@ -1,3 +1,10 @@
+/**
+ * SUPABASE CLIENT — Singleton do cliente Supabase para o frontend.
+ * Configurado com PKCE flow, auto-refresh, e persistSession.
+ * Usado para: login/logout de clientes, sessao, e listener de auth.
+ * NAO e usado para chamadas API normais (essas passam pela api.ts → Edge Function).
+ * getValidAccessToken(): retorna token valido, renovando se expirado (com dedup).
+ */
 import { createClient } from "@supabase/supabase-js";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 

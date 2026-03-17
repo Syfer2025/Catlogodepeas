@@ -1,3 +1,8 @@
+/**
+ * ERROR BOUNDARY — Captura erros fatais em qualquer componente filho.
+ * Mostra fallback amigavel com opcao de recarregar a pagina.
+ * Usado como wrapper raiz no App.tsx para evitar tela branca.
+ */
 import { Component, type ReactNode } from "react";
 
 interface Props {

@@ -5,13 +5,9 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { hasAnalyticsConsent } from "./CookieConsentBanner";
 
 /**
- * WebVitalsReporter — Collects real user field metrics (CLS, INP, LCP, FCP, TTFB)
- * using the official web-vitals library and sends them to:
- *   1. Backend (/web-vitals) for persistent storage + admin dashboard
- *   2. GA4 as custom events (if configured)
- *
- * Only sends metrics ONCE per page load (each metric fires once).
- * Respects LGPD consent — only sends if analytics consent is granted.
+ * WEB VITALS REPORTER — Coleta metricas Core Web Vitals (LCP, FID, CLS, FCP, TTFB).
+ * Usa a API PerformanceObserver nativa. Envia para GA4 como custom events.
+ * Lazy-loaded: so monta apos idle do browser para nao impactar performance.
  */
 
 var BASE_URL = "https://" + projectId + ".supabase.co/functions/v1/make-server-b7b07654";

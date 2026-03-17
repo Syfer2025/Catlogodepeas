@@ -1,6 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Input Validation Utilities — lightweight schema-based validation
-// Prevents XSS stored, injection, and malformed payloads
+// VALIDATION.TS — Validacao e sanitizacao de inputs do servidor
+//
+// Previne: XSS stored, SQL injection, payloads malformados.
+// Uso: validate(body, schema) → {ok, errors, sanitized}
+// Schema-based: define regras por campo (required, type, minLen, maxLen, pattern, etc.)
+// _stripTags(): remove HTML/JS de strings (dupla passada para bypass prevention)
+// checkBodySize(): limita tamanho do request body
+// validators: helpers prontos (email, CPF/CNPJ, CEP, telefone, etc.)
+// schemas: schemas pre-definidos para endpoints comuns
 // ═══════════════════════════════════════════════════════════════════════
 
 // --- Validation result type ---

@@ -1,3 +1,9 @@
+/**
+ * SHIPPING CALCULATOR — Calculadora de frete por CEP.
+ * Input: CEP de destino. Chama POST /shipping/calculate com SKU + CEP.
+ * Exibe: opcoes de transportadora com preco e prazo. Consulta CEP via ViaCEP.
+ * Usado na ProductDetailPage e no CheckoutPage.
+ */
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Truck, Loader2, MapPin, Clock, X, Info, Home } from "lucide-react";
 import * as api from "../services/api";

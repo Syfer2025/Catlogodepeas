@@ -1,3 +1,36 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ADMIN PAGE — Shell principal do painel administrativo (/admin)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * FUNCIONA ASSIM:
+ * 1. Verifica se usuario esta autenticado como admin (via adminAuth.ts)
+ * 2. Se nao: mostra AdminLoginPage (login separado do cliente)
+ * 3. Se sim: mostra sidebar com ~40 tabs, cada uma lazy-loaded
+ * 4. Permissoes por tab: master admin ve tudo; outros admins veem so tabs permitidas
+ *
+ * SEGURANCA:
+ * - Sessao admin isolada em localStorage proprio (nao contamina sessao cliente)
+ * - Token refresh automatico via getValidAdminToken()
+ * - Verificacao server-side via isAdminUser() em cada chamada API
+ *
+ * PERFORMANCE:
+ * - Cada tab e um chunk JS separado (lazyWithRetry)
+ * - So baixa quando o admin clica na tab
+ * - Logo do admin cacheada em localStorage
+ *
+ * TABS (agrupadas na sidebar):
+ * - Dashboard, Pedidos, Produtos, Categorias, Atributos, Dimensoes
+ * - Clientes, Cupons, Banners, Mid-Banners, Super Promo, HP Categories
+ * - Marcas, Auto-Categ, Reviews, Garantia, Afiliados, Filiais
+ * - Reels, Influenciadores, FAQ
+ * - API SIGE, PagHiper, Mercado Pago, Safrapay, Frete, Sisfrete
+ * - GA4, Marketing, Email Marketing, Exit Intent, WhatsApp
+ * - Footer Badges, Selos, Logo
+ * - Audit Log, Admins, LGPD, Configuracoes
+ * - Infraestrutura, Testes de Regressao, Error Scanner
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Link } from "react-router";
 import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler } from "lucide-react";

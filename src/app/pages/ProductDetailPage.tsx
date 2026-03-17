@@ -1,3 +1,10 @@
+/**
+ * PRODUCT DETAIL PAGE — Pagina de detalhe do produto (/produto/:id).
+ * Consome prefetch data via consumeProductDataCache() ou faz GET /produto-detail-init/:sku.
+ * Exibe: galeria de imagens, preco (PriceBadge full), estoque, descricao, atributos,
+ * calculadora de frete, avaliacoes, garantia estendida, reels, "Vistos recentemente".
+ * SEO: JSON-LD Product, OG tags, canonical. GA4: view_item event.
+ */
 import { useParams, Link } from "react-router";
 import { Home, ArrowLeft, Package, Hash, Loader2, ChevronLeft, ChevronRight, X, Tag, Info, MessageCircle, Copy, Check, Flame, Zap, Share2, ShieldCheck, Play } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";

@@ -1,3 +1,35 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * HOMEPAGE INIT CONTEXT — Cache centralizado dos dados da homepage
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * PROBLEMA QUE RESOLVE:
+ * A homepage precisa de ~12 tipos de dados (banners, categorias, promo, logo,
+ * GA4 config, etc.). Sem este context, seriam 12+ chamadas API separadas.
+ * O endpoint GET /homepage-init retorna tudo em 1 chamada.
+ *
+ * COMO FUNCIONA:
+ * 1. Provider monta (no Layout.tsx) → busca GET /homepage-init
+ * 2. Resposta e cacheada em modulo (fora do React) com TTL de 5 minutos
+ * 3. Qualquer componente usa useHomepageInit() para ler os dados
+ * 4. Navegacoes SPA (ex: /produto → /) reutilizam o cache sem re-fetch
+ *
+ * INVALIDACAO:
+ * Quando o admin salva algo (banner, promo, etc.), o frontend chama
+ * invalidateHomepageCache(). Isso:
+ * - Limpa o cache de modulo (_cachedData = null)
+ * - Incrementa _cacheVersion (contador monotono)
+ * - Notifica listeners → provider detecta a mudanca e re-fetch
+ *
+ * O sistema de versao+listeners foi necessario porque o provider nao
+ * remonta em navegacoes SPA (Layout permanece montado).
+ *
+ * RESILIENCIA:
+ * - fetchWithContextRetry(): se o primeiro fetch falha (ex: cold start do
+ *   edge function que demora >7s), espera 3s e tenta novamente.
+ * - Cobertura total: ~15s de tolerancia a cold starts.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import * as api from "../services/api";
 import type { HomepageInitData, BannerItem, GA4Config, CategoryNode, SuperPromo, PriceConfig } from "../services/api";

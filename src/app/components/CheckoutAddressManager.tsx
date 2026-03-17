@@ -1,3 +1,9 @@
+/**
+ * CHECKOUT ADDRESS MANAGER — Gerenciador de enderecos no checkout.
+ * Lista enderecos salvos, permite selecionar, editar ou adicionar novo.
+ * Consulta ViaCEP para auto-preencher rua/bairro/cidade/UF.
+ * CRUD via API: GET/POST/PUT/DELETE /auth/user/addresses.
+ */
 import { useState, useEffect, useCallback } from "react";
 import { MapPin, Plus, Pencil, Trash2, Check, X, Loader2, Search, Home, Building2, Star, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import * as api from "../services/api";

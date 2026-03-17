@@ -1,3 +1,9 @@
+/**
+ * useApiData — Hook generico para buscar dados da API.
+ * Gerencia loading, error e data automaticamente.
+ * Aceita qualquer fetcher async e retorna { data, loading, error, refetch }.
+ * Usado em componentes simples que precisam de 1 fetch ao montar.
+ */
 import { useState, useEffect, useCallback } from "react";
 
 interface UseApiDataResult<T> {

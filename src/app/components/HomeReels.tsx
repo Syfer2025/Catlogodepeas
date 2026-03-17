@@ -1,3 +1,9 @@
+/**
+ * HOME REELS — Videos curtos estilo TikTok/Instagram Reels na homepage.
+ * Exibe thumbnails em grid; ao clicar, abre modal fullscreen com autoplay.
+ * Navegacao: swipe ou setas. Cada reel pode ter produtos vinculados (cards overlay).
+ * Dados: GET /reels. Videos hospedados no Supabase Storage.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
 import { Play, X, ChevronLeft, ChevronRight, Volume2, VolumeX, ShoppingCart, Eye, Package, ShoppingBag } from "lucide-react";

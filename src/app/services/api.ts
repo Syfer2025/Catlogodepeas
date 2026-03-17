@@ -1,3 +1,25 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * API.TS — Cliente HTTP central (~4000+ linhas)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Unico ponto de comunicacao entre frontend e servidor.
+ * Frontend (api.ts) → Supabase Edge Function (Hono) → DB/SIGE
+ *
+ * FUNCOES CENTRAIS:
+ * - request<T>(path): fetch com retry (3x), timeout (45s), warmup, semaphore
+ * - _requestFastFail<T>(path): sem retry, timeout 25s (display-only calls)
+ * - requestPriority<T>(path): bypass do semaphore (auth critica)
+ *
+ * OTIMIZACOES:
+ * 1. WARMUP: GET /health no load do modulo → edge function pre-aquecido
+ * 2. SEMAPHORE: max 8 requests concorrentes (evita saturar conexoes)
+ * 3. RETRY: 3 retries com backoff exponencial para 429/502/503/504
+ * 4. BULK DEDUP: precos/saldos agrupados em 1 POST por lote de SKUs
+ *
+ * AUTH: Bearer <anon_key> no header + ?_ut=<user_jwt> para rotas protegidas
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { Product, Category } from "../data/products";
 

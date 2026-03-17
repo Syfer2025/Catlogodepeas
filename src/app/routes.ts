@@ -1,3 +1,20 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ROUTES.TS — Definicao central de todas as rotas do frontend
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Usa React Router v7 Data Mode (createBrowserRouter).
+ * Todas as paginas publicas sao filhas do Layout (Header + Footer + Outlet).
+ * O Admin tem rota propria sem Layout publico.
+ *
+ * LAZY LOADING: Todas as rotas (exceto "/" e Layout) usam lazy() do React Router.
+ * Isso faz code splitting automatico — cada pagina e um chunk JS separado
+ * que so e baixado quando o usuario navega para aquela rota.
+ *
+ * HYDRATE FALLBACK: Retorna null porque o Layout.tsx injeta um skeleton shell
+ * pre-renderizado via IIFE antes do React montar, evitando flash branco.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { createBrowserRouter } from "react-router";
 import React from "react";
 import { Layout } from "./components/Layout";

@@ -1,4 +1,9 @@
-// ─── Category Tree Data (Parent → Children → optional Grandchildren) ───
+/**
+ * CATEGORY TREE — Arvore hierarquica de categorias default.
+ * Usada como fallback quando o servidor nao retorna arvore personalizada.
+ * O admin pode customizar a arvore via AdminCategories.tsx.
+ * Cada node tem: id, name, slug, children[] (recursivo).
+ */
 
 export interface CategoryNode {
   id: string;

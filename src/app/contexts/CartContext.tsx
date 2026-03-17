@@ -1,3 +1,28 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * CART CONTEXT — Estado global do carrinho de compras
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * PERSISTENCIA: O carrinho e salvo em localStorage (chave "carretao_cart").
+ * Ao montar o provider, rehidrata do localStorage. A cada mudanca, persiste.
+ *
+ * FUNCIONALIDADES:
+ * - addItem: adiciona item ou incrementa quantidade se ja existe
+ * - removeItem: remove item por SKU
+ * - updateQuantity: altera quantidade (remove se <= 0)
+ * - clearCart: limpa todo o carrinho
+ * - isDrawerOpen/openDrawer/closeDrawer: controla a gaveta lateral (CartDrawer)
+ *
+ * INTEGRACAO:
+ * - CartDrawer.tsx: exibe os itens e permite alterar quantidades
+ * - CheckoutPage.tsx: consome os itens para gerar o pedido
+ * - CartAbandonedTracker: salva snapshot para recuperacao via WhatsApp
+ * - GA4Provider: dispara eventos add_to_cart, remove_from_cart
+ *
+ * PROMO: Itens adicionados com desconto de Super Promo tem isPromo=true
+ * WARRANTY: Itens podem ter garantia estendida opcional (warranty field)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
 export interface CartItem {

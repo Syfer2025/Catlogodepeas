@@ -1,3 +1,10 @@
+/**
+ * PRODUCT REVIEWS — Sistema completo de avaliações de produtos.
+ * Exibe: lista de avaliações, resumo (média+total), formulário para enviar nova.
+ * Upload de fotos (Supabase Storage). Moderação pelo admin.
+ * Ordenação: mais recentes, mais úteis, melhor/pior avaliação.
+ * Paginação com "Carregar mais". Botão "Útil" (thumbs up).
+ */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Star, ThumbsUp, Send, Camera, X, Loader2, AlertCircle, CheckCircle2, Clock, ChevronDown, ChevronUp, User, Image as ImageIcon } from "lucide-react";
 import * as api from "../services/api";

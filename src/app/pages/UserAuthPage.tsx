@@ -1,3 +1,9 @@
+/**
+ * USER AUTH PAGE — Login e cadastro de clientes (/conta).
+ * Abas: Login (email+senha) | Cadastro (CPF/CNPJ, endereco).
+ * Supabase Auth. CNPJ auto-preenche via Receita Federal.
+ * Pos-login: redireciona para /minha-conta ou /checkout.
+ */
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import User from "lucide-react/dist/esm/icons/user";

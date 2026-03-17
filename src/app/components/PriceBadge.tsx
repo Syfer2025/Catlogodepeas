@@ -1,3 +1,28 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * PRICE BADGE — Exibe preco de um produto (com loading, cache e fallback)
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * COMO FUNCIONA:
+ * 1. Verifica se ha preco preloaded (passado pelo pai via bulk-fetch)
+ * 2. Se nao, verifica cache de modulo (_priceModuleCache, TTL 5min)
+ * 3. Se nao, faz GET /sige/preco/:sku com concurrency limit (max 2 simultaneos)
+ * 4. Exibe loading spinner enquanto busca; "Consulte" se nao encontrou
+ *
+ * CACHE DE MODULO (fora do React):
+ * - _priceModuleCache: Map<sku, {data, fetchedAt}> com TTL de 5min
+ * - seedPriceCache(sku, price): "planta" preco no cache (usado pelo bulk-fetch
+ *   do HomePage/SuperPromo para evitar N chamadas individuais)
+ * - seedPriceConfig(config): define o tier de preco ativo (V1-V5)
+ *
+ * VARIANTES:
+ * - "compact": para grids de produto (tamanho menor)
+ * - "full": para pagina de detalhe do produto (tamanho maior, parcelamento)
+ *
+ * MODO CATALOGO:
+ * Se catalogMode=true, mostra "Consulte o preco" ao inves do valor.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, Zap, CreditCard } from "lucide-react";
 import * as api from "../services/api";

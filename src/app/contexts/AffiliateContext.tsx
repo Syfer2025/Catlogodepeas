@@ -1,3 +1,19 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * AFFILIATE CONTEXT — Rastreamento de programa de afiliados
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * COMO FUNCIONA:
+ * 1. Visitante acessa o site com ?ref=CODIGO_AFILIADO na URL
+ * 2. Provider captura o codigo e salva em cookie (30 dias de duracao)
+ * 3. Registra o clique no servidor via POST /affiliates/register
+ * 4. Quando o visitante faz uma compra, o codigo e enviado junto com o pedido
+ * 5. Admin pode ver stats de cada afiliado em AdminAffiliates.tsx
+ *
+ * PERSISTENCIA: Cookie "carretao_ref" com SameSite=Lax, expira em 30 dias.
+ * Nao usa localStorage porque cookies sobrevivem a modo anonimo em alguns browsers.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import * as api from "../services/api";
 

@@ -1,3 +1,9 @@
+/**
+ * HEADER — Cabecalho principal do site. Contém logo, campo de busca (SearchAutocomplete),
+ * badge do carrinho, menu do usuario (login/conta), mega menu de categorias (lazy),
+ * mega menu de cupons (lazy), input de CEP. Responsivo: mobile mostra menu hamburguer.
+ * Dados: logo e categorias vem do HomepageInitContext. Auth: verifica sessao Supabase.
+ */
 import { useState, useEffect, lazy, Suspense } from "react";
 import { Link, useNavigate } from "react-router";
 import { Menu, X, Wrench, Headset, ChevronDown, MapPin, Clock, MessageCircle, Building2, User, ShoppingCart, Lock, Package, LogOut, Heart, Layers } from "lucide-react";

@@ -1,3 +1,10 @@
+/**
+ * CATALOG PAGE — Pagina do catalogo com busca, filtros e paginacao.
+ * Filtros: categoria, marca, busca textual, ordenacao (titulo, preco, relevancia).
+ * Dados: GET /produtos com query params. Precos/saldos via bulk-fetch.
+ * Performance: VirtualProductGrid para grids grandes; bulk-seed dos caches.
+ * URL state: useSearchParams() para manter filtros na URL (compartilhavel).
+ */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, Link } from "react-router";
 import type { ProdutoItem } from "../components/ProductCard";

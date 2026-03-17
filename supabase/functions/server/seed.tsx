@@ -1,3 +1,9 @@
+/**
+ * SEED.TS — Dados iniciais (seed) para o KV store.
+ * Contem: categorias default, configuracoes iniciais.
+ * Executado automaticamente se KV estiver vazio (primeira execucao).
+ * Nao sobrescreve dados existentes — so popula se ausente.
+ */
 import * as kv from "./kv_store.tsx";
 
 export const categories = [

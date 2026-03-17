@@ -1,3 +1,9 @@
+/**
+ * EXIT INTENT POPUP — Popup que aparece quando o usuario tenta sair do site.
+ * Detecta mouseleave no topo da pagina (desktop) ou scroll rapido (mobile).
+ * Mostra: cupom de desconto, campo de email, CTA. Config via admin panel.
+ * Exibe no maximo 1x por sessao (flag em sessionStorage).
+ */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Gift, Mail, ArrowRight, CheckCircle2, Copy, Check, Sparkles } from "lucide-react";
 import { useHomepageInit } from "../contexts/HomepageInitContext";

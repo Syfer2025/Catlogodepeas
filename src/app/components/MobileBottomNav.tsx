@@ -1,3 +1,9 @@
+/**
+ * MOBILE BOTTOM NAV — Barra de navegacao fixa no rodape (mobile only).
+ * 5 icones: Home, Favoritos, Carrinho (com badge), Cupons, Conta.
+ * Oculta automaticamente durante scroll down; reaparece no scroll up.
+ * Highlight ativo baseado na rota atual via useLocation().
+ */
 import { useLocation, useNavigate } from "react-router";
 import { Home, Heart, ShoppingCart, Ticket, User } from "lucide-react";
 import { useCart } from "../contexts/CartContext";

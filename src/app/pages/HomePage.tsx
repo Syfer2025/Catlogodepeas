@@ -1,3 +1,29 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * HOMEPAGE.TSX — Pagina inicial do site
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * SECOES (ordem de cima pra baixo):
+ * 1. HeroBannerCarousel — Banners full-width (ou DefaultHero se vazio)
+ * 2. CategoriesStrip — Faixa horizontal de categorias scrollavel
+ * 3. SuperPromoSection — Carousel de ofertas com countdown (lazy)
+ * 4. HomeReels — Videos curtos estilo TikTok (lazy)
+ * 5. MidBanners (posicao 1) — Banners intermediarios (slots 3 & 4)
+ * 6. Produtos em Destaque — Grid 2x5 de ProductCards
+ * 7. MidBanners (posicao 2) — Banners intermediarios (slots 1 & 2)
+ * 8. RecentlyViewed — "Vistos recentemente" do localStorage (lazy)
+ * 9. BrandCarousel — Logos de marcas parceiras (lazy)
+ * 10. InfluencerCarousel — Stories de influenciadores (lazy)
+ * 11. CTA Banner — "Precisa de ajuda?" com link WhatsApp
+ *
+ * DADOS: Banners/categorias/brands via useHomepageInit() (1 chamada).
+ * Destaques via GET /produtos/destaques (cache 5min client-side).
+ * Precos/Saldos: bulk-fetch que "planta" no cache do PriceBadge/StockBar.
+ *
+ * PERFORMANCE: LCP preload do banner via localStorage, CLS com skeletons,
+ * productGrid memoizado, todas secoes below-fold lazy-loaded.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import { Link } from "react-router";
 import { ProductCard } from "../components/ProductCard";
 import type { ProdutoItem } from "../components/ProductCard";

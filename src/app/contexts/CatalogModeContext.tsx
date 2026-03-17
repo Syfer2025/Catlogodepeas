@@ -1,3 +1,21 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * CATALOG MODE CONTEXT — Controle global de exibicao de precos
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * QUANDO ATIVO (catalogMode=true):
+ * - Precos sao ocultados em todo o site (ProductCard, ProductDetail, SuperPromo)
+ * - Em vez de preco, mostra "Consulte o preco" ou "Ver Detalhes"
+ * - Botoes mudam de "Comprar" para "Ver Detalhes"
+ * - Checkout e carrinho ficam desabilitados
+ *
+ * CASO DE USO: O dono da loja quer usar o site como catalogo digital
+ * sem exibir precos (ex: para vendedores que negociam presencialmente).
+ *
+ * FONTE: Busca GET /settings na montagem e le o campo "catalogMode".
+ * Admin configura em AdminSettings.tsx.
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
 import React, { createContext, useContext, useState, useEffect } from "react";
 import * as api from "../services/api";
 
