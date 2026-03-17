@@ -31,7 +31,7 @@
  * - Infraestrutura, Testes de Regressao, Error Scanner
  * ═══════════════════════════════════════════════════════════════════════════════
  */
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense, startTransition } from "react";
 import { Link } from "react-router";
 import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
@@ -901,7 +901,9 @@ export function AdminPage() {
                         <button
                           key={item.id}
                           onClick={function () {
-                            setActiveTab(item!.id);
+                            startTransition(function () {
+                              setActiveTab(item!.id);
+                            });
                             markTabAsSeen(item!.id);
                             setSidebarOpen(false);
                           }}

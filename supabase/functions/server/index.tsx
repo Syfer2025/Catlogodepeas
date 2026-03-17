@@ -3458,7 +3458,7 @@ app.delete(BASE + "/categories/:id", async (c) => {
 
 // ═══════════════════════════════════════
 // ─── CATEGORY TREE (hierarchical) ─────
-// ═══════════════════════════════════════
+// ═════════════════════════════���═════════
 
 app.get(BASE + "/category-tree", async (c) => {
   try {
@@ -16951,13 +16951,13 @@ app.get(BASE + "/mercadopago/config", async (c) => {
 app.get(BASE + "/mercadopago/enabled", async (c) => {
   try {
     var raw = await kv.get("mercadopago_config");
-    if (!raw) return c.json({ enabled: false, sandbox: false });
+    if (!raw) return c.json({ enabled: false, sandbox: false, publicKey: null });
     var parsed = JSON.parse(raw);
     var isEnabled = !!parsed.accessToken;
-    return c.json({ enabled: isEnabled, sandbox: !!parsed.sandbox });
+    return c.json({ enabled: isEnabled, sandbox: !!parsed.sandbox, publicKey: parsed.publicKey || null });
   } catch (e: any) {
     console.error("[MercadoPago] Enabled check error:", e);
-    return c.json({ enabled: false, sandbox: false });
+    return c.json({ enabled: false, sandbox: false, publicKey: null });
   }
 });
 
@@ -17193,6 +17193,182 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
   } catch (e: any) {
     console.error("[MercadoPago] Create preference exception:", e);
     return c.json({ error: "Erro ao criar preferência de pagamento." }, 500);
+  }
+});
+
+// POST /mercadopago/process-card-payment — Checkout Transparente: process credit card payment
+app.post(BASE + "/mercadopago/process-card-payment", async (c) => {
+  try {
+    var ccUserId = await getAuthUserId(c.req.raw);
+    if (!ccUserId) return c.json({ error: "Autenticacao necessaria." }, 401);
+    var ccRl = _getRateLimitKey(c, "mp_card");
+    var ccRlResult = _checkRateLimit(ccRl, 5);
+    if (!ccRlResult.allowed) return _rl429(c, "Muitas tentativas. Aguarde.", ccRlResult);
+    const creds = await getMPCredentials();
+    if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
+
+    const body = await c.req.json();
+    var ccValid = validate(body, {
+      token: { required: true, type: "string", maxLen: 300 },
+      order_id: { required: true, type: "string", maxLen: 100 },
+      transaction_amount: { required: true, type: "number", min: 0.01, max: 999999 },
+      installments: { required: true, type: "number", min: 1, max: 24 },
+      payment_method_id: { required: true, type: "string", maxLen: 50 },
+      payer_email: { required: true, type: "string", maxLen: 254 },
+      payer_name: { type: "string", maxLen: 200 },
+      payer_cpf: { type: "string", maxLen: 20 },
+      issuer_id: { type: "string", maxLen: 50 },
+    });
+    if (!ccValid.ok) return c.json({ error: ccValid.errors[0] || "Dados invalidos." }, 400);
+
+    var { token, order_id, transaction_amount, installments, payment_method_id, payer_email, payer_name, payer_cpf, issuer_id } = body;
+
+    // Ensure transaction_amount is a valid positive number
+    transaction_amount = Math.round(parseFloat(transaction_amount) * 100) / 100;
+    if (!transaction_amount || isNaN(transaction_amount) || transaction_amount <= 0) {
+      return c.json({ error: "Valor do pagamento invalido: " + body.transaction_amount, success: false }, 400);
+    }
+
+    // SECURITY: Validate prices server-side
+    if (body.items && Array.isArray(body.items)) {
+      try {
+        var ccItemsForVal = body.items.map(function(it: any) {
+          return { item_id: it.sku || it.item_id || "", sku: it.sku || it.item_id || "", price_cents: Math.round((it.unit_price || 0) * 100), quantity: it.quantity || 1 };
+        });
+        var ccPriceCheck = await _validatePaymentPrices(ccItemsForVal, 45);
+        if (!ccPriceCheck.ok) {
+          console.warn("[MercadoPago Card] PRICE TAMPERING BLOCKED");
+          return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina." }, 400);
+        }
+      } catch (pvErr4) {
+        console.error("[MercadoPago Card] Price validation error (non-blocking): " + pvErr4);
+      }
+    }
+
+    var paymentPayload: any = {
+      transaction_amount: Math.round(parseFloat(transaction_amount) * 100) / 100,
+      token: token,
+      installments: installments,
+      payment_method_id: payment_method_id,
+      external_reference: order_id,
+      statement_descriptor: "CARRETAO AUTO PECAS",
+      payer: {
+        email: payer_email,
+        first_name: payer_name ? payer_name.split(" ")[0] : undefined,
+        last_name: payer_name ? payer_name.split(" ").slice(1).join(" ") : undefined,
+      },
+    };
+    if (issuer_id) paymentPayload.issuer_id = issuer_id;
+    if (payer_cpf) {
+      paymentPayload.payer.identification = {
+        type: "CPF",
+        number: payer_cpf.replace(/\D/g, ""),
+      };
+    }
+
+    // Add notification_url for webhook
+    var supaUrlCC = Deno.env.get("SUPABASE_URL") || "";
+    paymentPayload.notification_url = supaUrlCC + "/functions/v1/make-server-b7b07654/mercadopago/webhook";
+
+    var ccResult = await mpApiFetch("/v1/payments", creds.accessToken, {
+      method: "POST",
+      body: paymentPayload,
+      idempotencyKey: "mp_card_" + order_id,
+    });
+
+    if (!ccResult.ok) {
+      console.error("[MercadoPago Card] Payment error: HTTP " + ccResult.status, JSON.stringify(ccResult.json));
+      var ccErrMsg = "Erro ao processar pagamento com cartão.";
+      var ccErrCause = ccResult.json?.cause;
+      if (Array.isArray(ccErrCause) && ccErrCause.length > 0) {
+        var ccErrCode = ccErrCause[0]?.code;
+        if (ccErrCode === "3001" || ccErrCode === "2002") ccErrMsg = "Cartão recusado pela operadora. Tente outro cartão.";
+        else if (ccErrCode === "cc_rejected_insufficient_amount") ccErrMsg = "Saldo insuficiente no cartão.";
+        else if (ccErrCode === "cc_rejected_bad_filled_security_code") ccErrMsg = "Código de segurança inválido.";
+        else if (ccErrCode === "cc_rejected_bad_filled_date") ccErrMsg = "Data de validade inválida.";
+        else if (ccErrCode === "cc_rejected_bad_filled_other") ccErrMsg = "Dados do cartão inválidos.";
+      }
+      var mpStatus = ccResult.json?.status;
+      var mpStatusDetail = ccResult.json?.status_detail || "";
+      if (mpStatus === "rejected") {
+        if (mpStatusDetail.includes("insufficient_amount")) ccErrMsg = "Saldo insuficiente no cartão.";
+        else if (mpStatusDetail.includes("bad_filled_security_code")) ccErrMsg = "Código de segurança inválido.";
+        else if (mpStatusDetail.includes("bad_filled_date")) ccErrMsg = "Data de validade inválida.";
+        else if (mpStatusDetail.includes("bad_filled_other")) ccErrMsg = "Dados do cartão inválidos. Verifique e tente novamente.";
+        else if (mpStatusDetail.includes("high_risk")) ccErrMsg = "Pagamento recusado por motivos de segurança. Tente outro cartão.";
+        else if (mpStatusDetail.includes("max_attempts")) ccErrMsg = "Número máximo de tentativas atingido. Tente outro cartão.";
+        else ccErrMsg = "Cartão recusado. Tente outro cartão ou método de pagamento.";
+      }
+      return c.json({ success: false, error: ccErrMsg, status: mpStatus || "error", status_detail: mpStatusDetail || "" }, 400);
+    }
+
+    var ccPayment = ccResult.json;
+    // Save transaction to KV
+    var ccTxKey = "mp_tx:" + (ccPayment?.id || Date.now());
+    await kv.set(ccTxKey, JSON.stringify({
+      type: "card_payment",
+      paymentId: ccPayment?.id,
+      externalReference: order_id,
+      status: ccPayment?.status,
+      statusDetail: ccPayment?.status_detail,
+      paymentMethodId: payment_method_id,
+      installments: installments,
+      transactionAmount: transaction_amount,
+      payer: { email: payer_email },
+      createdAt: Date.now(),
+    }));
+
+    return c.json({
+      success: true,
+      payment_id: String(ccPayment?.id || ""),
+      status: ccPayment?.status || "pending",
+      status_detail: ccPayment?.status_detail || "",
+      external_reference: order_id,
+    });
+  } catch (e: any) {
+    console.error("[MercadoPago Card] Exception:", e);
+    return c.json({ error: "Erro ao processar pagamento com cartão." }, 500);
+  }
+});
+
+// POST /mercadopago/card-installments — get installment options for a given amount + bin
+app.post(BASE + "/mercadopago/card-installments", async (c) => {
+  try {
+    const creds = await getMPCredentials();
+    if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
+    const body = await c.req.json();
+    var instAmount = Number(body.amount) || 0;
+    var instBin = String(body.bin || "").replace(/\D/g, "").substring(0, 8);
+    if (instAmount <= 0 || instBin.length < 6) return c.json({ installments: [] });
+
+    var instResult = await mpApiFetch(
+      "/v1/payment_methods/installments?amount=" + instAmount + "&bin=" + encodeURIComponent(instBin),
+      creds.accessToken,
+      { method: "GET" }
+    );
+    if (!instResult.ok || !Array.isArray(instResult.json)) {
+      return c.json({ installments: [] });
+    }
+    // Return first issuer's payer_costs
+    var firstIssuer = instResult.json[0];
+    if (!firstIssuer) return c.json({ installments: [] });
+    var payerCosts = (firstIssuer.payer_costs || []).map(function(pc: any) {
+      return {
+        installments: pc.installments,
+        installment_rate: pc.installment_rate,
+        total_amount: pc.total_amount,
+        installment_amount: pc.installment_amount,
+        recommended_message: pc.recommended_message,
+      };
+    });
+    return c.json({
+      installments: payerCosts,
+      issuer_id: String(firstIssuer.issuer?.id || ""),
+      payment_method_id: firstIssuer.payment_method_id || "",
+    });
+  } catch (e: any) {
+    console.error("[MercadoPago] Installments error:", e);
+    return c.json({ installments: [] });
   }
 });
 

@@ -1,7 +1,7 @@
 /**
  * CHECKOUT PAGE — Fluxo de compra completo.
  * Etapas: resumo do carrinho → endereco → frete → cupom → pagamento.
- * Pagamentos: PIX (PagHiper), Boleto (PagHiper), Mercado Pago.
+ * Pagamentos: PIX (PagHiper), Boleto (PagHiper), Mercado Pago, Cartão de Crédito (MP Checkout Transparente).
  * Integra: CartContext, Auth, GA4 (begin_checkout, purchase), Marketing.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -99,7 +99,7 @@ export function CheckoutPage() {
 
   useDocumentMeta({
     title: "Checkout - Carretão Auto Peças",
-    description: "Finalize sua compra na Carretão Auto Peças. Pagamento via PIX, Boleto ou Mercado Pago.",
+    description: "Finalize sua compra na Carretão Auto Peças. Pagamento via PIX, Boleto, Cartão de Crédito ou Mercado Pago.",
   });
 
   // Auth
@@ -185,6 +185,21 @@ export function CheckoutPage() {
   const [mpEnabled, setMpEnabled] = useState(false);
   const [mpSandbox, setMpSandbox] = useState(false);
   const [mpReturnHandled, setMpReturnHandled] = useState(false);
+  const [mpPublicKey, setMpPublicKey] = useState<string | null>(null);
+
+  // Credit card fields (Checkout Transparente via Mercado Pago)
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardExpMonth, setCardExpMonth] = useState("");
+  const [cardExpYear, setCardExpYear] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [cardInstallments, setCardInstallments] = useState(1);
+  const [cardIssuerId, setCardIssuerId] = useState("");
+  const [cardPaymentMethodId, setCardPaymentMethodId] = useState("");
+  const [installmentOptions, setInstallmentOptions] = useState<api.MPInstallmentOption[]>([]);
+  const [loadingInstallments, setLoadingInstallments] = useState(false);
+  const mpSdkRef = useRef<any>(null);
+  const installmentsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ═══════ STOCK VALIDATION LAYER 3: Checkout entry validation ═══════
   const [stockValidation, setStockValidation] = useState<{
@@ -253,11 +268,53 @@ export function CheckoutPage() {
       .then((res) => {
         setMpEnabled(res.enabled);
         setMpSandbox(res.sandbox);
+        if (res.publicKey) setMpPublicKey(res.publicKey);
       })
       .catch(() => setMpEnabled(false));
   }, []);
 
+  // ─── Load Mercado Pago SDK for Checkout Transparente ───
+  useEffect(() => {
+    if (!mpPublicKey || !mpEnabled) return;
+    // Only load if not already loaded
+    if ((window as any).MercadoPago) {
+      mpSdkRef.current = new (window as any).MercadoPago(mpPublicKey, { locale: "pt-BR" });
+      return;
+    }
+    var script = document.createElement("script");
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.async = true;
+    script.onload = function () {
+      if ((window as any).MercadoPago) {
+        mpSdkRef.current = new (window as any).MercadoPago(mpPublicKey, { locale: "pt-BR" });
+      }
+    };
+    document.head.appendChild(script);
+  }, [mpPublicKey, mpEnabled]);
 
+  // ─── Fetch installments when card BIN changes ───
+  useEffect(() => {
+    var bin = cardNumber.replace(/\D/g, "").substring(0, 8);
+    if (bin.length < 6 || totalWithShipping <= 0 || paymentMethod !== "cartao_credito") {
+      setInstallmentOptions([]);
+      return;
+    }
+    if (installmentsFetchRef.current) clearTimeout(installmentsFetchRef.current);
+    installmentsFetchRef.current = setTimeout(function () {
+      setLoadingInstallments(true);
+      api.getCardInstallments(totalWithShipping, bin)
+        .then(function (res) {
+          setInstallmentOptions(res.installments || []);
+          if (res.issuer_id) setCardIssuerId(res.issuer_id);
+          if (res.payment_method_id) setCardPaymentMethodId(res.payment_method_id);
+          // Default to 1x
+          if (cardInstallments > (res.installments || []).length) setCardInstallments(1);
+        })
+        .catch(function () { setInstallmentOptions([]); })
+        .finally(function () { setLoadingInstallments(false); });
+    }, 600);
+    return function () { if (installmentsFetchRef.current) clearTimeout(installmentsFetchRef.current); };
+  }, [cardNumber, totalWithShipping, paymentMethod]);
 
   // ─── LAYER 3: Validate stock for all cart items on checkout entry ───
   useEffect(() => {
@@ -921,6 +978,115 @@ export function CheckoutPage() {
           throw new Error("URL de checkout do Mercado Pago não disponível.");
         }
         return; // Don't set submitting=false, page will redirect
+      } else if (paymentMethod === "cartao_credito") {
+        // 3d. Checkout Transparente — Credit Card via Mercado Pago
+        if (!mpSdkRef.current) {
+          throw new Error("SDK do Mercado Pago não carregado. Recarregue a página.");
+        }
+
+        // Create card token via MP SDK
+        var ccDigits = cardNumber.replace(/\D/g, "");
+        var cardTokenData: any;
+        try {
+          cardTokenData = await mpSdkRef.current.createCardToken({
+            cardNumber: ccDigits,
+            cardholderName: cardName,
+            cardExpirationMonth: cardExpMonth,
+            cardExpirationYear: cardExpYear.length === 2 ? "20" + cardExpYear : cardExpYear,
+            securityCode: cardCvv,
+            identificationType: "CPF",
+            identificationNumber: effectiveCpf,
+          });
+        } catch (tokenErr: any) {
+          console.error("[Checkout] Card token error:", tokenErr);
+          throw new Error("Erro ao processar dados do cartão. Verifique os dados e tente novamente.");
+        }
+
+        if (!cardTokenData || !cardTokenData.id) {
+          throw new Error("Não foi possível tokenizar o cartão. Verifique os dados.");
+        }
+
+        var ccPayload: api.MPCardPaymentPayload = {
+          token: cardTokenData.id,
+          order_id: localOrderId,
+          transaction_amount: Math.round(totalWithShipping * 100) / 100,
+          installments: cardInstallments,
+          payment_method_id: cardPaymentMethodId || "visa",
+          payer_email: profile.email,
+          payer_name: effectiveName,
+          payer_cpf: effectiveCpf,
+          issuer_id: cardIssuerId || undefined,
+          items: items.map(function (it) {
+            return { sku: it.sku, quantity: it.quantidade, unit_price: it.precoUnitario || 0 };
+          }),
+        };
+
+        var ccResult = await api.processCardPayment(ccPayload, accessToken);
+
+        if (!ccResult.success) {
+          throw new Error(ccResult.error || "Pagamento com cartão recusado.");
+        }
+
+        setTxId(ccResult.payment_id || null);
+
+        // Save order
+        try {
+          await api.saveUserOrder(accessToken, {
+            localOrderId,
+            sigeOrderId: saleResult?.orderId || null,
+            items: orderItems,
+            total: totalWithShipping,
+            paymentMethod: "cartao_credito",
+            transactionId: ccResult.payment_id || localOrderId,
+            observacao: observacao.trim() || undefined,
+            shippingAddress: orderShippingAddr,
+            shippingOption: orderShippingOpt,
+            coupon: orderCouponInfo,
+          } as any);
+          trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
+          _useCouponOnce();
+        } catch (e) {
+          console.error("Save user order error (non-fatal):", e);
+        }
+
+        // GA4 + Meta tracking
+        trackEvent("add_payment_info", {
+          currency: "BRL",
+          value: totalWithShipping,
+          payment_type: "credit_card",
+        });
+        trackMetaEvent("AddPaymentInfo", {
+          content_ids: items.map(function(i) { return i.sku; }),
+          value: totalWithShipping,
+          currency: "BRL",
+        });
+
+        if (ccResult.status === "approved") {
+          setStep("success");
+          trackEvent("purchase", {
+            transaction_id: ccResult.payment_id || localOrderId,
+            currency: "BRL",
+            value: totalWithShipping,
+            shipping: shippingPrice,
+            payment_type: "credit_card",
+            items: items.map(function (i) {
+              return { item_id: i.sku, item_name: i.titulo, quantity: i.quantidade, price: i.precoUnitario ?? 0 };
+            }),
+            ...getUtmEventParams(),
+          });
+          trackMetaEvent("Purchase", { content_ids: items.map(function(i) { return i.sku; }), content_type: "product", value: totalWithShipping, currency: "BRL", num_items: totalItems });
+          trackGoogleAdsConversion({ value: totalWithShipping, currency: "BRL", transaction_id: ccResult.payment_id || localOrderId });
+          clearCart();
+          _markWaCartCompleted();
+        } else if (ccResult.status === "in_process" || ccResult.status === "pending") {
+          setStep("awaiting");
+          setPaymentStatusLabel("Pagamento em análise");
+          if (ccResult.payment_id) {
+            startMPPolling(ccResult.payment_id, localOrderId, accessToken);
+          }
+        } else {
+          throw new Error("Pagamento recusado: " + (ccResult.status_detail || ccResult.status || "erro desconhecido"));
+        }
       }
     } catch (e: any) {
       console.error("Checkout submission error:", e);
@@ -1893,7 +2059,7 @@ export function CheckoutPage() {
                     </span>
                   </div>
 
-                  <div className={`grid gap-3 ${(mpEnabled && spEnabled) ? "grid-cols-2 sm:grid-cols-4" : (mpEnabled || spEnabled) ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div className={`grid gap-3 ${(mpEnabled && mpPublicKey) ? "grid-cols-3" : "grid-cols-2"}`}>
                     {/* PIX */}
                     <button
                       onClick={() => setPaymentMethod("pix")}
@@ -1946,35 +2112,176 @@ export function CheckoutPage() {
                       </span>
                     </button>
 
-                    {/* Mercado Pago */}
-                    {mpEnabled && (
+                    {/* Cartão de Crédito (Checkout Transparente MP) */}
+                    {mpEnabled && mpPublicKey && (
                       <button
-                        onClick={() => setPaymentMethod("mercadopago")}
+                        onClick={() => setPaymentMethod("cartao_credito")}
                         className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                          paymentMethod === "mercadopago"
-                            ? "border-sky-500 bg-sky-50 shadow-md"
-                            : "border-gray-200 bg-white hover:border-sky-300 hover:bg-sky-50/50"
+                          paymentMethod === "cartao_credito"
+                            ? "border-orange-500 bg-orange-50 shadow-md"
+                            : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/50"
                         }`}
                       >
-                        <div className={`rounded-full p-3 ${paymentMethod === "mercadopago" ? "bg-sky-100" : "bg-gray-100"}`}>
-                          <Wallet className={`w-6 h-6 ${paymentMethod === "mercadopago" ? "text-sky-600" : "text-gray-400"}`} />
+                        <div className={`rounded-full p-3 ${paymentMethod === "cartao_credito" ? "bg-orange-100" : "bg-gray-100"}`}>
+                          <CreditCard className={`w-6 h-6 ${paymentMethod === "cartao_credito" ? "text-orange-600" : "text-gray-400"}`} />
                         </div>
                         <span
-                          className={paymentMethod === "mercadopago" ? "text-sky-700" : "text-gray-600"}
+                          className={paymentMethod === "cartao_credito" ? "text-orange-700" : "text-gray-600"}
                           style={{ fontSize: "0.9rem", fontWeight: 700 }}
                         >
-                          Mercado Pago
+                          Cartão
                         </span>
                         <span
-                          className={paymentMethod === "mercadopago" ? "text-sky-600" : "text-gray-400"}
+                          className={paymentMethod === "cartao_credito" ? "text-orange-600" : "text-gray-400"}
                           style={{ fontSize: "0.72rem" }}
                         >
-                          {mpSandbox ? "Sandbox (teste)" : "Cartão, saldo e mais"}
+                          Até 12x sem sair
                         </span>
                       </button>
                     )}
 
                   </div>
+
+                  {/* ─── Card Form (Checkout Transparente) ─── */}
+                  {paymentMethod === "cartao_credito" && (
+                    <div className="mt-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl border border-orange-200 p-5 space-y-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CreditCard className="w-4 h-4 text-orange-600" />
+                        <span className="text-gray-700" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                          Dados do Cartão
+                        </span>
+                        <span className="ml-auto flex items-center gap-1 text-green-600" style={{ fontSize: "0.68rem", fontWeight: 500 }}>
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                          Ambiente seguro
+                        </span>
+                      </div>
+
+                      {/* Card Number */}
+                      <div>
+                        <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                          Número do cartão <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={cardNumber}
+                          onChange={(e) => {
+                            var v = e.target.value.replace(/\D/g, "").slice(0, 16);
+                            var formatted = v.replace(/(\d{4})(?=\d)/g, "$1 ");
+                            setCardNumber(formatted);
+                          }}
+                          placeholder="0000 0000 0000 0000"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors font-mono"
+                          style={{ fontSize: "0.92rem", letterSpacing: "0.05em" }}
+                          autoComplete="cc-number"
+                        />
+                      </div>
+
+                      {/* Cardholder Name */}
+                      <div>
+                        <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                          Nome no cartão <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                          placeholder="NOME COMO ESTÁ NO CARTÃO"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors"
+                          style={{ fontSize: "0.88rem" }}
+                          autoComplete="cc-name"
+                        />
+                      </div>
+
+                      {/* Expiry + CVV row */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                            Mês <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={cardExpMonth}
+                            onChange={(e) => setCardExpMonth(e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors"
+                            style={{ fontSize: "0.85rem" }}
+                          >
+                            <option value="">MM</option>
+                            {["01","02","03","04","05","06","07","08","09","10","11","12"].map(function(m) {
+                              return <option key={m} value={m}>{m}</option>;
+                            })}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                            Ano <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={cardExpYear}
+                            onChange={(e) => setCardExpYear(e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors"
+                            style={{ fontSize: "0.85rem" }}
+                          >
+                            <option value="">AA</option>
+                            {Array.from({ length: 12 }, function (_, i) { return new Date().getFullYear() + i; }).map(function(y) {
+                              return <option key={y} value={String(y).slice(-2)}>{y}</option>;
+                            })}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                            CVV <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            placeholder="000"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors font-mono"
+                            style={{ fontSize: "0.88rem" }}
+                            autoComplete="cc-csc"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Installments */}
+                      <div>
+                        <label className="block text-gray-500 mb-1" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                          Parcelas
+                        </label>
+                        {loadingInstallments ? (
+                          <div className="flex items-center gap-2 text-gray-400 py-2" style={{ fontSize: "0.8rem" }}>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Carregando parcelas...
+                          </div>
+                        ) : installmentOptions.length > 0 ? (
+                          <select
+                            value={cardInstallments}
+                            onChange={(e) => setCardInstallments(Number(e.target.value))}
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 transition-colors"
+                            style={{ fontSize: "0.85rem" }}
+                          >
+                            {installmentOptions.map(function(opt) {
+                              return (
+                                <option key={opt.installments} value={opt.installments}>
+                                  {opt.recommended_message || (opt.installments + "x de " + formatPrice(opt.installment_amount))}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        ) : (
+                          <div className="text-gray-400 py-1" style={{ fontSize: "0.78rem" }}>
+                            {cardNumber.replace(/\D/g, "").length >= 6 ? "Parcelas indisponíveis para este cartão" : "Digite o número do cartão para ver as parcelas"}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-1 text-gray-400" style={{ fontSize: "0.68rem" }}>
+                        <svg className="w-3 h-3 text-[#009ee3]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/></svg>
+                        Processado com segurança pelo Mercado Pago
+                      </div>
+                    </div>
+                  )}
 
 
                 </div>

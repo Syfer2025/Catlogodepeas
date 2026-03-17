@@ -3353,7 +3353,49 @@ export const deleteShippingTable = (accessToken: string, tableId: string) =>
 
 // Public: check if Mercado Pago is enabled for checkout (no auth required)
 export const checkMPEnabled = () =>
-  request<{ enabled: boolean; sandbox: boolean }>("/mercadopago/enabled");
+  request<{ enabled: boolean; sandbox: boolean; publicKey: string | null }>("/mercadopago/enabled");
+
+// Process credit card payment via Checkout Transparente
+export interface MPCardPaymentPayload {
+  token: string;
+  order_id: string;
+  transaction_amount: number;
+  installments: number;
+  payment_method_id: string;
+  payer_email: string;
+  payer_name?: string;
+  payer_cpf?: string;
+  issuer_id?: string;
+  items?: Array<{ sku: string; quantity: number; unit_price: number }>;
+}
+export interface MPCardPaymentResult {
+  success: boolean;
+  payment_id?: string;
+  status?: string;
+  status_detail?: string;
+  external_reference?: string;
+  error?: string;
+}
+export const processCardPayment = (payload: MPCardPaymentPayload, accessToken: string) =>
+  request<MPCardPaymentResult>("/mercadopago/process-card-payment", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "X-User-Token": accessToken },
+  });
+
+// Get installment options for a card bin + amount
+export interface MPInstallmentOption {
+  installments: number;
+  installment_rate: number;
+  total_amount: number;
+  installment_amount: number;
+  recommended_message: string;
+}
+export const getCardInstallments = (amount: number, bin: string) =>
+  request<{ installments: MPInstallmentOption[]; issuer_id?: string; payment_method_id?: string }>("/mercadopago/card-installments", {
+    method: "POST",
+    body: JSON.stringify({ amount, bin }),
+  });
 
 export interface MercadoPagoConfig {
   configured: boolean;
