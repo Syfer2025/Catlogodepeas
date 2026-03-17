@@ -318,7 +318,7 @@ const Footer = lazyWithRetry(function () {
   // ── This eliminates 2 external DNS lookups (fonts.googleapis.com,                ──
   // ── fonts.gstatic.com) and the render-blocking external stylesheet.              ──
 
-  // ── Pre-render skeleton shell (Step 3) ──────────────────────────────────
+  // ── Pre-render skeleton shell (Step 3) ───────────────────────���──────────
   // Injects a lightweight CSS-only skeleton into #root BEFORE React hydrates.
   // This gives immediate visual feedback (perceived FCP improvement).
   // React will replace this content when the app mounts.
@@ -471,7 +471,13 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
   var [maintenance, setMaintenance] = useState(false);
   var [bypassed, setBypassed] = useState(false);
 
+  // ── /docs page is ALWAYS accessible, even during maintenance ──
+  var isDocsPage = typeof window !== "undefined" && window.location.pathname === "/docs";
+
   useEffect(function () {
+    // /docs is exempt from maintenance gate — skip all checks
+    if (isDocsPage) return;
+
     // ── Maintenance Bypass ──────────────────────────────────────────────
     // Access with ?preview=carretao2026 to bypass maintenance mode.
     // The token is saved in a cookie so you don't need to add it on every page.
@@ -602,6 +608,11 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
 
   // Bypass active, no maintenance — just render normally
   if (bypassed) {
+    return <>{children}</>;
+  }
+
+  // /docs page is always accessible, even during maintenance
+  if (isDocsPage) {
     return <>{children}</>;
   }
 
