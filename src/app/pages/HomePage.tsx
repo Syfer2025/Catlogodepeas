@@ -456,7 +456,7 @@ export function HomePage() {
     }
     const load = async () => {
       try {
-        const result = await api.getDestaques(10);
+        const result = await api.getDestaques(20);
         setProdutos(result.data);
         _destaquesCache = { data: result.data, ts: Date.now() };
       } catch (e) {
@@ -555,9 +555,35 @@ export function HomePage() {
         </div>
       );
     }
+    // Filter out products that are out of stock (<=0) or low stock (<=3) from homepage.
+    // Only filter once balance data has loaded; before that, show all products.
+    var hasBalanceData = Object.keys(balanceMap).length > 0;
+    var filteredProdutos = hasBalanceData
+      ? produtos.filter(function (p) {
+          var bal = balanceMap[p.sku];
+          if (!bal || !bal.found) return true; // No balance info — keep visible
+          var qty = bal.disponivel ?? bal.quantidade ?? 0;
+          return qty > 3; // Hide esgotados (<=0) and quase esgotando (<=3)
+        })
+      : produtos;
+    // Cap at 10 products for the homepage grid
+    var displayProdutos = filteredProdutos.slice(0, 10);
+    if (hasBalanceData && displayProdutos.length === 0) {
+      return (
+        <div className="text-center py-16 flex flex-col items-center">
+          <Package className="w-10 h-10 text-gray-300 mb-3" />
+          <p className="text-gray-500 mb-1" style={{ fontSize: "0.95rem", fontWeight: 600 }}>
+            Nenhum produto disponível no momento
+          </p>
+          <p className="text-gray-400" style={{ fontSize: "0.82rem" }}>
+            Estamos atualizando nosso catálogo. Volte em breve!
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
-        {produtos.map(function (produto) {
+        {displayProdutos.map(function (produto) {
           return (
             <ProductCard
               key={produto.sku}

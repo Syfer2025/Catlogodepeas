@@ -119,7 +119,7 @@ const REQUEST_TIMEOUT_MS = 45000; // 45s timeout — edge function cold start + 
 // calls (stock badges, price tags) where showing "unavailable"
 // quickly is better than waiting 3×45s for a retry cascade.
 // ═══════════════════════════════════════════════════════════
-var _FAST_TIMEOUT_MS = 25000; // 25s — enough for cold start + cached SIGE, but fails fast if SIGE is down
+var _FAST_TIMEOUT_MS = 35000; // 35s — enough for heavy bulk endpoints (saldos) with cold start + SIGE latency
 
 async function _requestFastFail<T>(path: string, options?: RequestInit): Promise<T> {
   var callerSignal = options ? (options.signal as AbortSignal | undefined) : undefined;

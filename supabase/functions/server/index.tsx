@@ -9041,7 +9041,7 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
     }
   }
 
-  var SIGE_CALL_TIMEOUT = 8000; // 8s per individual SIGE API call (reduced to fit 20s time budget)
+  var SIGE_CALL_TIMEOUT = 6000; // 6s per individual SIGE API call (fits 25s time budget)
   const url = config.baseUrl + path;
   // SIGE proxy call
   const buildFetchOpts = (token: string) => {
@@ -11198,11 +11198,11 @@ app.post(BASE + "/produtos/saldos", async (c) => {
       // Collect KV writes to batch at the end
       const kvWritesBatch: Array<{ key: string; value: string }> = [];
 
-      // Global time budget: bail out before frontend fast-fail timeout (25s)
-      var TIME_BUDGET_MS = 20000;
-      var PER_SKU_BUDGET_MS = 8000;
+      // Global time budget: bail out before frontend fast-fail timeout (35s)
+      var TIME_BUDGET_MS = 25000;
+      var PER_SKU_BUDGET_MS = 6000;
       function timeBudgetRemaining(): number { return TIME_BUDGET_MS - (Date.now() - t0); }
-      function isTimeBudgetExhausted(): boolean { return timeBudgetRemaining() < 2000; }
+      function isTimeBudgetExhausted(): boolean { return timeBudgetRemaining() < 3000; }
 
       async function fetchOneSku(sku: string): Promise<any> {
         var skuStart = Date.now();
