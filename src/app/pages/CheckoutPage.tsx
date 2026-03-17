@@ -1017,9 +1017,25 @@ export function CheckoutPage() {
           payer_cpf: effectiveCpf,
           issuer_id: cardIssuerId || undefined,
           items: items.map(function (it) {
-            return { sku: it.sku, quantity: it.quantidade, unit_price: it.precoUnitario || 0 };
+            return { sku: it.sku, title: it.titulo || it.sku, quantity: it.quantidade, unit_price: it.precoUnitario || 0 };
           }),
-        };
+          payer_phone: effectivePhone,
+          payer_address: selectedAddress ? {
+            cep: selectedAddress.cep,
+            rua: selectedAddress.street,
+            numero: selectedAddress.number || "S/N",
+            bairro: selectedAddress.neighborhood || "",
+            cidade: selectedAddress.city,
+            estado: selectedAddress.state,
+          } : undefined,
+          shipping_address: selectedAddress ? {
+            cep: selectedAddress.cep,
+            rua: selectedAddress.street,
+            numero: selectedAddress.number || "S/N",
+            cidade: selectedAddress.city,
+            estado: selectedAddress.state,
+          } : undefined,
+        } as any;
 
         var ccResult = await api.processCardPayment(ccPayload, accessToken);
 

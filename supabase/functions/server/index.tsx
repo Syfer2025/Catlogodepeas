@@ -9041,7 +9041,8 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
     }
   }
 
-  var SIGE_CALL_TIMEOUT = 6000; // 6s per individual SIGE API call (fits 25s time budget)
+  // POST/PUT requests (order creation) need more time; GET requests stay fast
+  var SIGE_CALL_TIMEOUT = (method === "POST" || method === "PUT") ? 12000 : 6000;
   const url = config.baseUrl + path;
   // SIGE proxy call
   const buildFetchOpts = (token: string) => {
@@ -12528,7 +12529,7 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
     const PRICE_CACHE_TTL_MISS = 5 * 60 * 1000;   // 5 min for not found
 
     for (let i = 0; i < skus.length; i++) {
-      // Cache — lookup by exact key (order-safe)
+      // Cache �� lookup by exact key (order-safe)
       var cacheKvKey = "sige_price_" + skus[i];
       let raw = kvBulkMap[cacheKvKey];
       if (raw) {
@@ -17218,10 +17219,16 @@ app.post(BASE + "/mercadopago/process-card-payment", async (c) => {
       payer_name: { type: "string", maxLen: 200 },
       payer_cpf: { type: "string", maxLen: 20 },
       issuer_id: { type: "string", maxLen: 50 },
+      payer_phone: { type: "string", maxLen: 30 },
+      payer_address: { type: "object" },
+      shipping_address: { type: "object" },
     });
     if (!ccValid.ok) return c.json({ error: ccValid.errors[0] || "Dados invalidos." }, 400);
 
     var { token, order_id, transaction_amount, installments, payment_method_id, payer_email, payer_name, payer_cpf, issuer_id } = body;
+    var payer_phone = body.payer_phone || "";
+    var payer_address = body.payer_address || null;
+    var shipping_address = body.shipping_address || null;
 
     // Ensure transaction_amount is a valid positive number
     transaction_amount = Math.round(parseFloat(transaction_amount) * 100) / 100;
@@ -17264,6 +17271,65 @@ app.post(BASE + "/mercadopago/process-card-payment", async (c) => {
         type: "CPF",
         number: payer_cpf.replace(/\D/g, ""),
       };
+    }
+
+    // Add payer phone for anti-fraud scoring
+    if (payer_phone) {
+      var phoneDig = payer_phone.replace(/\D/g, "");
+      paymentPayload.payer.phone = {
+        area_code: phoneDig.length >= 11 ? phoneDig.slice(0, 2) : "",
+        number: phoneDig.length >= 11 ? phoneDig.slice(2) : phoneDig,
+      };
+    }
+    // Add payer address for anti-fraud scoring
+    if (payer_address) {
+      paymentPayload.payer.address = {
+        zip_code: (payer_address.cep || "").replace(/\D/g, ""),
+        street_name: payer_address.rua || payer_address.street_name || "",
+        street_number: String(payer_address.numero || payer_address.street_number || ""),
+        neighborhood: payer_address.bairro || payer_address.neighborhood || "",
+        city: payer_address.cidade || payer_address.city || "",
+        federal_unit: payer_address.estado || payer_address.federal_unit || "",
+      };
+    }
+    // Add additional_info for anti-fraud scoring (reduces high_risk rejections)
+    var additionalInfo: any = {};
+    if (body.items && Array.isArray(body.items) && body.items.length > 0) {
+      additionalInfo.items = body.items.slice(0, 20).map(function(it: any) {
+        return {
+          id: it.sku || "",
+          title: (it.title || it.sku || "").slice(0, 256),
+          quantity: it.quantity || 1,
+          unit_price: Math.round(parseFloat(it.unit_price || 0) * 100) / 100,
+          category_id: "auto_parts",
+        };
+      });
+    }
+    if (payer_address) {
+      additionalInfo.payer = {
+        first_name: payer_name ? payer_name.split(" ")[0] : undefined,
+        last_name: payer_name ? payer_name.split(" ").slice(1).join(" ") : undefined,
+        phone: payer_phone ? { area_code: payer_phone.replace(/\D/g, "").slice(0, 2), number: payer_phone.replace(/\D/g, "").slice(2) } : undefined,
+        address: {
+          zip_code: (payer_address.cep || "").replace(/\D/g, ""),
+          street_name: payer_address.rua || payer_address.street_name || "",
+          street_number: String(payer_address.numero || payer_address.street_number || ""),
+        },
+      };
+    }
+    if (shipping_address) {
+      additionalInfo.shipments = {
+        receiver_address: {
+          zip_code: (shipping_address.cep || "").replace(/\D/g, ""),
+          street_name: shipping_address.rua || shipping_address.street_name || "",
+          street_number: String(shipping_address.numero || shipping_address.street_number || ""),
+          city_name: shipping_address.cidade || shipping_address.city || "",
+          state_name: shipping_address.estado || shipping_address.state || "",
+        },
+      };
+    }
+    if (Object.keys(additionalInfo).length > 0) {
+      paymentPayload.additional_info = additionalInfo;
     }
 
     // Add notification_url for webhook
