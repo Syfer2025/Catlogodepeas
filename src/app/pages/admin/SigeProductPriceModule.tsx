@@ -3,6 +3,7 @@ import { Loader2, ChevronDown, ChevronRight, XCircle, Search, Hash, Copy, Check,
 import * as api from "../../services/api";
 import { copyToClipboard } from "../../utils/clipboard";
 import { getValidAdminToken } from "./adminAuth";
+import { clearAllPriceCache } from "../../components/PriceBadge";
 
 interface Props {
   isConnected: boolean;
@@ -118,8 +119,19 @@ export function SigeProductPriceModule({ isConnected }: Props) {
     setClearingCache(true); setCacheMsg("");
     try {
       const token = await getAccessToken();
-      const res = await api.clearPriceCache(token);
-      setCacheMsg(`Cache limpo: ${res.cleared} entradas removidas.`);
+      let totalCleared = 0;
+      let iteration = 0;
+      while (true) {
+        iteration++;
+        setCacheMsg("Limpando... lote " + iteration + " (" + totalCleared + " removidos)");
+        const res = await api.clearPriceCache(token);
+        totalCleared += (res.cleared || 0);
+        if (!(res as any).hasMore) break;
+        if (iteration >= 100) break;
+      }
+      setCacheMsg("Cache limpo: " + totalCleared + " entradas removidas.");
+      // Clear frontend price cache so catalog re-fetches with current tier
+      clearAllPriceCache();
     } catch (e: any) {
       setCacheMsg(`Erro: ${e.message}`);
     } finally { setClearingCache(false); }

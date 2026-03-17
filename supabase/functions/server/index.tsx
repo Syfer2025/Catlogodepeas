@@ -399,7 +399,7 @@ function _rl429(c: any, msg: string, rlResult: { remaining: number; retryAfterMs
 
 // ═══════════════════════════════════════════════════════════════════════
 // Auth Brute-Force Protection — per-email lockout + auth rate limits
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════��═══════════════════════════════════════════════════
 var AUTH_RATE_LIMIT_LOGIN = 6;
 var AUTH_RATE_LIMIT_SIGNUP = 5;
 var AUTH_RATE_LIMIT_FORGOT = 3;
@@ -4323,6 +4323,191 @@ app.delete(BASE + "/produtos/physical/:sku", async (c) => {
   }
 });
 
+// ── Bulk physical data endpoints (admin only) ──
+
+// GET /produtos/meta/all-compact — lightweight list of all product metas (sku, category, brand)
+app.get(BASE + "/produtos/meta/all-compact", async (c) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
+    var allMetas = await getAllProductMetas();
+    var result: Array<{ sku: string; category: string; brand: string }> = [];
+    allMetas.forEach(function (meta: any, sku: string) {
+      result.push({ sku: sku, category: meta.category || "", brand: meta.brand || "" });
+    });
+    return c.json({ items: result });
+  } catch (e: any) {
+    console.error("GET all-compact metas error:", e);
+    return c.json({ error: "Erro ao listar metas." }, 500);
+  }
+});
+
+// GET /produtos/physical/bulk-list — list all saved physical overrides
+// NOTE: kv.getByPrefix returns values only (not {key, value} pairs).
+// We need the keys to extract SKU, so we query Supabase directly.
+app.get(BASE + "/produtos/physical/bulk-list", async (c) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
+
+    var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    var supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    var result: any[] = [];
+    var offset = 0;
+    var pageSize = 1000;
+    var hasMore = true;
+    while (hasMore) {
+      var resp = await fetch(
+        supabaseUrl + "/rest/v1/kv_store_b7b07654?select=key,value&key=like.prod_physical:%25&order=key.asc&offset=" + offset + "&limit=" + pageSize,
+        { headers: { apikey: supabaseKey, Authorization: "Bearer " + supabaseKey } }
+      );
+      if (!resp.ok) { console.error("bulk-list fetch error: HTTP " + resp.status); break; }
+      var rows = await resp.json();
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      for (var ri = 0; ri < rows.length; ri++) {
+        var row = rows[ri];
+        if (!row || !row.key) continue;
+        var sku = String(row.key).replace("prod_physical:", "");
+        var val: any = row.value;
+        if (typeof val === "string") { try { val = JSON.parse(val); } catch {} }
+        if (val && typeof val === "object") {
+          result.push({ sku: sku, weight: val.weight || 0, length: val.length || 0, width: val.width || 0, height: val.height || 0, updatedAt: val.updatedAt, updatedBy: val.updatedBy });
+        }
+      }
+      hasMore = rows.length === pageSize;
+      offset += pageSize;
+    }
+    return c.json({ items: result });
+  } catch (e: any) {
+    console.error("GET bulk-list physical error:", e);
+    return c.json({ error: "Erro ao listar dados fisicos." }, 500);
+  }
+});
+
+// POST /produtos/physical/bulk-save — save physical data for multiple SKUs
+app.post(BASE + "/produtos/physical/bulk-save", async (c) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
+    var body = await c.req.json();
+    var items = body.items;
+    if (!Array.isArray(items) || items.length === 0) return c.json({ error: "Nenhum item fornecido." }, 400);
+    if (items.length > 500) return c.json({ error: "Maximo 500 itens por vez." }, 400);
+
+    var errors: string[] = [];
+    // Build arrays for a single bulk upsert via kv.mset
+    var kvKeys: string[] = [];
+    var kvValues: any[] = [];
+    var validSkus: string[] = [];
+    for (var bi = 0; bi < items.length; bi++) {
+      var item = items[bi];
+      if (!item.sku) { errors.push("Item " + bi + ": SKU vazio"); continue; }
+      kvKeys.push("prod_physical:" + item.sku);
+      kvValues.push(JSON.stringify({
+        weight: parseFloat(item.weight) || 0,
+        length: parseFloat(item.length) || 0,
+        width: parseFloat(item.width) || 0,
+        height: parseFloat(item.height) || 0,
+        updatedAt: Date.now(),
+        updatedBy: adminCheck.email || "admin",
+      }));
+      validSkus.push(item.sku);
+    }
+
+    // Batch upsert in chunks of 200 (single DB round-trip each
+    // instead of 500 sequential individual writes)
+    var saved = 0;
+    var BATCH = 200;
+    for (var batchStart = 0; batchStart < kvKeys.length; batchStart += BATCH) {
+      var bk = kvKeys.slice(batchStart, batchStart + BATCH);
+      var bv = kvValues.slice(batchStart, batchStart + BATCH);
+      try {
+        await kv.mset(bk, bv);
+        saved += bk.length;
+      } catch (saveErr: any) {
+        for (var ei = batchStart; ei < batchStart + bk.length; ei++) {
+          errors.push(validSkus[ei] + ": " + saveErr.message);
+        }
+      }
+    }
+    // Clear in-memory cache for saved SKUs
+    for (var ci = 0; ci < validSkus.length; ci++) {
+      memClear("_prod_phys_" + validSkus[ci]);
+    }
+    return c.json({ ok: true, saved, errors });
+  } catch (e: any) {
+    console.error("POST bulk-save physical error:", e);
+    return c.json({ error: "Erro ao salvar dados fisicos em massa." }, 500);
+  }
+});
+
+// POST /produtos/physical/bulk-sync-sige — fetch weight from SIGE for multiple SKUs
+// Processes SKUs in parallel batches (5 concurrent) instead of sequentially
+// to stay well within the 45s client timeout.
+app.post(BASE + "/produtos/physical/bulk-sync-sige", async (c) => {
+  try {
+    var adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
+    var body = await c.req.json();
+    var skus = body.skus;
+    if (!Array.isArray(skus) || skus.length === 0) return c.json({ error: "Nenhum SKU fornecido." }, 400);
+    if (skus.length > 50) return c.json({ error: "Maximo 50 SKUs por vez." }, 400);
+
+    // Process a single SKU — returns its result object
+    async function _fetchOneSku(rawSku: string) {
+      var cleanSku = String(rawSku).substring(0, 100);
+      var sigeWeight = 0, sigeLength = 0, sigeWidth = 0, sigeHeight = 0;
+      var found = false;
+      try {
+        var sigeRes = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(cleanSku) + "&limit=1&offset=1");
+        var sigeProds = extractProdsGeneric(sigeRes.data);
+        if (sigeProds.length === 0 && cleanSku.includes("-")) {
+          var baseSku2 = cleanSku.substring(0, cleanSku.lastIndexOf("-"));
+          sigeRes = await sigeAuthFetch("GET", "/product?codProduto=" + encodeURIComponent(baseSku2) + "&limit=1&offset=1");
+          sigeProds = extractProdsGeneric(sigeRes.data);
+        }
+        if (sigeProds.length > 0) {
+          found = true;
+          var sp = sigeProds[0];
+          sigeWeight = extractNumericField(sp, SIGE_WEIGHT_FIELDS);
+          sigeLength = extractNumericField(sp, SIGE_DIM_LENGTH_FIELDS);
+          sigeWidth = extractNumericField(sp, SIGE_DIM_WIDTH_FIELDS);
+          sigeHeight = extractNumericField(sp, SIGE_DIM_HEIGHT_FIELDS);
+          if (sigeWeight === 0) {
+            var refId = sp.id || sp.codProduto || cleanSku;
+            try {
+              var refRes = await sigeAuthFetch("GET", "/product/" + encodeURIComponent(String(refId)) + "/reference?status=A");
+              if (refRes.ok && refRes.data) {
+                var refs = Array.isArray(refRes.data) ? refRes.data : [];
+                for (var rr = 0; rr < refs.length; rr++) {
+                  var bruto = parseFloat(String(refs[rr].pesoBruto || 0)) || 0;
+                  var liquido = parseFloat(String(refs[rr].pesoLiquido || 0)) || 0;
+                  if (bruto > 0 || liquido > 0) { sigeWeight = bruto || liquido; break; }
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+      return { sku: cleanSku, found, weight: sigeWeight, length: sigeLength, width: sigeWidth, height: sigeHeight };
+    }
+
+    // Process SKUs in parallel batches of 5 (avoids overwhelming SIGE
+    // while being ~5× faster than sequential — 50 SKUs in ~10 batches)
+    var PARALLEL_BATCH = 5;
+    var results: any[] = [];
+    for (var batchStart = 0; batchStart < skus.length; batchStart += PARALLEL_BATCH) {
+      var batchSkus = skus.slice(batchStart, batchStart + PARALLEL_BATCH);
+      var batchResults = await Promise.all(batchSkus.map(_fetchOneSku));
+      for (var br = 0; br < batchResults.length; br++) results.push(batchResults[br]);
+    }
+    return c.json({ results });
+  } catch (e: any) {
+    console.error("POST bulk-sync-sige physical error:", e);
+    return c.json({ error: "Erro ao sincronizar peso do SIGE." }, 500);
+  }
+});
+
 // GET debug product physical data from SIGE (admin only - for testing weight/dimensions)
 app.get(BASE + "/shipping/debug-product/:sku", async (c) => {
   try {
@@ -7508,8 +7693,8 @@ app.get(BASE + "/produtos/sige-match/:sku", async (c) => {
     var smDisponivel = 0;
     var smBalSuccess = false;
     try {
-      var smBalQtdFields = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal"];
-      var smBalResFields = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada"];
+      var smBalQtdFields = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","Saldo_pri","saldo_pri","saldoPri"];
+      var smBalResFields = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","Saldo_v3","saldo_v3","saldoV3"];
       function smTryField(item: any, fields: string[]): number {
         for (var fi = 0; fi < fields.length; fi++) {
           var fv = item[fields[fi]];
@@ -7907,7 +8092,7 @@ app.delete(BASE + "/logo", async (c) => {
 
 // ═══════════════════════════════════════
 // ─── FOOTER LOGO (Site Assets) ────────
-// ═══════════════════════════════════════
+// ══���════════════════════════════════════
 
 // GET /footer-logo — public (with signed URL for robustness)
 app.get(BASE + "/footer-logo", async (c) => {
@@ -8807,13 +8992,14 @@ async function getSigeToken(): Promise<any> {
   return parsed;
 }
 
-// Helper: get price_config with 60s in-memory cache
+// Helper: get price_config with 5s in-memory cache
+// Short TTL so tier changes propagate quickly across all edge function instances
 async function getPriceConfigCached(): Promise<any> {
   const cached = memGet("_price_config");
   if (cached) return cached;
   const raw = await kv.get("price_config");
   const parsed = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : { tier: "v2", showPrice: true };
-  memSet("_price_config", parsed, 60000);
+  memSet("_price_config", parsed, 5000);
   return parsed;
 }
 
@@ -10529,8 +10715,8 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
       if (cached) {
         const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
         const age = Date.now() - (parsed._cachedAt || 0);
-        // Shorter TTL for "not found" (2 min) vs found (5 min) to retry sooner
-        const ttl = parsed.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+        // TTLs aligned with bulk saldos route for consistent stock display
+        const ttl = parsed.found ? 15 * 60 * 1000 : 5 * 60 * 1000;
         if (age < ttl) {
           dbg(`[Saldo] Cache hit for SKU ${sku} (age ${Math.round(age/1000)}s, found=${parsed.found})`);
           return c.json({ ...parsed, cached: true, ...(debugMode ? { _debug: debugLog } : {}) });
@@ -10547,8 +10733,8 @@ app.get(BASE + "/produtos/saldo/:sku", async (c) => {
     if (!rawToken) return c.json({ sku, found: false, sige: false, error: "SIGE não conectado.", quantidade: 0, ...(debugMode ? { _debug: debugLog } : {}) });
 
     // Helper: extract numeric value from item by trying multiple field names
-    const QTD_FIELDS = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","qtdSaldoFisico","vlSaldo","vlrSaldo"];
-    const RES_FIELDS = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+    const QTD_FIELDS = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","qtdSaldoFisico","vlSaldo","vlrSaldo","Saldo_pri","saldo_pri","saldoPri","SALDO_PRI"];
+    const RES_FIELDS = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado","Saldo_v3","saldo_v3","saldoV3","SALDO_V3"];
     const DISP_FIELDS = ["disponivel","qtdDisponivel","saldoDisponivel","qtdDisp","vlDisponivel"];
     function tryFields(item: any, fields: string[]): number {
       for (const k of fields) {
@@ -10962,8 +11148,8 @@ app.post(BASE + "/produtos/saldos", async (c) => {
 
     if (needFetch.length > 0) {
       // Helper: parse balance response — expanded field detection
-      const bQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
-      const bRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+      const bQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo","Saldo_pri","saldo_pri","saldoPri"];
+      const bRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado","Saldo_v3","saldo_v3","saldoV3"];
       function bTf(item: any, fields: string[]): number {
         for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } }
         return 0;
@@ -11277,12 +11463,14 @@ app.get(BASE + "/produtos/stock-summary", async (c) => {
     }
 
     // 4) Count stats for ALL products
+    // TTLs must match the LONGEST writer (bulk saldos: 15min found, 5min miss)
+    // to avoid incorrectly marking entries as "pending" that bulk route considers valid
     let inStock = 0, outOfStock = 0, notFound = 0, pending = 0;
     for (const sku of allSkus) {
       const bal = balanceMap.get(sku);
       if (!bal) { pending++; continue; }
       const age = Date.now() - (bal._cachedAt || 0);
-      const ttl = bal.found ? 5 * 60 * 1000 : 2 * 60 * 1000;
+      const ttl = bal.found ? 15 * 60 * 1000 : 5 * 60 * 1000;
       if (age > ttl) { pending++; continue; }
       if (!bal.found) { notFound++; continue; }
       const avail = Number(bal.disponivel ?? bal.quantidade ?? 0);
@@ -11357,8 +11545,8 @@ app.post(BASE + "/produtos/stock-scan", async (c) => {
 
     const toProcess = pendingSkus.slice(0, batchSize);
 
-    const sQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
-    const sRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+    const sQF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo","Saldo_pri","saldo_pri","saldoPri"];
+    const sRF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado","Saldo_v3","saldo_v3","saldoV3"];
     function sTf(item: any, fields: string[]): number {
       for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } }
       return 0;
@@ -11691,8 +11879,8 @@ app.post(BASE + "/produtos/sige-sync", async (c) => {
     // 6) Fetch balances for matched
     let balFetched = 0;
     if (fetchBal && newMaps.length > 0) {
-      const qF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo"];
-      const rF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado"];
+      const qF = ["quantidade","qtdSaldo","saldo","saldoFisico","saldoAtual","qtdFisica","qtdEstoque","qtd","estoque","qtde","qtdAtual","qtdTotal","saldoTotal","vlSaldo","Saldo_pri","saldo_pri","saldoPri"];
+      const rF = ["reservado","qtdReservado","qtdReserva","saldoReservado","qtdReservada","vlReservado","Saldo_v3","saldo_v3","saldoV3"];
       function stf(item: any, fields: string[]): number {
         for (const k of fields) { if (item[k] !== undefined && item[k] !== null && item[k] !== "") { const v = Number(item[k]); if (!isNaN(v) && v !== 0) return v; } } return 0;
       }
@@ -11855,34 +12043,29 @@ app.delete(BASE + "/produtos/preco/:sku", async (c) => {
   }
 });
 
-// DELETE /produtos/precos-cache — clear ALL SIGE price caches (admin)
-// Uses loop to handle PostgREST 1000-row default limit
+// DELETE /produtos/precos-cache — clear SIGE price caches (admin)
+// Chunked: deletes up to 500 keys per call, returns hasMore so frontend can loop.
+// This avoids CPU-time-exceeded on Edge Functions with large caches.
 app.delete(BASE + "/produtos/precos-cache", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    // Delete all sige_price_* keys in batches of 1000 (PostgREST default limit)
-    var totalDeleted = 0;
-    while (true) {
-      var cacheRows = await supabaseAdmin
-        .from("kv_store_b7b07654")
-        .select("key")
-        .like("key", "sige_price_%")
-        .limit(1000);
-      var keysToDelete = ((cacheRows.data || []) as Array<{ key: string }>).map(function(r) { return r.key; });
-      if (keysToDelete.length === 0) break;
+    const CHUNK = 500;
+    const { data: rows } = await supabaseAdmin
+      .from("kv_store_b7b07654")
+      .select("key")
+      .like("key", "sige_price_%")
+      .limit(CHUNK);
+    const keys = ((rows || []) as Array<{ key: string }>).map(function(r) { return r.key; });
+    if (keys.length > 0) {
       await supabaseAdmin
         .from("kv_store_b7b07654")
         .delete()
-        .in("key", keysToDelete);
-      totalDeleted = totalDeleted + keysToDelete.length;
-      // If we got fewer than 1000, that was the last batch
-      if (keysToDelete.length < 1000) break;
+        .in("key", keys);
     }
-    // Also clear in-memory price config cache so tier changes take effect immediately
     memClear("_price_config");
-    // Price cache cleared
-    return c.json({ ok: true, cleared: totalDeleted });
+    const hasMore = keys.length >= CHUNK;
+    return c.json({ ok: true, cleared: keys.length, hasMore: hasMore });
   } catch (e: any) {
     console.error("[Price] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de precos." }, 500);
@@ -11912,13 +12095,14 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       }
     }
 
-    // 2. Check price cache (10 min for found, 2 min for not found)
+    // 2. Check price cache (30 min for found, 5 min for not found)
+    // TTLs aligned with bulk route to ensure consistent pricing across single/catalog views
     const cacheKey = "sige_price_" + sku;
     const cached = await kv.get(cacheKey);
     if (cached) {
       const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
       const age = Date.now() - (parsed._cachedAt || 0);
-      const ttl = parsed.found ? 10 * 60 * 1000 : 2 * 60 * 1000;
+      const ttl = parsed.found ? 30 * 60 * 1000 : 5 * 60 * 1000;
       if (age < ttl) {
         // Recompute price using CURRENT tier (cached price may have been computed with old tier)
         if (parsed.v1 !== undefined || parsed.v2 !== undefined || parsed.v3 !== undefined) {
@@ -12082,6 +12266,8 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
     let v1: number | null = null;
     let v2: number | null = null;
     let v3: number | null = null;
+    let v4: number | null = null;
+    let v5: number | null = null;
     let base: number | null = null;
     let priceListItems: any[] = [];
     let detectedListCodes: string[] = [];
@@ -12096,44 +12282,98 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
         itemSampleKeys = Object.keys(priceListItems[0]);
         // Item sample inspected
 
-        // Group by codLista and extract prices
-        const byList = new Map<string, { item: any; price: number | null }>();
-        for (const item of priceListItems) {
-          const code = String(item.codLista || item.codLista || "unknown");
-          const price = extractPriceValue(item);
-          if (!byList.has(code) || (price !== null && byList.get(code)!.price === null)) {
-            byList.set(code, { item, price });
+        // ── Direct precoV1/V2/V3/V4/V5 extraction (SIGE list-price-items API) ──
+        // The SIGE API returns items per codLista+codRef with fields: precoV1..precoV5.
+        // We must match the correct codRef for SKU "007006-900" → codRef="900".
+        var _dvFields = ["precoV1","Preco_v1","preco_v1","PRECO_V1"];
+        var _hasDirectFields = false;
+        for (var _chk = 0; _chk < priceListItems.length && !_hasDirectFields; _chk++) {
+          for (var _chkf = 0; _chkf < _dvFields.length; _chkf++) {
+            if (priceListItems[_chk][_dvFields[_chkf]] !== undefined) { _hasDirectFields = true; break; }
           }
-          if (!detectedListCodes.includes(code)) detectedListCodes.push(code);
+        }
+        var _directExtracted = false;
+        if (_hasDirectFields) {
+          // Determine codRef from SKU suffix (e.g. "007006-900" → "900")
+          var _skuRef = sku.indexOf("-") !== -1 ? sku.substring(sku.indexOf("-") + 1) : "";
+          // Helper: extract precoVN from an item
+          function _exV(item: any, n: number): number {
+            var flds = ["precoV" + n, "Preco_v" + n, "preco_v" + n, "PRECO_V" + n];
+            for (var _fi = 0; _fi < flds.length; _fi++) {
+              if (item[flds[_fi]] !== undefined && item[flds[_fi]] !== null) {
+                return parseFloat(String(item[flds[_fi]])) || 0;
+              }
+            }
+            return 0;
+          }
+          // Step 1: Try to find item matching codRef (exact reference price)
+          var _matchedItem: any = null;
+          if (_skuRef) {
+            for (var _ri = 0; _ri < priceListItems.length; _ri++) {
+              var _itemRef = String(priceListItems[_ri].codRef ?? "");
+              if (_itemRef === _skuRef) { _matchedItem = priceListItems[_ri]; break; }
+            }
+          }
+          // Step 2: Fallback to first item with precoV1 > 0
+          if (!_matchedItem) {
+            for (var _fi2 = 0; _fi2 < priceListItems.length; _fi2++) {
+              if (_exV(priceListItems[_fi2], 1) > 0) { _matchedItem = priceListItems[_fi2]; break; }
+            }
+          }
+          if (!_matchedItem && priceListItems.length > 0) _matchedItem = priceListItems[0];
+          if (_matchedItem) {
+            var _pv1 = _exV(_matchedItem, 1);
+            var _pv2 = _exV(_matchedItem, 2);
+            var _pv3 = _exV(_matchedItem, 3);
+            var _pv4 = _exV(_matchedItem, 4);
+            var _pv5 = _exV(_matchedItem, 5);
+            if (_pv1 > 0) v1 = _pv1;
+            if (_pv2 > 0) v2 = _pv2;
+            if (_pv3 > 0) v3 = _pv3;
+            if (_pv4 > 0) v4 = _pv4;
+            if (_pv5 > 0) v5 = _pv5;
+            _directExtracted = true;
+            priceListDebug.push({
+              method: "direct_precoV",
+              matchedCodRef: String(_matchedItem.codRef ?? ""),
+              skuRef: _skuRef,
+              precoV1: _pv1, precoV2: _pv2, precoV3: _pv3, precoV4: _pv4, precoV5: _pv5,
+            });
+          }
         }
 
-        // Debug info for each list
-        for (const [code, entry] of byList.entries()) {
-          priceListDebug.push({ codLista: code, price: entry.price, descLista: entry.item.descLista || null });
-        }
-        // Lists detected
+        // ── Fallback: Group by codLista (for APIs that return separate rows per price list) ──
+        if (!_directExtracted) {
+          const byList = new Map<string, { item: any; price: number | null }>();
+          for (const item of priceListItems) {
+            const code = String(item.codLista || item.codLista || "unknown");
+            const price = extractPriceValue(item);
+            if (!byList.has(code) || (price !== null && byList.get(code)!.price === null)) {
+              byList.set(code, { item, price });
+            }
+            if (!detectedListCodes.includes(code)) detectedListCodes.push(code);
+          }
 
-        // Try configured mapping first
-        if (listMapping.v1 && byList.has(listMapping.v1)) {
-          v1 = byList.get(listMapping.v1)!.price;
-          // v1 mapped
-        }
-        if (listMapping.v2 && byList.has(listMapping.v2)) {
-          v2 = byList.get(listMapping.v2)!.price;
-          // v2 mapped
-        }
-        if (listMapping.v3 && byList.has(listMapping.v3)) {
-          v3 = byList.get(listMapping.v3)!.price;
-          // v3 mapped
-        }
+          for (const [code, entry] of byList.entries()) {
+            priceListDebug.push({ codLista: code, price: entry.price, descLista: entry.item.descLista || null });
+          }
 
-        // Auto-detect: if no mapping configured or no prices found, assign first 3 lists to v1/v2/v3
-        if (v1 === null && v2 === null && v3 === null) {
-          const codes = Array.from(byList.keys()).sort();
-          if (codes.length >= 1) v1 = byList.get(codes[0])!.price;
-          if (codes.length >= 2) v2 = byList.get(codes[1])!.price;
-          if (codes.length >= 3) v3 = byList.get(codes[2])!.price;
-          // Auto-mapped price lists
+          if (listMapping.v1 && byList.has(listMapping.v1)) {
+            v1 = byList.get(listMapping.v1)!.price;
+          }
+          if (listMapping.v2 && byList.has(listMapping.v2)) {
+            v2 = byList.get(listMapping.v2)!.price;
+          }
+          if (listMapping.v3 && byList.has(listMapping.v3)) {
+            v3 = byList.get(listMapping.v3)!.price;
+          }
+
+          if (v1 === null && v2 === null && v3 === null) {
+            const codes = Array.from(byList.keys()).sort();
+            if (codes.length >= 1) v1 = byList.get(codes[0])!.price;
+            if (codes.length >= 2) v2 = byList.get(codes[1])!.price;
+            if (codes.length >= 3) v3 = byList.get(codes[2])!.price;
+          }
         }
 
         // Base = first available
@@ -12164,13 +12404,13 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
       }
     }
 
-    const tMap: Record<string, number | null> = { v1, v2, v3 };
+    const tMap: Record<string, number | null> = { v1, v2, v3, v4, v5 };
     const selectedPrice = tMap[selectedTier] ?? base ?? v2 ?? v1 ?? v3;
     const found = selectedPrice !== null;
 
     const result: any = {
       sku, found, source: "sige", sigeId: codProduto, descricao,
-      v1, v2, v3, base,
+      v1, v2, v3, v4, v5, base,
       tier: selectedTier, price: selectedPrice, showPrice, _cachedAt: Date.now(),
       _priceListItems: priceListItems.length,
       _detectedListCodes: detectedListCodes,
@@ -12459,29 +12699,76 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
             let pv1: number | null = null;
             let pv2: number | null = null;
             let pv3: number | null = null;
+            let pv4: number | null = null;
+            let pv5: number | null = null;
             let pbase: number | null = null;
 
             if (lpRes.ok && lpRes.data) {
               const priceListItems = exArrBP(lpRes.data);
               if (priceListItems.length > 0) {
-                const byList = new Map<string, { item: any; price: number | null }>();
-                for (const plItem of priceListItems) {
-                  const code = String(plItem.codLista || "unknown");
-                  const priceVal = extractPriceBP(plItem);
-                  if (!byList.has(code) || (priceVal !== null && byList.get(code)!.price === null)) {
-                    byList.set(code, { item: plItem, price: priceVal });
+                // ── Direct precoV1..V5 extraction with codRef matching ──
+                var _bpDvF = ["precoV1","Preco_v1","preco_v1","PRECO_V1"];
+                var _bpHasDirect = false;
+                for (var _bchk = 0; _bchk < priceListItems.length && !_bpHasDirect; _bchk++) {
+                  for (var _bchkf = 0; _bchkf < _bpDvF.length; _bchkf++) {
+                    if (priceListItems[_bchk][_bpDvF[_bchkf]] !== undefined) { _bpHasDirect = true; break; }
+                  }
+                }
+                var _bpDirect = false;
+                if (_bpHasDirect) {
+                  var _bpSkuRef = sku.indexOf("-") !== -1 ? sku.substring(sku.indexOf("-") + 1) : "";
+                  function _bpExV(item: any, n: number): number {
+                    var flds = ["precoV" + n, "Preco_v" + n, "preco_v" + n, "PRECO_V" + n];
+                    for (var _bfi = 0; _bfi < flds.length; _bfi++) {
+                      if (item[flds[_bfi]] !== undefined && item[flds[_bfi]] !== null) return parseFloat(String(item[flds[_bfi]])) || 0;
+                    }
+                    return 0;
+                  }
+                  var _bpMatch: any = null;
+                  if (_bpSkuRef) {
+                    for (var _bri = 0; _bri < priceListItems.length; _bri++) {
+                      if (String(priceListItems[_bri].codRef ?? "") === _bpSkuRef) { _bpMatch = priceListItems[_bri]; break; }
+                    }
+                  }
+                  if (!_bpMatch) {
+                    for (var _bfi2 = 0; _bfi2 < priceListItems.length; _bfi2++) {
+                      if (_bpExV(priceListItems[_bfi2], 1) > 0) { _bpMatch = priceListItems[_bfi2]; break; }
+                    }
+                  }
+                  if (!_bpMatch && priceListItems.length > 0) _bpMatch = priceListItems[0];
+                  if (_bpMatch) {
+                    var _bpv1 = _bpExV(_bpMatch, 1), _bpv2 = _bpExV(_bpMatch, 2), _bpv3 = _bpExV(_bpMatch, 3);
+                    var _bpv4 = _bpExV(_bpMatch, 4), _bpv5 = _bpExV(_bpMatch, 5);
+                    if (_bpv1 > 0) pv1 = _bpv1;
+                    if (_bpv2 > 0) pv2 = _bpv2;
+                    if (_bpv3 > 0) pv3 = _bpv3;
+                    if (_bpv4 > 0) pv4 = _bpv4;
+                    if (_bpv5 > 0) pv5 = _bpv5;
+                    _bpDirect = true;
                   }
                 }
 
-                if (listMapping.v1 && byList.has(listMapping.v1)) pv1 = byList.get(listMapping.v1)!.price;
-                if (listMapping.v2 && byList.has(listMapping.v2)) pv2 = byList.get(listMapping.v2)!.price;
-                if (listMapping.v3 && byList.has(listMapping.v3)) pv3 = byList.get(listMapping.v3)!.price;
+                // ── Fallback: Group by codLista ──
+                if (!_bpDirect) {
+                  const byList = new Map<string, { item: any; price: number | null }>();
+                  for (const plItem of priceListItems) {
+                    const code = String(plItem.codLista || "unknown");
+                    const priceVal = extractPriceBP(plItem);
+                    if (!byList.has(code) || (priceVal !== null && byList.get(code)!.price === null)) {
+                      byList.set(code, { item: plItem, price: priceVal });
+                    }
+                  }
 
-                if (pv1 === null && pv2 === null && pv3 === null) {
-                  const codes = Array.from(byList.keys()).sort();
-                  if (codes.length >= 1) pv1 = byList.get(codes[0])!.price;
-                  if (codes.length >= 2) pv2 = byList.get(codes[1])!.price;
-                  if (codes.length >= 3) pv3 = byList.get(codes[2])!.price;
+                  if (listMapping.v1 && byList.has(listMapping.v1)) pv1 = byList.get(listMapping.v1)!.price;
+                  if (listMapping.v2 && byList.has(listMapping.v2)) pv2 = byList.get(listMapping.v2)!.price;
+                  if (listMapping.v3 && byList.has(listMapping.v3)) pv3 = byList.get(listMapping.v3)!.price;
+
+                  if (pv1 === null && pv2 === null && pv3 === null) {
+                    const codes = Array.from(byList.keys()).sort();
+                    if (codes.length >= 1) pv1 = byList.get(codes[0])!.price;
+                    if (codes.length >= 2) pv2 = byList.get(codes[1])!.price;
+                    if (codes.length >= 3) pv3 = byList.get(codes[2])!.price;
+                  }
                 }
 
                 pbase = pv1 !== null ? pv1 : (pv2 !== null ? pv2 : pv3);
@@ -12509,13 +12796,13 @@ app.post(BASE + "/produtos/precos-bulk", async (c) => {
               }
             }
 
-            const tMapBP: Record<string, number | null> = { v1: pv1, v2: pv2, v3: pv3 };
+            const tMapBP: Record<string, number | null> = { v1: pv1, v2: pv2, v3: pv3, v4: pv4, v5: pv5 };
             const sp = tMapBP[selectedTier] !== undefined && tMapBP[selectedTier] !== null ? tMapBP[selectedTier] : (pbase !== null ? pbase : (pv2 !== null ? pv2 : (pv1 !== null ? pv1 : pv3)));
             const found = sp !== null;
 
             const result: any = {
               sku: sku, found: found, source: "sige", sigeId: codProduto, descricao: descricao,
-              v1: pv1, v2: pv2, v3: pv3, base: pbase,
+              v1: pv1, v2: pv2, v3: pv3, v4: pv4, v5: pv5, base: pbase,
               tier: selectedTier, price: sp, showPrice: showPrice, _cachedAt: Date.now(),
             };
 
@@ -12621,32 +12908,28 @@ app.get(BASE + "/produtos/custom-prices", async (c) => {
 });
 
 // DELETE /price-cache — clear all price caches (admin)
-// Delegates to the same batched logic as /produtos/precos-cache
+// Chunked: same approach as /produtos/precos-cache
 app.delete(BASE + "/price-cache", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
 
-    // Delete all sige_price_* keys in batches of 1000 (PostgREST default limit)
-    var totalDeleted = 0;
-    while (true) {
-      var batch = await supabaseAdmin
-        .from("kv_store_b7b07654")
-        .select("key")
-        .like("key", "sige_price_%")
-        .limit(1000);
-      var batchKeys = ((batch.data || []) as Array<{ key: string }>).map(function(r) { return r.key; });
-      if (batchKeys.length === 0) break;
+    const CHUNK = 500;
+    const { data: rows } = await supabaseAdmin
+      .from("kv_store_b7b07654")
+      .select("key")
+      .like("key", "sige_price_%")
+      .limit(CHUNK);
+    const keys = ((rows || []) as Array<{ key: string }>).map(function(r) { return r.key; });
+    if (keys.length > 0) {
       await supabaseAdmin
         .from("kv_store_b7b07654")
         .delete()
-        .in("key", batchKeys);
-      totalDeleted = totalDeleted + batchKeys.length;
-      if (batchKeys.length < 1000) break;
+        .in("key", keys);
     }
     memClear("_price_config");
-    // Price cache cleared via /price-cache
-    return c.json({ cleared: totalDeleted, message: totalDeleted + " caches de preço removidos." });
+    const hasMore = keys.length >= CHUNK;
+    return c.json({ cleared: keys.length, hasMore: hasMore, message: keys.length + " caches de preco removidos." + (hasMore ? " Restam mais entradas." : " Completo!") });
   } catch (e: any) {
     console.error("[Price] Cache clear exception:", e);
     return c.json({ error: "Erro ao limpar cache de precos." }, 500);
@@ -14337,6 +14620,15 @@ app.post(BASE + "/sige/create-sale", async (c) => {
             const lpRes = await sigeAuthFetch("GET", `/list-price-items?codProduto=${encodeURIComponent(searchSku)}&limit=5&offset=1`);
             if (lpRes.ok && lpRes.data) {
               const lpItems = extractProdsShared(lpRes.data);
+              // Check for direct Preco_v1/v2/v3 columns first (tblistaprecoitem structure)
+              for (const lpItem of lpItems) {
+                var _rpV = lpItem?.Preco_v1 || lpItem?.preco_v1 || lpItem?.precoV1 ||
+                           lpItem?.Preco_v2 || lpItem?.preco_v2 || lpItem?.precoV2 ||
+                           lpItem?.Preco_v3 || lpItem?.preco_v3 || lpItem?.precoV3;
+                if (_rpV && Number(_rpV) > 0) {
+                  return Number(_rpV);
+                }
+              }
               for (const lpItem of lpItems) {
                 const v = lpItem?.vlrTabela || lpItem?.valorTabela || lpItem?.vlrVenda || lpItem?.preco || lpItem?.valor;
                 if (v && Number(v) > 0) {
@@ -16388,6 +16680,16 @@ app.get(BASE + "/sige/diagnose-order", async (c) => {
                 found: items.length,
                 sample: items.slice(0, 3),
               });
+              // Check for direct Preco_v1/v2/v3 columns (tblistaprecoitem structure)
+              for (const lpItem of items) {
+                var _dpv = lpItem?.Preco_v1 || lpItem?.preco_v1 || lpItem?.precoV1 ||
+                           lpItem?.Preco_v2 || lpItem?.preco_v2 || lpItem?.precoV2;
+                if (_dpv && Number(_dpv) > 0 && resolvedPrice <= 0) {
+                  resolvedPrice = Number(_dpv);
+                  priceSteps.push({ source: "direct_Preco_vN_column", value: resolvedPrice, fields: Object.keys(lpItem).filter(k => /preco_v/i.test(k)) });
+                  break;
+                }
+              }
               for (const lpItem of items) {
                 const v = lpItem?.vlrTabela || lpItem?.valorTabela || lpItem?.vlrVenda || lpItem?.preco || lpItem?.valor;
                 if (v && Number(v) > 0 && resolvedPrice <= 0) {
@@ -17294,16 +17596,122 @@ app.post(BASE + "/admin/audit-logs/clear", async (c) => {
 // ─── SUPER PROMO ─────────────────────────────────────
 // ═══════════════════════════════════════════════════════
 
+// GET /promo/debug — debug endpoint to diagnose why promo isn't showing
+app.get(BASE + "/promo/debug", async (c) => {
+  try {
+    var kvRaw: any = await kv.get("super_promo");
+    var directResult = await supabaseAdmin
+      .from("kv_store_b7b07654")
+      .select("key, value")
+      .eq("key", "super_promo")
+      .maybeSingle();
+    var directRaw = directResult.data ? directResult.data.value : null;
+    var kvParsed: any = null;
+    var kvType = typeof kvRaw;
+    if (kvRaw) {
+      var kvU = kvRaw;
+      if (typeof kvU === "object" && kvU !== null && !Array.isArray(kvU) && kvU.value !== undefined) kvU = kvU.value;
+      kvParsed = typeof kvU === "string" ? JSON.parse(kvU) : kvU;
+      if (typeof kvParsed === "string") { try { kvParsed = JSON.parse(kvParsed); } catch (_e) {} }
+    }
+    var directParsed: any = null;
+    var directType = typeof directRaw;
+    if (directRaw) {
+      var dU = directRaw;
+      if (typeof dU === "object" && dU !== null && !Array.isArray(dU) && dU.value !== undefined) dU = dU.value;
+      directParsed = typeof dU === "string" ? JSON.parse(dU) : dU;
+      if (typeof directParsed === "string") { try { directParsed = JSON.parse(directParsed); } catch (_e) {} }
+    }
+    var now = Date.now();
+    var obj = kvParsed || directParsed;
+    var checks = {
+      hasData: !!obj, enabled: obj ? obj.enabled : null, enabledType: obj ? typeof obj.enabled : null,
+      startDate: obj ? obj.startDate : null, endDate: obj ? obj.endDate : null, now: now,
+      startOk: obj ? now >= obj.startDate : null, endOk: obj ? now <= obj.endDate : null,
+      productsCount: obj && obj.products ? obj.products.length : 0, wouldShow: false,
+    };
+    if (checks.hasData && checks.enabled === true && checks.startOk && checks.endOk && checks.productsCount > 0) checks.wouldShow = true;
+    var hpInfo = {
+      cached: !!_homepageInitCache, age: _homepageInitCache ? (now - _homepageInitCache.ts) : null,
+      ttl: HOMEPAGE_INIT_CACHE_TTL, promoInCache: _homepageInitCache && _homepageInitCache.json ? !!_homepageInitCache.json.promo : null,
+    };
+    return c.json({
+      kvType, directType,
+      kvSample: typeof kvRaw === "string" ? kvRaw.substring(0, 300) : (kvRaw && typeof kvRaw === "object" ? JSON.stringify(kvRaw).substring(0, 300) : String(kvRaw)),
+      directSample: typeof directRaw === "string" ? directRaw.substring(0, 300) : (directRaw && typeof directRaw === "object" ? JSON.stringify(directRaw).substring(0, 300) : String(directRaw)),
+      parsedKeys: obj ? Object.keys(obj).slice(0, 15) : null,
+      checks, hpInfo,
+    });
+  } catch (e: any) { return c.json({ error: e.message }); }
+});
+
+// GET /promo/active-test — simulates exactly what homepage-init does, plus clears cache
+app.get(BASE + "/promo/active-test", async (c) => {
+  try {
+    var batchResult = await supabaseAdmin
+      .from("kv_store_b7b07654")
+      .select("key, value")
+      .in("key", ["super_promo"]);
+    var batchRows = (batchResult.data || []) as Array<{ key: string; value: any }>;
+    var batchRaw = batchRows.length > 0 ? batchRows[0].value : null;
+    var bU = batchRaw;
+    if (typeof bU === "object" && bU !== null && !Array.isArray(bU) && bU.value !== undefined) bU = bU.value;
+    var promoResult: any = null;
+    var parseError: string | null = null;
+    if (bU) {
+      try {
+        var promo = typeof bU === "string" ? JSON.parse(bU) : bU;
+        if (typeof promo === "string") { try { promo = JSON.parse(promo); } catch (_e2) {} }
+        if (promo && promo.enabled) {
+          var now = Date.now();
+          if (now >= promo.startDate && now <= promo.endDate && promo.products && promo.products.length > 0) {
+            promoResult = { title: promo.title, enabled: promo.enabled, productsCount: promo.products.length };
+          } else {
+            parseError = "date/products fail: now=" + now + " start=" + promo.startDate + " end=" + promo.endDate + " prod=" + (promo.products ? promo.products.length : 0);
+          }
+        } else {
+          parseError = "not enabled. type=" + typeof promo + " enabled=" + (promo ? promo.enabled : "null") + " keys=" + (promo && typeof promo === "object" ? Object.keys(promo).slice(0, 5).join(",") : "n/a");
+        }
+      } catch (pe: any) { parseError = "parse: " + pe.message; }
+    } else {
+      parseError = "bU falsy. rawType=" + typeof batchRaw + " raw=" + String(batchRaw).substring(0, 100);
+    }
+    _homepageInitCache = null;
+    return c.json({ batchRawType: typeof batchRaw, batchSample: batchRaw ? (typeof batchRaw === "string" ? batchRaw.substring(0, 200) : JSON.stringify(batchRaw).substring(0, 200)) : "null", promoResult, parseError, cacheCleared: true });
+  } catch (e: any) { return c.json({ error: e.message }); }
+});
+
 // GET /promo/active — public, returns current active promo (if enabled + within date range)
 app.get(BASE + "/promo/active", async (c) => {
   try {
-    const raw = await kv.get("super_promo");
-    if (!raw) return c.json({ promo: null });
-    const promo = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (!promo || !promo.enabled) return c.json({ promo: null });
+    var raw: any = await kv.get("super_promo");
+    if (!raw) {
+      console.log("[promo/active] No super_promo in KV (raw is falsy)");
+      return c.json({ promo: null });
+    }
+    // Unwrap {value: ...} wrapper from jsonb column
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw) && raw.value !== undefined) {
+      raw = raw.value;
+    }
+    var promo = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // Double-unwrap: if still a string after first parse (double-encoded JSON)
+    if (typeof promo === "string") {
+      try { promo = JSON.parse(promo); } catch (_e2) { /* not valid JSON */ }
+    }
+    if (!promo || !promo.enabled) {
+      console.log("[promo/active] Promo found but not enabled. enabled=" + (promo ? promo.enabled : "null"));
+      return c.json({ promo: null });
+    }
     const now = Date.now();
-    if (now < promo.startDate || now > promo.endDate) return c.json({ promo: null });
-    if (!promo.products || promo.products.length === 0) return c.json({ promo: null });
+    if (now < promo.startDate || now > promo.endDate) {
+      console.log("[promo/active] Promo enabled but outside date range. now=" + now + " start=" + promo.startDate + " end=" + promo.endDate);
+      return c.json({ promo: null });
+    }
+    if (!promo.products || promo.products.length === 0) {
+      console.log("[promo/active] Promo enabled+in-range but no products");
+      return c.json({ promo: null });
+    }
+    console.log("[promo/active] Returning active promo: title=" + promo.title + " products=" + promo.products.length);
     return c.json({ promo });
   } catch (e: any) {
     console.error("[SuperPromo] GET active error:", e);
@@ -17316,9 +17724,17 @@ app.get(BASE + "/admin/promo", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
-    const raw = await kv.get("super_promo");
+    var raw: any = await kv.get("super_promo");
     if (!raw) return c.json({ promo: null });
-    const promo = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // Unwrap {value: ...} wrapper from jsonb column
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw) && raw.value !== undefined) {
+      raw = raw.value;
+    }
+    var promo = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // Double-unwrap: if still a string after first parse
+    if (typeof promo === "string") {
+      try { promo = JSON.parse(promo); } catch (_e2) { /* not valid JSON */ }
+    }
     return c.json({ promo });
   } catch (e: any) {
     console.error("[SuperPromo] GET admin error:", e);
@@ -17379,6 +17795,7 @@ app.delete(BASE + "/admin/promo", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Nao autorizado." }, 401);
     await kv.del("super_promo");
+    invalidateHomepageCache();
     // SuperPromo: deleted
     return c.json({ deleted: true });
   } catch (e: any) {
@@ -17857,7 +18274,7 @@ app.delete(BASE + "/admin/footer-badges/:key", async (c) => {
 // ═══════════════════════════════════════════════════════
 
 var _homepageInitCache: { json: any; ts: number } | null = null;
-var HOMEPAGE_INIT_CACHE_TTL = 60 * 1000; // 60 seconds
+var HOMEPAGE_INIT_CACHE_TTL = 10 * 1000; // 10 seconds — short TTL so admin changes propagate quickly across edge function instances
 
 function invalidateHomepageCache() {
   _homepageInitCache = null;
@@ -17903,6 +18320,7 @@ app.get(BASE + "/homepage-init", async (c) => {
     var settled = await Promise.allSettled([kvPromise, bannersPromise, hpcatPromise, midB1Promise, midB2Promise, midB3Promise, midB4Promise, fbadgePromise, brandsPromise, metasPromise]);
 
     // Build a key->value map from the KV results
+    // IMPORTANT: unwrap {value: "..."} wrapper that Supabase jsonb column may return
     var kvMap: Record<string, any> = {};
     if (settled[0].status === "fulfilled") {
       var kvData = settled[0].value;
@@ -17910,7 +18328,12 @@ app.get(BASE + "/homepage-init", async (c) => {
       for (var ki = 0; ki < kvRows.length; ki++) {
         var row = kvRows[ki];
         if (row && row.key) {
-          kvMap[row.key] = row.value;
+          var rawVal = row.value;
+          // Unwrap {value: ...} wrapper from jsonb column
+          if (typeof rawVal === "object" && rawVal !== null && !Array.isArray(rawVal) && rawVal.value !== undefined) {
+            rawVal = rawVal.value;
+          }
+          kvMap[row.key] = rawVal;
         }
       }
     }
@@ -18032,12 +18455,23 @@ app.get(BASE + "/homepage-init", async (c) => {
     var promoResult = null;
     if (superPromoRaw) {
       var promo = typeof superPromoRaw === "string" ? JSON.parse(superPromoRaw) : superPromoRaw;
+      // Double-unwrap: if promo is still a string after first parse (double-encoded JSON)
+      if (typeof promo === "string") {
+        try { promo = JSON.parse(promo); } catch (_e2) { /* not valid JSON, ignore */ }
+      }
       if (promo && promo.enabled) {
         var now = Date.now();
         if (now >= promo.startDate && now <= promo.endDate && promo.products && promo.products.length > 0) {
           promoResult = promo;
+          console.log("[homepage-init] SuperPromo INCLUDED: title=" + promo.title + " products=" + promo.products.length);
+        } else {
+          console.log("[homepage-init] SuperPromo enabled but date/products check failed: now=" + now + " start=" + promo.startDate + " end=" + promo.endDate + " products=" + (promo.products ? promo.products.length : 0));
         }
+      } else {
+        console.log("[homepage-init] SuperPromo raw found but not enabled. type=" + typeof promo + " enabled=" + (promo ? promo.enabled : "null") + " keys=" + (promo && typeof promo === "object" ? Object.keys(promo).slice(0, 8).join(",") : "n/a"));
       }
+    } else {
+      console.log("[homepage-init] SuperPromo: superPromoRaw is FALSY. kvMap keys=" + Object.keys(kvMap).join(","));
     }
 
     // ── Banners (active, sorted, with signed URLs) ──
@@ -18211,6 +18645,7 @@ app.get(BASE + "/homepage-init", async (c) => {
     // Cache the full response for subsequent requests
     _homepageInitCache = { json: _responseObj, ts: Date.now() };
 
+    console.log("[homepage-init] Response built. promo=" + (promoResult ? "YES (title=" + promoResult.title + " products=" + (promoResult.products ? promoResult.products.length : 0) + ")" : "NULL") + " banners=" + bannersList.length + " cats=" + (hpcatCards ? hpcatCards.length : 0));
     return c.json(_responseObj);
   } catch (e: any) {
     console.error("[homepage-init] Error:", e);
@@ -18239,7 +18674,20 @@ app.get(BASE + "/produto-detail-init/:sku", async (c) => {
     var _now = Date.now();
     var _cached = _productDetailCache.get(sku);
     if (_cached && (_now - _cached.ts) < PRODUCT_DETAIL_CACHE_TTL) {
-      return c.json({ ..._cached.json, _fromCache: true });
+      // Re-compute price tier from current config so admin tier changes take effect immediately
+      var _cachedJson = { ..._cached.json, _fromCache: true };
+      try {
+        var _cfg = await getPriceConfigCached();
+        var _tier = _cfg.tier || "v2";
+        if (_cachedJson.price && _cachedJson.price.source !== "custom" && (_cachedJson.price.v1 !== undefined || _cachedJson.price.v2 !== undefined || _cachedJson.price.v3 !== undefined)) {
+          var _tiers: Record<string, number | null> = { v1: _cachedJson.price.v1, v2: _cachedJson.price.v2, v3: _cachedJson.price.v3 };
+          var _recomp = _tiers[_tier] !== undefined && _tiers[_tier] !== null
+            ? _tiers[_tier]
+            : (_cachedJson.price.v2 ?? _cachedJson.price.v1 ?? _cachedJson.price.v3 ?? _cachedJson.price.price);
+          _cachedJson.price = { ..._cachedJson.price, price: _recomp, tier: _tier, showPrice: _cfg.showPrice !== false };
+        }
+      } catch (_e) { /* use cached price as-is */ }
+      return c.json(_cachedJson);
     }
 
     var supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -23621,7 +24069,42 @@ app.post(BASE + "/admin/sisfrete-wt/send-order", async function (c) {
     if (JSON.stringify(body).length > 500000) return c.json({ error: "Payload excede o tamanho maximo." }, 400);
     var pedidos = body.pedidos;
     if (!Array.isArray(pedidos) || pedidos.length === 0) return c.json({ error: "Nenhum pedido informado." }, 400);
-    // SisFrete-WT: sending pedidos
+    // ── Enrich pedido.produtos with real weight/dimensions from KV/SIGE ──
+    var _shpCfg: any = (await kv.get("shipping_config")) || { defaultWeight: 1 };
+    var _defW = (_shpCfg as any).defaultWeight || 1;
+    for (var _pi = 0; _pi < pedidos.length; _pi++) {
+      var _ped = pedidos[_pi];
+      if (!Array.isArray(_ped.produtos) || _ped.produtos.length === 0) continue;
+      var _physFetches: Promise<any>[] = [];
+      for (var _pri = 0; _pri < _ped.produtos.length; _pri++) {
+        _physFetches.push(fetchProductPhysicalData(_ped.produtos[_pri].codigo || "", _defW));
+      }
+      var _physResults = await Promise.allSettled(_physFetches);
+      for (var _pri2 = 0; _pri2 < _ped.produtos.length; _pri2++) {
+        var _phys = _physResults[_pri2].status === "fulfilled" ? (_physResults[_pri2] as any).value : null;
+        if (_phys) {
+          // Always apply weight (use real data or defaultWeight fallback)
+          _ped.produtos[_pri2].peso = _phys.weight || _ped.produtos[_pri2].peso || _defW;
+          // Apply dimensions when real data exists (source !== "default")
+          if (_phys._source !== "default") {
+            if (_phys.length > 0) _ped.produtos[_pri2].comprimento = _phys.length;
+            if (_phys.width > 0) _ped.produtos[_pri2].largura = _phys.width;
+            if (_phys.height > 0) _ped.produtos[_pri2].altura = _phys.height;
+          }
+        }
+        // Ensure minimum values — SisFrete rejects zero peso/dims
+        _ped.produtos[_pri2].peso = _ped.produtos[_pri2].peso || _defW;
+        var _cl = _ped.produtos[_pri2].comprimento || 20;
+        var _cw = _ped.produtos[_pri2].largura || 15;
+        var _ch = _ped.produtos[_pri2].altura || 10;
+        _ped.produtos[_pri2].comprimento = _cl;
+        _ped.produtos[_pri2].largura = _cw;
+        _ped.produtos[_pri2].altura = _ch;
+        _ped.produtos[_pri2].cubicoIndividual = parseFloat(((_cl * _cw * _ch) / 1000000).toFixed(6));
+        _ped.produtos[_pri2].cubicoComFator = parseFloat(((_cl * _cw * _ch) / 1000000 * 300).toFixed(4));
+      }
+    }
+    // SisFrete-WT: sending pedidos (enriched with real physical data)
     var sisRes = await fetch(SISFRETE_WT_BASE + "/pedidos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Token-API": cfg.apiToken },
@@ -25143,16 +25626,28 @@ app.get(BASE + "/admin/reels", async (c) => {
     if (ids2.length === 0) return c.json({ reels: [] });
     var keys2 = ids2.map(function (id) { return "reel:" + id; });
     var entries2 = await kv.mget(keys2);
-    var reels2: any[] = [];
+    // Build signed URLs in parallel to avoid sequential latency (was ~48s with 17 reels)
+    var signTasks: Promise<any>[] = [];
     for (var j = 0; j < entries2.length; j++) {
       var rr = entries2[j];
       if (!rr) continue;
-      var vUrl = rr.videoUrl || "";
-      var tUrl = rr.thumbnailUrl || "";
-      if (rr.videoFilename) { try { var vs = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rr.videoFilename, 3600); if (vs.data?.signedUrl) vUrl = vs.data.signedUrl; } catch (_e) {} }
-      if (rr.thumbnailFilename) { try { var ts = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rr.thumbnailFilename, 3600); if (ts.data?.signedUrl) tUrl = ts.data.signedUrl; } catch (_e) {} }
-      reels2.push({ ...rr, videoUrl: vUrl, thumbnailUrl: tUrl });
+      signTasks.push((async function (rd: any) {
+        var vUrl = rd.videoUrl || "";
+        var tUrl = rd.thumbnailUrl || "";
+        var [vS, tS] = await Promise.all([
+          rd.videoFilename
+            ? supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rd.videoFilename, 3600).catch(function () { return { data: null }; })
+            : Promise.resolve({ data: null }),
+          rd.thumbnailFilename
+            ? supabaseAdmin.storage.from(REELS_BUCKET).createSignedUrl(rd.thumbnailFilename, 3600).catch(function () { return { data: null }; })
+            : Promise.resolve({ data: null }),
+        ]);
+        if (vS?.data?.signedUrl) vUrl = vS.data.signedUrl;
+        if (tS?.data?.signedUrl) tUrl = tS.data.signedUrl;
+        return { ...rd, videoUrl: vUrl, thumbnailUrl: tUrl };
+      })(rr));
     }
+    var reels2 = await Promise.all(signTasks);
     reels2.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
     return c.json({ reels: reels2 });
   } catch (e: any) {
@@ -25735,10 +26230,12 @@ async function _kvGetWithRetry(key: string, retries = 3, delayMs = 2000): Promis
       return await kv.get(key);
     } catch (err: any) {
       var msg = String(err?.message || err || "");
-      var isTransient = msg.indexOf("reset by peer") >= 0 || msg.indexOf("os error 104") >= 0
-        || msg.indexOf("ECONNRESET") >= 0 || msg.indexOf("timeout") >= 0
-        || msg.indexOf("ETIMEDOUT") >= 0 || msg.indexOf("Connection reset") >= 0
-        || msg.indexOf("fetch failed") >= 0;
+      var msgLower = msg.toLowerCase();
+      var isTransient = msgLower.indexOf("reset") >= 0 || msgLower.indexOf("os error 104") >= 0
+        || msgLower.indexOf("econnreset") >= 0 || msgLower.indexOf("timeout") >= 0
+        || msgLower.indexOf("etimedout") >= 0 || msgLower.indexOf("fetch failed") >= 0
+        || msgLower.indexOf("sendrequest") >= 0 || msgLower.indexOf("connection error") >= 0
+        || msgLower.indexOf("broken pipe") >= 0;
       if (isTransient && attempt < retries) {
         console.warn("[KV Retry] " + key + " attempt " + attempt + "/" + retries + " failed: " + msg.substring(0, 120) + ". Retrying in " + delayMs + "ms...");
         await new Promise(r => setTimeout(r, delayMs * attempt));
@@ -25755,10 +26252,12 @@ async function _kvGetByPrefixWithRetry(prefix: string, retries = 3, delayMs = 20
       return await kv.getByPrefix(prefix);
     } catch (err: any) {
       var msg = String(err?.message || err || "");
-      var isTransient = msg.indexOf("reset by peer") >= 0 || msg.indexOf("os error 104") >= 0
-        || msg.indexOf("ECONNRESET") >= 0 || msg.indexOf("timeout") >= 0
-        || msg.indexOf("ETIMEDOUT") >= 0 || msg.indexOf("Connection reset") >= 0
-        || msg.indexOf("fetch failed") >= 0;
+      var msgLower = msg.toLowerCase();
+      var isTransient = msgLower.indexOf("reset") >= 0 || msgLower.indexOf("os error 104") >= 0
+        || msgLower.indexOf("econnreset") >= 0 || msgLower.indexOf("timeout") >= 0
+        || msgLower.indexOf("etimedout") >= 0 || msgLower.indexOf("fetch failed") >= 0
+        || msgLower.indexOf("sendrequest") >= 0 || msgLower.indexOf("connection error") >= 0
+        || msgLower.indexOf("broken pipe") >= 0;
       if (isTransient && attempt < retries) {
         console.warn("[KV Retry] prefix=" + prefix + " attempt " + attempt + "/" + retries + " failed: " + msg.substring(0, 120) + ". Retrying in " + delayMs + "ms...");
         await new Promise(r => setTimeout(r, delayMs * attempt));

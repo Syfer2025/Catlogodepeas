@@ -47,6 +47,18 @@ export function seedPriceCache(entries: Array<{ sku: string; data: ProductPrice 
   }
 }
 
+/**
+ * Clear ALL frontend price caches (prices + config).
+ * Call after admin changes the global tier so the catalog re-fetches with the new tier.
+ */
+export function clearAllPriceCache(): void {
+  _priceCache.clear();
+  _inflightRequests.clear();
+  _priceConfigCache = null;
+  _configFetchPromise = null;
+  _seedWaiters = [];
+}
+
 function _runNext() {
   while (_activeFetches < MAX_CONCURRENT && _queue.length > 0) {
     const next = _queue.shift();

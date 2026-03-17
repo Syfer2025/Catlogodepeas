@@ -6,19 +6,21 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense, useMemo } fro
 import * as api from "../services/api";
 import type { BannerItem, ProductBalance, ProductPrice, HomepageCategoryCard, MidBanner } from "../services/api";
 // Lazy-load below-fold sections for better initial load performance
-const SuperPromoSection = lazy(function () { return import("../components/SuperPromoSection").then(function (m) { return { default: m.SuperPromoSection }; }); });
+import { lazyWithRetry } from "../utils/lazyWithRetry";
+const SuperPromoSection = lazyWithRetry(function () { return import("../components/SuperPromoSection").then(function (m) { return { default: m.SuperPromoSection }; }); });
 import { seedPriceCache } from "../components/PriceBadge";
 import { seedStockCache } from "../components/StockBar";
 import { seedReviewStarsCache } from "../components/ReviewStars";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { OptimizedImage } from "../components/OptimizedImage";
 import React from "react";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { ProductCardSkeletonGrid } from "../components/ProductCardSkeleton";
-const RecentlyViewedSection = lazy(function () { return import("../components/RecentlyViewedSection").then(function (m) { return { default: m.RecentlyViewedSection }; }); });
-const BrandCarousel = lazy(function () { return import("../components/BrandCarousel").then(function (m) { return { default: m.BrandCarousel }; }); });
-const HomeReels = lazy(function () { return import("../components/HomeReels").then(function (m) { return { default: m.HomeReels }; }); });
-const InfluencerCarousel = lazy(function () { return import("../components/InfluencerCarousel").then(function (m) { return { default: m.InfluencerCarousel }; }); });
+const RecentlyViewedSection = lazyWithRetry(function () { return import("../components/RecentlyViewedSection").then(function (m) { return { default: m.RecentlyViewedSection }; }); });
+const BrandCarousel = lazyWithRetry(function () { return import("../components/BrandCarousel").then(function (m) { return { default: m.BrandCarousel }; }); });
+const HomeReels = lazyWithRetry(function () { return import("../components/HomeReels").then(function (m) { return { default: m.HomeReels }; }); });
+const InfluencerCarousel = lazyWithRetry(function () { return import("../components/InfluencerCarousel").then(function (m) { return { default: m.InfluencerCarousel }; }); });
 import "../utils/emptyStateAnimations";
 
 /** Hook to animate elements when they scroll into view */
@@ -713,14 +715,16 @@ export function HomePage() {
       {/* Categories Strip — ATF, homepage categories with images (replaces old benefits) */}
       {categoriesStrip}
 
+      {/* Super Promo Section — between categories and reels */}
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <SuperPromoSection />
+        </Suspense>
+      </ErrorBoundary>
+
       {/* Home Reels — short product videos, TikTok style */}
       <Suspense fallback={null}>
         <HomeReels />
-      </Suspense>
-
-      {/* Super Promo Section — between categories and products */}
-      <Suspense fallback={null}>
-        <SuperPromoSection />
       </Suspense>
 
       {/* Mid-Page Banners (Position 1) — slots 3 & 4, after Super Promo */}

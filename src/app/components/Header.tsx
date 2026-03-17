@@ -9,15 +9,16 @@ import { useCart } from "../contexts/CartContext";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
 import { UserAvatar } from "./AvatarPicker";
 import { HeaderCepInput } from "./HeaderCepInput";
+import { lazyWithRetry } from "../utils/lazyWithRetry";
 
 // Lazy-load CategoryMegaMenu — only shown on hover/click, not needed for FCP
-const CategoryMegaMenu = lazy(function () {
+const CategoryMegaMenu = lazyWithRetry(function () {
   return import("./CategoryMegaMenu").then(function (m) { return { default: m.CategoryMegaMenu }; });
 });
-const MobileCategoryMenu = lazy(function () {
+const MobileCategoryMenu = lazyWithRetry(function () {
   return import("./CategoryMegaMenu").then(function (m) { return { default: m.MobileCategoryMenu }; });
 });
-const CouponMegaMenu = lazy(function () {
+const CouponMegaMenu = lazyWithRetry(function () {
   return import("./CouponMegaMenu").then(function (m) { return { default: m.CouponMegaMenu }; });
 });
 

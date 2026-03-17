@@ -14,6 +14,22 @@ const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b0
 // ═══════════════════════════════════════════════════════════════════════════
 var _warmupDone = false;
 
+// Warmup promise — resolves when edge function is confirmed hot,
+// or after a max wait (so we never block indefinitely).
+var _warmupResolve: (() => void) | null = null;
+var _warmupPromise: Promise<void> = new Promise(function (resolve) {
+  _warmupResolve = resolve;
+});
+// Safety: auto-resolve after 10s so requests are never blocked forever
+setTimeout(function () {
+  if (_warmupResolve) { _warmupResolve(); _warmupResolve = null; }
+}, 10000);
+
+function _markWarmupReady() {
+  _warmupReady = true;
+  if (_warmupResolve) { _warmupResolve(); _warmupResolve = null; }
+}
+
 function _doWarmup() {
   if (_warmupDone) return;
   _warmupDone = true;
@@ -32,7 +48,7 @@ function _doWarmup() {
     signal: ac.signal,
   }).then(function () {
     clearTimeout(tid);
-    _warmupReady = true;
+    _markWarmupReady();
     // Pre-warm public coupons cache on server after health succeeds
     fetch(BASE_URL + "/coupons/public", {
       method: "GET",
@@ -56,7 +72,7 @@ setTimeout(function () {
   fetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + publicAnonKey },
-  }).then(function () { _warmupReady = true; }).catch(function () { /* silent */ });
+  }).then(function () { _markWarmupReady(); }).catch(function () { /* silent */ });
 }, 2000);
 
 const headers = {
@@ -85,6 +101,17 @@ var _FAST_TIMEOUT_MS = 25000; // 25s — enough for cold start + cached SIGE, bu
 
 async function _requestFastFail<T>(path: string, options?: RequestInit): Promise<T> {
   var callerSignal = options ? (options.signal as AbortSignal | undefined) : undefined;
+  // Wait for edge function warmup before firing (prevents cold-start network errors)
+  if (!_warmupReady) {
+    await Promise.race([
+      _warmupPromise,
+      callerSignal ? new Promise<void>(function (_, reject) {
+        callerSignal!.addEventListener("abort", function () {
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }) : new Promise<void>(function () {}),
+    ]);
+  }
   await _acquireSlotWithSignal(callerSignal);
   try {
     if (callerSignal && callerSignal.aborted) {
@@ -206,6 +233,17 @@ async function requestPriority<T>(path: string, options?: RequestInit): Promise<
 
 async function _requestInner<T>(path: string, options?: RequestInit): Promise<T> {
   var callerSignal = options ? (options.signal as AbortSignal | undefined) : undefined;
+  // Wait for edge function warmup before first attempt (prevents cold-start network errors)
+  if (!_warmupReady) {
+    await Promise.race([
+      _warmupPromise,
+      callerSignal ? new Promise<void>(function (_, reject) {
+        callerSignal!.addEventListener("abort", function () {
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }) : new Promise<void>(function () {}), // never resolves — _warmupPromise will
+    ]);
+  }
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // If the caller already aborted (e.g. component unmounted), bail immediately
@@ -3287,6 +3325,41 @@ export const deleteProductPhysical = (accessToken: string, sku: string) =>
     headers: { "X-User-Token": accessToken },
   });
 
+// Bulk physical data
+export interface BulkPhysicalItem {
+  sku: string;
+  weight: number;
+  length: number;
+  width: number;
+  height: number;
+  updatedAt?: number;
+  updatedBy?: string;
+}
+
+export const getPhysicalBulkList = (accessToken: string) =>
+  request<{ items: BulkPhysicalItem[] }>("/produtos/physical/bulk-list", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const getMetaAllCompact = (accessToken: string) =>
+  request<{ items: Array<{ sku: string; category: string; brand: string }> }>("/produtos/meta/all-compact", {
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const savePhysicalBulk = (accessToken: string, items: Array<{ sku: string; weight: number; length: number; width: number; height: number }>) =>
+  request<{ ok: boolean; saved: number; errors: string[] }>("/produtos/physical/bulk-save", {
+    method: "POST",
+    body: JSON.stringify({ items }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const syncSigeWeightBulk = (accessToken: string, skus: string[]) =>
+  request<{ results: Array<{ sku: string; found: boolean; weight: number; length: number; width: number; height: number }> }>("/produtos/physical/bulk-sync-sige", {
+    method: "POST",
+    body: JSON.stringify({ skus }),
+    headers: { "X-User-Token": accessToken },
+  });
+
 // Freight table CRUD
 export const uploadShippingTable = (
   accessToken: string,
@@ -3520,6 +3593,14 @@ export function computePromoPrice(
 /** Public — get the currently active promo (if any) */
 export const getActivePromo = () =>
   request<{ promo: SuperPromo | null }>("/promo/active");
+
+/** Debug — diagnose why promo isn't showing */
+export const debugPromo = () =>
+  request<any>("/promo/debug");
+
+/** Debug — test what homepage-init batch query returns for promo + clear cache */
+export const debugPromoActiveTest = () =>
+  request<any>("/promo/active-test");
 
 /** Admin — get full promo config */
 export const getAdminPromo = (accessToken: string) =>

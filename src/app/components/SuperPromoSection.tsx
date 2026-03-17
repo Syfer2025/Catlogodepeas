@@ -245,24 +245,21 @@ export function SuperPromoSection() {
     try { return localStorage.getItem("carretao_had_promo") === "1"; } catch { return false; }
   });
 
-  // Use promo data from HomepageInit context (avoids separate /promo/active API call)
+  // Use promo data from HomepageInit context as fast path
   const { data: initData, loading: initLoading } = useHomepageInit();
 
-  useEffect(() => {
-    if (initLoading) return;
-    const p = (initData && initData.promo) ? initData.promo : null;
+  // ── Helper: validate promo client-side ──
+  const _validatePromo = useCallback((p: SuperPromo | null | undefined): SuperPromo | null => {
+    if (!p) return null;
+    if (!p.enabled) return null;
+    if (p.endDate && Date.now() > p.endDate) return null;
+    if (p.startDate && Date.now() < p.startDate) return null;
+    if (!p.products || p.products.length === 0) return null;
+    return p;
+  }, []);
 
-    // Client-side expiration check — don't show expired promos from cache
-    if (p && p.endDate && Date.now() > p.endDate) {
-      setPromo(null);
-      setLoading(false);
-      try { localStorage.removeItem("carretao_had_promo"); } catch {}
-      return;
-    }
-
-    setPromo(p);
-    setLoading(false);
-    // Cache whether promo exists for next visit's CLS prevention
+  // ── Helper: persist promo hint for CLS prevention ──
+  const _persistHint = useCallback((p: SuperPromo | null) => {
     try {
       if (p && p.products && p.products.length > 0) {
         localStorage.setItem("carretao_had_promo", "1");
@@ -270,19 +267,104 @@ export function SuperPromoSection() {
         localStorage.removeItem("carretao_had_promo");
       }
     } catch {}
+  }, []);
 
-    // Auto-hide: schedule removal when endDate arrives (if user stays on homepage)
-    if (p && p.endDate) {
-      const remaining = p.endDate - Date.now();
-      if (remaining > 0) {
-        const timerId = setTimeout(() => {
+  // ── DUAL-SOURCE STRATEGY ──
+  // 1. Use initData.promo as instant display (if available)
+  // 2. ALWAYS call /promo/active as authoritative source (with retry)
+  // This ensures the promo shows even if homepage-init cache is stale.
+  useEffect(() => {
+    if (initLoading) return; // wait for homepage-init to finish first
+
+    var cancelled = false;
+
+    // Fast path: use initData.promo immediately (if valid)
+    var initPromo = _validatePromo(initData?.promo);
+    if (initPromo) {
+      console.log("[SuperPromo] Fast-path: promo from initData OK! title=" + initPromo.title + " products=" + initPromo.products?.length);
+      setPromo(initPromo);
+      setLoading(false);
+      _persistHint(initPromo);
+    }
+
+    // Authoritative source: always call /promo/active
+    // If initData already had the promo, this acts as a background refresh.
+    // If initData didn't have the promo, this is the primary source.
+    console.log("[SuperPromo] Calling /promo/active (authoritative)...");
+    api.getActivePromo()
+      .then((res) => {
+        if (cancelled) return;
+        var activePromo = _validatePromo(res?.promo);
+        console.log("[SuperPromo] /promo/active response:", activePromo ? "promo found (" + activePromo.products?.length + " products)" : "null");
+        if (activePromo) {
+          setPromo(activePromo);
+          setLoading(false);
+          _persistHint(activePromo);
+        } else if (!initPromo) {
+          // Neither source has promo
           setPromo(null);
-          try { localStorage.removeItem("carretao_had_promo"); } catch {}
+          setLoading(false);
+          _persistHint(null);
+        }
+        // If initPromo exists but activePromo is null, keep showing initPromo
+        // (server might have a different cache state)
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.warn("[SuperPromo] /promo/active failed, retrying in 2s...", e?.message || e);
+        // Retry once after 2 seconds
+        setTimeout(() => {
+          if (cancelled) return;
+          api.getActivePromo()
+            .then((res2) => {
+              if (cancelled) return;
+              var retryPromo = _validatePromo(res2?.promo);
+              console.log("[SuperPromo] /promo/active retry:", retryPromo ? "promo found" : "null");
+              if (retryPromo) {
+                setPromo(retryPromo);
+                _persistHint(retryPromo);
+              } else if (!initPromo) {
+                setPromo(null);
+                _persistHint(null);
+              }
+            })
+            .catch((e2) => {
+              console.error("[SuperPromo] /promo/active retry also failed:", e2?.message || e2);
+              if (!initPromo) {
+                setPromo(null);
+                _persistHint(null);
+              }
+            })
+            .finally(() => {
+              if (!cancelled && !initPromo) setLoading(false);
+            });
+        }, 2000);
+        // If initPromo is null, don't finalize loading yet — wait for retry
+        if (!initPromo) return;
+      })
+      .finally(() => {
+        // Only finalize if we don't have initPromo (if we do, loading is already false)
+        if (!cancelled && !initPromo) setLoading(false);
+      });
+
+    // Auto-hide: schedule removal when endDate arrives
+    var autoHideTimer: ReturnType<typeof setTimeout> | null = null;
+    var effectivePromo = initPromo;
+    if (effectivePromo && effectivePromo.endDate) {
+      var remaining = effectivePromo.endDate - Date.now();
+      if (remaining > 0) {
+        autoHideTimer = setTimeout(() => {
+          setPromo(null);
+          _persistHint(null);
         }, remaining);
-        return () => clearTimeout(timerId);
       }
     }
-  }, [initData, initLoading]);
+
+    return () => {
+      cancelled = true;
+      if (autoHideTimer) clearTimeout(autoHideTimer);
+    };
+  }, [initData, initLoading, _validatePromo, _persistHint]);
 
   // Bulk-fetch prices and balances when promo loads.
   // Stagger by 800ms to let HomePage bulk calls go first (they share the global concurrency limiter).

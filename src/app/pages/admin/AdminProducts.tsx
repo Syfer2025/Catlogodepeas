@@ -7,7 +7,8 @@ import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import { defaultCategoryTree } from "../../data/categoryTree";
 // Lazy-load SigeStockSync — only shown when the stock sync sub-tab is active
-const SigeStockSync = lazy(function () { return import("./SigeStockSync").then(function (m) { return { default: m.SigeStockSync }; }); });
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
+const SigeStockSync = lazyWithRetry(function () { return import("./SigeStockSync").then(function (m) { return { default: m.SigeStockSync }; }); });
 import { PriceBadge } from "../../components/PriceBadge";
 import { convertImageToWebP, ProductImage as ProductImage2 } from "../../components/ProductImage";
 import { Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff, ChevronLeft, ChevronRight, Grid3X3, List, Database, X, Plus, Edit3, Trash2, Save, ImagePlus, Check, AlertCircle, CheckCircle2, ChevronDown, FileText, Tag, ExternalLink, Camera, PenLine, PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal, BarChart3, TrendingUp, TrendingDown, AlertOctagon, DollarSign, Truck, Scale, RotateCcw, Info, Zap, Link2, Weight, Ruler, Barcode } from "lucide-react";

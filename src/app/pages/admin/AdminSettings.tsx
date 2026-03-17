@@ -4,6 +4,7 @@ import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { SiteSettings, LogoMeta, FaviconMeta } from "../../services/api";
 import { Save, Store, Globe, Bell, Palette, Shield, Check, Loader2, Database, Upload, Trash2, Image as ImageIcon, FileWarning, X, DollarSign } from "lucide-react";
+import { clearAllPriceCache } from "../../components/PriceBadge";
 
 const defaultSettings: SiteSettings = {
   storeName: "Carretão Auto Peças",
@@ -1348,7 +1349,9 @@ function PricingConfigSection() {
       if (listMappingV2.trim()) listPriceMapping.v2 = listMappingV2.trim();
       if (listMappingV3.trim()) listPriceMapping.v3 = listMappingV3.trim();
       await api.savePriceConfig({ tier, showPrice, pixDiscountEnabled, pixDiscountPercent, installmentsCount, installmentsMinValue, listPriceMapping } as any, token);
-      setSuccess("Configuração salva!");
+      // Clear ALL frontend price caches so catalog re-fetches with new tier
+      clearAllPriceCache();
+      setSuccess("Configuração salva! Cache de preços limpo.");
       setTimeout(() => setSuccess(""), 3000);
     } catch (e: any) {
       setError(e.message || "Erro ao salvar.");
@@ -1428,9 +1431,20 @@ function PricingConfigSection() {
     setCacheClearMsg("");
     try {
       const token = await getToken();
-      const result = await api.clearPriceCache(token);
-      setCacheClearMsg((result as any).message || (result.cleared + " caches removidos."));
-      setTimeout(() => setCacheClearMsg(""), 5000);
+      let totalCleared = 0;
+      let iteration = 0;
+      while (true) {
+        iteration++;
+        setCacheClearMsg("Limpando cache... (lote " + iteration + ", " + totalCleared + " removidos)");
+        const result = await api.clearPriceCache(token);
+        totalCleared += (result.cleared || 0);
+        if (!(result as any).hasMore) break;
+        if (iteration >= 100) break; // safety limit
+      }
+      setCacheClearMsg(totalCleared + " caches removidos com sucesso!");
+      // Clear frontend price cache so catalog re-fetches fresh
+      clearAllPriceCache();
+      setTimeout(() => setCacheClearMsg(""), 8000);
     } catch (e: any) {
       setCacheClearMsg(e.message || "Erro ao limpar cache.");
     } finally {

@@ -399,24 +399,42 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
   }, [currentIndex]);
 
   // ─── Video progress bar state ───
-  var [progress, setProgress] = useState(0);
-  var [duration, setDuration] = useState(0);
-  var [isSeeking, setIsSeeking] = useState(false);
+  var progressRef = useRef(0);
+  var durationRef = useRef(0);
+  var isSeekingRef = useRef(false);
   var progressBarRef = useRef<HTMLDivElement>(null);
+  var progressFillRef = useRef<HTMLDivElement>(null);
+  var progressThumbRef = useRef<HTMLDivElement>(null);
+  var timeCurrentRef = useRef<HTMLSpanElement>(null);
+  var timeDurationRef = useRef<HTMLSpanElement>(null);
+
+  function _updateProgressDOM(ratio: number) {
+    var pct = (ratio * 100) + "%";
+    if (progressFillRef.current) progressFillRef.current.style.width = pct;
+    if (progressThumbRef.current) progressThumbRef.current.style.left = "calc(" + pct + " - 6px)";
+    if (timeCurrentRef.current) timeCurrentRef.current.textContent = formatTime(ratio * durationRef.current);
+  }
 
   useEffect(function () {
     var vid = videoRef.current;
     if (!vid) return;
     function onTimeUpdate() {
-      if (!isSeeking && vid && vid.duration) {
-        setProgress(vid.currentTime / vid.duration);
+      if (!isSeekingRef.current && vid && vid.duration) {
+        progressRef.current = vid.currentTime / vid.duration;
+        _updateProgressDOM(progressRef.current);
       }
     }
     function onLoadedMetadata() {
-      if (vid) setDuration(vid.duration);
+      if (vid) {
+        durationRef.current = vid.duration;
+        if (timeDurationRef.current) timeDurationRef.current.textContent = formatTime(vid.duration);
+      }
     }
     function onDurationChange() {
-      if (vid && vid.duration && isFinite(vid.duration)) setDuration(vid.duration);
+      if (vid && vid.duration && isFinite(vid.duration)) {
+        durationRef.current = vid.duration;
+        if (timeDurationRef.current) timeDurationRef.current.textContent = formatTime(vid.duration);
+      }
     }
     vid.addEventListener("timeupdate", onTimeUpdate);
     vid.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -426,11 +444,13 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
       vid.removeEventListener("loadedmetadata", onLoadedMetadata);
       vid.removeEventListener("durationchange", onDurationChange);
     };
-  }, [currentIndex, isSeeking]);
+  }, [currentIndex]);
 
   useEffect(function () {
-    setProgress(0);
-    setDuration(0);
+    progressRef.current = 0;
+    durationRef.current = 0;
+    _updateProgressDOM(0);
+    if (timeDurationRef.current) timeDurationRef.current.textContent = "0:00";
   }, [currentIndex]);
 
   function seekTo(clientX: number) {
@@ -440,25 +460,26 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
     var rect = bar.getBoundingClientRect();
     var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     vid.currentTime = ratio * vid.duration;
-    setProgress(ratio);
+    progressRef.current = ratio;
+    _updateProgressDOM(ratio);
   }
 
   function handleProgressMouseDown(e: React.MouseEvent) {
     e.stopPropagation();
-    setIsSeeking(true);
+    isSeekingRef.current = true;
     seekTo(e.clientX);
     function onMove(ev: MouseEvent) { seekTo(ev.clientX); }
-    function onUp(ev: MouseEvent) { seekTo(ev.clientX); setIsSeeking(false); window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
+    function onUp(ev: MouseEvent) { seekTo(ev.clientX); isSeekingRef.current = false; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
 
   function handleProgressTouchStart(e: React.TouchEvent) {
     e.stopPropagation();
-    setIsSeeking(true);
+    isSeekingRef.current = true;
     seekTo(e.touches[0].clientX);
     function onMove(ev: TouchEvent) { ev.preventDefault(); seekTo(ev.touches[0].clientX); }
-    function onEnd(ev: TouchEvent) { seekTo(ev.changedTouches[0].clientX); setIsSeeking(false); window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
+    function onEnd(ev: TouchEvent) { seekTo(ev.changedTouches[0].clientX); isSeekingRef.current = false; window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); }
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onEnd);
   }
@@ -633,8 +654,12 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)" }}
         >
           <div className="flex items-center gap-2">
-            <span className="text-white/70 shrink-0 tabular-nums" style={{ fontSize: "0.65rem", minWidth: "32px", textAlign: "right" }}>
-              {formatTime(progress * duration)}
+            <span
+              ref={timeCurrentRef}
+              className="text-white/70 shrink-0 tabular-nums"
+              style={{ fontSize: "0.65rem", minWidth: "32px", textAlign: "right" }}
+            >
+              {formatTime(progressRef.current * durationRef.current)}
             </span>
             <div
               ref={progressBarRef}
@@ -645,18 +670,24 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
             >
               <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden group-hover:h-1.5 transition-all">
                 <div
-                  className="h-full bg-white rounded-full transition-[width] duration-75"
-                  style={{ width: (progress * 100) + "%" }}
+                  ref={progressFillRef}
+                  className="h-full bg-white rounded-full"
+                  style={{ width: (progressRef.current * 100) + "%" }}
                 />
               </div>
               {/* Drag thumb */}
               <div
+                ref={progressThumbRef}
                 className="absolute w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ left: "calc(" + (progress * 100) + "% - 6px)", top: "50%", transform: "translateY(-50%)" }}
+                style={{ left: "calc(" + (progressRef.current * 100) + "% - 6px)", top: "50%", transform: "translateY(-50%)" }}
               />
             </div>
-            <span className="text-white/70 shrink-0 tabular-nums" style={{ fontSize: "0.65rem", minWidth: "32px" }}>
-              {formatTime(duration)}
+            <span
+              ref={timeDurationRef}
+              className="text-white/70 shrink-0 tabular-nums"
+              style={{ fontSize: "0.65rem", minWidth: "32px" }}
+            >
+              {formatTime(durationRef.current)}
             </span>
           </div>
 

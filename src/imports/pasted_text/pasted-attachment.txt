@@ -1,0 +1,964 @@
+Saude do Servidor
+(3)
+2
+1
+Edge Function Health Check
+218ms
+HTTP 200 - Edge Function online
+
+URL: https://aztdgagxvrlylszieujs.supabase.co/functions/v1/make-server-b7b07654/health
+
+Seed/Database
+528ms
+Seed executado
+
+{"seeded":false}
+
+Latencia media (3 pings)
+14.89s
+Media: 4.96s (6.26s, 8.31s, 325ms)
+
+Latencia alta — possivel cold start
+
+
+APIs Publicas
+(19)
+18
+1
+Homepage Init (combinado)
+1.05s
+OK — 2 banners, 16 categorias, 0 marcas
+
+Endpoint combinado /homepage-init
+
+Settings (configuracoes)
+<1ms
+Loja: Carretão Auto Peças
+
+Email: contato@autoparts.com.br, Phone: 44997330202
+
+Category Tree
+6.87s
+16 categorias raiz
+
+Price Config
+4.28s
+Tier: v2, Show: true
+
+PIX: 5%
+
+Banners publicos
+1.17s
+2 banners ativos
+
+Marcas publicas
+1.20s
+0 marcas
+
+Homepage Categories
+1.19s
+16 cards de categoria
+
+FAQ publico
+2.62s
+0 perguntas
+
+Cupons publicos
+22ms
+1 cupons disponiveis
+
+Promo ativa
+2.48s
+Nenhuma promo ativa
+
+Reels publicos
+931ms
+4 reels
+
+Influencers publicos
+8.09s
+4 influenciadores
+
+Filiais publicas
+947ms
+8 filiais
+
+Exit Intent Config
+2.69s
+Enabled: true
+
+Cupom: PRIMEIRA10
+
+GA4 Config
+722ms
+Enabled: false
+
+Desabilitado
+
+Marketing Config
+14.58s
+Nenhum pixel ativo
+
+MercadoPago habilitado?
+907ms
+Enabled: false
+
+SafraPay config publica
+6.08s
+Enabled: true, Max parcelas: 12
+
+Google Reviews Config
+519ms
+Enabled: false
+
+
+Produtos & Catalogo
+(12)
+12
+Catalogo (pagina 1)
+744ms
+24 produtos, total: 3330
+
+139 paginas
+
+Destaques
+1.06s
+8 produtos destaque
+
+Busca por termo
+696ms
+5 resultados para 'filtro'
+
+Total: 84
+
+Autocomplete
+859ms
+5 sugestoes para 'oleo'
+
+Óleo Hidraulico Atf Sae 5W20 (, Oleo Motor Hws-Sae 15W40-Api C, Óleo Sae 85W140 Api Gl5 (1Litr, Oleo Sae 90 Api Gl4, Óleo Sae 90 Api Gl5
+
+Detalhe do produto (init)
+2.66s
+SKU 110709-396 — produto OK, 1 imagens, preco: R$97.21, estoque: 4
+
+Product Meta
+861ms
+Visible: true, Cat: N/A
+
+Brand: N/A
+
+Product Attributes
+2.10s
+8 atributos
+
+Product Images
+619ms
+1 imagens para 110709-396
+
+Reviews do produto
+1.00s
+0 avaliacoes
+
+Review Summary
+901ms
+Media: 0.0 (0 reviews)
+
+Warranty Plans
+993ms
+0 planos de garantia
+
+Meta Bulk (10 SKUs)
+1.94s
+10 metas retornadas
+
+
+Precos & Estoque
+(6)
+6
+Preco individual (104168-350)
+3.64s
+Source: sige, Preco: R$6338.05
+
+v1=6338.047 v2=null v3=null
+
+Precos bulk (5 SKUs)
+10.90s
+5/5 precos encontrados
+
+Saldo individual (104168-350)
+1.62s
+Qtd: 2, Disponivel: 2
+
+Found: true, SIGE: true
+
+Saldos bulk (5 SKUs)
+1.81s
+5/5 com estoque > 0
+
+Stock Summary
+1.21s
+Total: 3330, Em estoque: 0, Sem: 0
+
+Cached: false
+
+Review Summaries Batch
+7.14s
+5 summaries retornados
+
+
+Imagens & Assets
+(4)
+3
+1
+Logo principal
+548ms
+Logo encontrado
+
+https://aztdgagxvrlylszieujs.supabase.co/storage/v1/object/sign/make-b7b07654-assets/logo.webp?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV81NDk3NzA0YS0zMmFiLTRkYjYtYjc0Yy1mZTg2ZmE3NzE1NzkiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJtYWtlLWI3YjA3NjU0LWFzc2V0cy9sb2dvLndlYnAiLCJpYXQiOjE3NzM2ODMxODYsImV4cCI6MTc3Mzc2OTU4Nn0.dC3hR9VvoaqNPeBjGGCIAeaOFQ_g-MvAw0-3TYSmBFk
+
+Footer Logo
+930ms
+Footer logo encontrado
+
+Favicon
+842ms
+Sem favicon
+
+Product Image URL builder
+977ms
+Imagem acessivel: 104168-350
+
+
+Frete & CEP
+(4)
+3
+1
+CEP Lookup (01001000)
+1.06s
+São Paulo/SP
+
+Praça da Sé
+
+CEP Lookup (88015100)
+5.44s
+Florianópolis/SC
+
+Calculo de frete (SP)
+15.24s
+2 opcoes de frete
+
+ATUAL CARGAS - RODOVIARIO: R$254.25, RODONAVES - RODOVIARIO: R$360.67
+
+CEP invalido (00000000)
+1.34s
+Erro: CEP não encontrado
+
+
+Frontend & Rotas
+(83)
+83
+Lazy: CatalogPage
+43ms
+OK (43ms)
+
+Exports: CatalogPage
+
+Lazy: ProductDetailPage
+55ms
+OK (55ms)
+
+Exports: ProductDetailPage
+
+Lazy: ContactPage
+865ms
+OK (865ms)
+
+Exports: ContactPage
+
+Lazy: AboutPage
+1.90s
+OK (1.90s)
+
+Exports: AboutPage
+
+Lazy: UserAuthPage
+1.92s
+OK (1.92s)
+
+Exports: UserAuthPage
+
+Lazy: UserAccountPage
+2.40s
+OK (2.40s)
+
+Exports: UserAccountPage
+
+Lazy: CheckoutPage
+2.04s
+OK (2.04s)
+
+Exports: CheckoutPage
+
+Lazy: PrivacyPolicyPage
+1.36s
+OK (1.36s)
+
+Exports: PrivacyPolicyPage
+
+Lazy: TermsPage
+660ms
+OK (660ms)
+
+Exports: TermsPage
+
+Lazy: LgpdRightsPage
+1.54s
+OK (1.54s)
+
+Exports: LgpdRightsPage
+
+Lazy: AffiliatePage
+914ms
+OK (914ms)
+
+Exports: AffiliatePage
+
+Lazy: CouponsPage
+691ms
+OK (691ms)
+
+Exports: CouponsPage
+
+Lazy: FaqPage
+1.47s
+OK (1.47s)
+
+Exports: FaqPage
+
+Lazy: BrandPage
+1.27s
+OK (1.27s)
+
+Exports: BrandPage
+
+Lazy: TrackingPage
+1.25s
+OK (1.25s)
+
+Exports: TrackingPage
+
+Lazy: NotFoundPage
+610ms
+OK (610ms)
+
+Exports: NotFoundPage
+
+Lazy: UserResetPasswordPage
+1.29s
+OK (1.29s)
+
+Exports: UserResetPasswordPage
+
+Lazy: HomePage
+41ms
+OK (41ms)
+
+Exports: HomePage
+
+Comp: Header
+39ms
+Importado OK
+
+Exports: Header
+
+Comp: Footer
+687ms
+Importado OK
+
+Exports: Footer
+
+Comp: ProductCard
+35ms
+Importado OK
+
+Exports: ProductCard, ProductCardInner
+
+Comp: CartDrawer
+2.51s
+Importado OK
+
+Exports: CartDrawer
+
+Comp: PriceBadge
+41ms
+Importado OK
+
+Exports: PriceBadge, seedPriceCache, seedPriceConfig
+
+Comp: StockBadge
+44ms
+Importado OK
+
+Exports: StockBadge
+
+Comp: StockBar
+42ms
+Importado OK
+
+Exports: StockBar, StockBarInner, seedStockCache
+
+Comp: WishlistButton
+36ms
+Importado OK
+
+Exports: WishlistButton
+
+Comp: OptimizedImage
+41ms
+Importado OK
+
+Exports: OptimizedImage, getOptimizedSrcSet, getOptimizedUrl
+
+Comp: ProductImage
+47ms
+Importado OK
+
+Exports: ProductImage, convertImageToWebP, getProductImageCandidates, getResolvedProductImageUrl, seedProductImageCache
+
+Comp: SearchAutocomplete
+45ms
+Importado OK
+
+Exports: SearchAutocomplete
+
+Comp: CategoryMegaMenu
+1.64s
+Importado OK
+
+Exports: CategoryMegaMenu, MobileCategoryMenu
+
+Comp: ShippingCalculator
+32ms
+Importado OK
+
+Exports: ShippingCalculator
+
+Comp: ProductReviews
+38ms
+Importado OK
+
+Exports: ProductReviews
+
+Comp: ShareButtons
+43ms
+Importado OK
+
+Exports: ShareButtons
+
+Comp: CookieConsentBanner
+40ms
+Importado OK
+
+Exports: CookieConsentBanner, getConsentValue, hasAnalyticsConsent, setConsentValue
+
+Comp: ErrorBoundary
+43ms
+Importado OK
+
+Exports: ErrorBoundary
+
+Comp: BrandCarousel
+624ms
+Importado OK
+
+Exports: BrandCarousel
+
+Comp: CouponCarousel
+667ms
+Importado OK
+
+Exports: CouponCarousel
+
+Comp: MobileBottomNav
+653ms
+Importado OK
+
+Exports: MobileBottomNav
+
+Comp: WhatsAppButton
+637ms
+Importado OK
+
+Exports: WhatsAppButton
+
+Comp: ScrollToTopButton
+623ms
+Importado OK
+
+Exports: ScrollToTopButton
+
+Comp: ExitIntentPopup
+710ms
+Importado OK
+
+Exports: ExitIntentPopup
+
+Comp: SuperPromoSection
+786ms
+Importado OK
+
+Exports: SuperPromoSection
+
+Comp: RecentlyViewedSection
+44ms
+Importado OK
+
+Exports: RecentlyViewedSection
+
+Comp: VirtualProductGrid
+51ms
+Importado OK
+
+Exports: VirtualProductGrid
+
+Admin: AdminPage
+50ms
+Importado OK
+
+Admin: AdminDashboard
+41ms
+Importado OK
+
+Admin: AdminOrders
+1.06s
+Importado OK
+
+Admin: AdminProducts
+1.33s
+Importado OK
+
+Admin: AdminCategories
+929ms
+Importado OK
+
+Admin: AdminClients
+818ms
+Importado OK
+
+Admin: AdminCoupons
+1.49s
+Importado OK
+
+Admin: AdminBanners
+865ms
+Importado OK
+
+Admin: AdminBrands
+1.58s
+Importado OK
+
+Admin: AdminSettings
+1.26s
+Importado OK
+
+Admin: AdminShipping
+1.23s
+Importado OK
+
+Admin: AdminReviews
+1.76s
+Importado OK
+
+Admin: AdminWarranty
+1.27s
+Importado OK
+
+Admin: AdminAffiliates
+1.55s
+Importado OK
+
+Admin: AdminEmailMarketing
+1.67s
+Importado OK
+
+Admin: AdminAuditLog
+727ms
+Importado OK
+
+Admin: AdminLgpdRequests
+737ms
+Importado OK
+
+Admin: AdminFaq
+870ms
+Importado OK
+
+Admin: AdminReels
+1.71s
+Importado OK
+
+Admin: AdminInfluencers
+891ms
+Importado OK
+
+Admin: AdminBranches
+1.49s
+Importado OK
+
+Admin: AdminApiSige
+939ms
+Importado OK
+
+Admin: AdminPagHiper
+1.05s
+Importado OK
+
+Admin: AdminMercadoPago
+878ms
+Importado OK
+
+Admin: AdminSafrapay
+1.31s
+Importado OK
+
+Admin: AdminGA4
+832ms
+Importado OK
+
+Admin: AdminSisfreteWT
+1.86s
+Importado OK
+
+Admin: AdminWhatsApp
+697ms
+Importado OK
+
+Admin: AdminAttributes
+948ms
+Importado OK
+
+Admin: AdminDimensions
+822ms
+Importado OK
+
+Admin: AdminAutoCateg
+1.53s
+Importado OK
+
+Admin: AdminHomepageCategories
+709ms
+Importado OK
+
+Admin: AdminMidBanners
+648ms
+Importado OK
+
+Admin: AdminFooterBadges
+656ms
+Importado OK
+
+Admin: AdminSuperPromo
+911ms
+Importado OK
+
+Admin: AdminAdmins
+1.30s
+Importado OK
+
+Admin: AdminMarketing
+1.52s
+Importado OK
+
+Admin: AdminExitIntent
+1.25s
+Importado OK
+
+Admin: AdminInfrastructure
+1.67s
+Importado OK
+
+
+Autenticacao
+(4)
+4
+Pre-login check (rate limit)
+2.92s
+OK — sem lockout
+
+Signup availability check
+920ms
+emailTaken: false
+
+CAPTCHA site key
+772ms
+Key: 6Leer3csAAAAAEsJZ2jh...
+
+CNPJ Lookup (00000000000191 - BRF)
+1.30s
+BANCO DO BRASIL SA
+
+ATIVA
+
+
+Admin Core
+(8)
+8
+Check Admin
+921ms
+Admin: true, Master: true
+
+Email: alexmeira@protonmail.com
+
+Dashboard Stats
+4.41s
+Pedidos: 0, Receita: R$0.00, Clientes: 6
+
+Pending Counts
+4.73s
+Pedidos pagos: 6, Reviews: 1, LGPD: 0
+
+Admin Orders
+1.10s
+24 pedidos no sistema
+
+Admin Clients
+1.12s
+6 clientes registrados
+
+Admin List
+1.29s
+5 admins, 30 abas disponiveis
+
+Audit Logs
+1.25s
+66 entradas de auditoria
+
+Settings (admin)
+366ms
+Modo manutencao: true, Catalogo: false
+
+
+Admin Conteudo
+(14)
+13
+1
+Admin Banners
+1.17s
+2 banners totais (ativos + inativos)
+
+Admin Promo
+3.37s
+Promo: Super Promoção (12 produtos)
+
+Homepage Categories (admin)
+55ms
+16 cards
+
+Mid Banners
+1.28s
+4 slots de mid-banner
+
+Footer Badges
+1.45s
+4 badges no footer
+
+Admin Reels
+48.20s
+17 reels totais
+
+Admin Influencers
+1.48s
+4 influenciadores
+
+Admin Branches
+1.02s
+8 filiais
+
+Admin FAQ
+637ms
+0 perguntas
+
+All Attributes
+1.62s
+3344 produtos com atributos
+
+SIGE Mappings
+715ms
+1000 mapeamentos SKU/SIGE
+
+Custom Prices
+2.77s
+0 precos customizados
+
+Physical Bulk List
+8.81s
+Erro: Cannot read properties of undefined (reading 'length')
+
+Meta All Compact
+10.52s
+1000 metas compactas
+
+
+Integracao SIGE
+(5)
+5
+SIGE Status
+2.35s
+Configured: true, Token: true, Expired: false
+
+SIGE Config
+1.19s
+URL: https://carretao-api-7dbda52e1cca.herokuapp.com/api, Email: wartalks@protonmail.com
+
+SIGE Connect
+3.64s
+Connected: true, Token: true
+
+Expira: 2026-03-17T05:49:55.000Z
+
+SIGE Situations
+2.32s
+9 situacoes encontradas
+
+Sync Customer Status
+10.67s
+{"clients":[{"id":"c6b3e1e5-b4f8-4e44-96f0-8381e5c06952","email":"alexmeira@autopecascarretao.com.br","name":"Alex Santos","phone":"","cpf":"630150700
+
+
+Pagamentos
+(8)
+6
+1
+1
+PagHiper Config
+1.33s
+Configured: true
+
+API Key presente
+
+PagHiper Transactions
+7.64s
+18 transacoes
+
+MercadoPago Config
+1.50s
+Configured: false
+
+MercadoPago Test Connection
+961ms
+Mercado Pago não configurado.
+
+MercadoPago Transactions
+8.56s
+0 transacoes MP
+
+SafraPay Config publica
+581ms
+Enabled: true, Parcelas: 12
+
+Shipping Config
+1.10s
+CEP origem: , 0 transportadoras, Mode: api
+
+Shipping Tables
+722ms
+0 tabelas de frete
+
+
+Marketing
+(12)
+11
+1
+Admin Coupons
+4.76s
+1 cupons (1 ativos)
+
+Validate Coupon (inexistente)
+1.04s
+Corretamente rejeitado: Cupom não encontrado
+
+Email Marketing Config
+6.36s
+SMTP: mail.autopecascarretao.com.br
+
+Email Subscribers
+1.03s
+2 assinantes
+
+Email Templates
+12.54s
+0 templates
+
+Email Campaigns
+9.06s
+0 campanhas
+
+Email Send Logs
+1.07s
+0 logs de envio
+
+Affiliate Config
+10.70s
+Enabled: true, Comissao: 5%
+
+Affiliates List
+1.22s
+0 afiliados
+
+WhatsApp Config
+1.13s
+Enabled: false, Provider: zenvia
+
+Abandoned Carts
+1.20s
+1 carrinhos abandonados
+
+Exit Intent Leads
+1.01s
+2 leads capturados
+
+
+Avaliacoes & Garantia
+(3)
+3
+Admin Reviews (all)
+8.26s
+0 reviews totais
+
+Admin Review Stats
+3.57s
+Pending: 0, Approved: 0, Rejected: 0, Images: 0
+
+Warranty Plans (admin)
+1.00s
+0 planos (0 ativos)
+
+
+Avancado
+(6)
+6
+LGPD Requests
+1.16s
+1 solicitacoes (0 pendentes)
+
+SisFrete WT Config
+1.08s
+Enabled: true
+
+Canal: Carretao Auto Pecas
+
+SisFrete WT Sent Orders
+1.18s
+0 pedidos enviados
+
+SisFrete Delivery Config
+1.08s
+Enabled: false
+
+Auto-Categorize Data
+3.08s
+3330 produtos, 16 categorias, 1000 metas
+
+SIGE API Docs
+797ms
+34 secoes (124661 bytes)

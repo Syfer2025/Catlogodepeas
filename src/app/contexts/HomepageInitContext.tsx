@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import * as api from "../services/api";
 import type { HomepageInitData, BannerItem, GA4Config, CategoryNode, SuperPromo, PriceConfig } from "../services/api";
 
@@ -27,6 +27,25 @@ var _cachedData: HomepageInitData | null = null;
 var _cachedAt: number = 0;
 var _fetchPromise: Promise<HomepageInitData> | null = null;
 
+// ── Version counter: incremented when cache is invalidated ──
+// The provider subscribes to this so it can re-fetch even without remounting.
+var _cacheVersion = 0;
+var _cacheListeners: Array<(v: number) => void> = [];
+
+function _notifyListeners(): void {
+  for (var i = 0; i < _cacheListeners.length; i++) {
+    _cacheListeners[i](_cacheVersion);
+  }
+}
+
+function _subscribe(listener: (v: number) => void): () => void {
+  _cacheListeners.push(listener);
+  return function () {
+    var idx = _cacheListeners.indexOf(listener);
+    if (idx !== -1) _cacheListeners.splice(idx, 1);
+  };
+}
+
 function _isCacheValid(): boolean {
   return !!_cachedData && (Date.now() - _cachedAt) < CACHE_TTL_MS;
 }
@@ -36,6 +55,8 @@ export function invalidateHomepageCache(): void {
   _cachedData = null;
   _cachedAt = 0;
   _fetchPromise = null;
+  _cacheVersion++;
+  _notifyListeners();
 }
 
 function fetchHomepageInitOnce(): Promise<HomepageInitData> {
@@ -85,23 +106,25 @@ export function HomepageInitProvider({ children }: { children: ReactNode }) {
   var [loading, setLoading] = useState(!_isCacheValid());
   var [error, setError] = useState<string | null>(null);
   var mounted = useRef(true);
+  var lastFetchedVersion = useRef(_cacheVersion);
 
-  useEffect(function () {
-    mounted.current = true;
-
-    // Always re-fetch if cache is stale or missing
+  // Core fetch logic — extracted so it can be called on mount AND on invalidation
+  var doFetch = useCallback(function () {
     if (_isCacheValid()) {
       setData(_cachedData);
       setLoading(false);
+      lastFetchedVersion.current = _cacheVersion;
       return;
     }
 
     setLoading(true);
+    var fetchVersion = _cacheVersion;
     fetchWithContextRetry()
       .then(function (result) {
         if (mounted.current) {
           setData(result);
           setLoading(false);
+          lastFetchedVersion.current = fetchVersion;
         }
       })
       .catch(function (e) {
@@ -111,9 +134,25 @@ export function HomepageInitProvider({ children }: { children: ReactNode }) {
           setLoading(false);
         }
       });
+  }, []);
 
+  // Initial fetch on mount
+  useEffect(function () {
+    mounted.current = true;
+    doFetch();
     return function () { mounted.current = false; };
   }, []);
+
+  // Subscribe to cache invalidation events — re-fetch when version changes
+  useEffect(function () {
+    var unsub = _subscribe(function (newVersion) {
+      if (newVersion > lastFetchedVersion.current && mounted.current) {
+        console.log("[HomepageInit] Cache invalidated (v" + newVersion + "), re-fetching...");
+        doFetch();
+      }
+    });
+    return unsub;
+  }, [doFetch]);
 
   return (
     <HomepageInitContext.Provider value={{ data, loading, error }}>

@@ -504,12 +504,14 @@ function SendOrderTab() {
         idCotacao: selectedOrder.shippingOption?.sisfreteQuoteId || undefined,
         valorFrete: selectedOrder.shippingOption?.price || 0,
         valorPedido: selectedOrder.total || 0,
+        // Physical data (peso/dims) is auto-enriched by the server from KV/SIGE
+        // before sending to SisFrete WT — zeros here act as placeholders
         produtos: (selectedOrder.items || []).map((it, idx) => ({
           codigo: it.sku || "ITEM" + idx,
-          altura: 10,
-          largura: 15,
-          comprimento: 20,
-          peso: 1,
+          altura: 0,
+          largura: 0,
+          comprimento: 0,
+          peso: 0,
           quantidade: it.quantidade || 1,
           valor: it.valorUnitario || 0,
           cubicoComFator: 0,

@@ -4,7 +4,8 @@ import type { CategoryNode } from "../../services/api";
 import * as api from "../../services/api";
 import { defaultCategoryTree, countNodes } from "../../data/categoryTree";
 import { getValidAdminToken } from "./adminAuth";
-const AdminBulkCategoryAssign = lazy(function () { return import("./AdminBulkCategoryAssign").then(function (m) { return { default: m.AdminBulkCategoryAssign }; }); });
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
+const AdminBulkCategoryAssign = lazyWithRetry(function () { return import("./AdminBulkCategoryAssign").then(function (m) { return { default: m.AdminBulkCategoryAssign }; }); });
 
 type SubTab = "tree" | "bulk-assign";
 

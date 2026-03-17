@@ -114,6 +114,10 @@ export function AdminSuperPromo() {
 
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
 
+  // Debug state
+  const [debugData, setDebugData] = useState<any>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+
   const getToken = async (): Promise<string> => {
     const token = await getValidAdminToken();
     if (!token) throw new Error("Sessão expirada.");
@@ -302,6 +306,43 @@ export function AdminSuperPromo() {
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 flex items-center gap-2" style={{ fontSize: "0.82rem" }}><AlertTriangle className="w-4 h-4 shrink-0" />{error}</div>}
+
+      {/* ── Debug ── */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={async () => {
+              setDebugLoading(true);
+              setDebugData(null);
+              try {
+                const [debug, activeTest] = await Promise.all([
+                  api.debugPromo(),
+                  api.debugPromoActiveTest(),
+                ]);
+                setDebugData({ kvDebug: debug, homepageInitSimulation: activeTest });
+              } catch (e: any) {
+                setDebugData({ error: e.message });
+              } finally {
+                setDebugLoading(false);
+              }
+            }}
+            disabled={debugLoading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+            style={{ fontSize: "0.78rem", fontWeight: 600 }}
+          >
+            {debugLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+            Diagnosticar Promo
+          </button>
+          <span className="text-gray-400" style={{ fontSize: "0.72rem" }}>
+            Verifica o que o servidor vê no KV e por que a promo aparece/não aparece na home
+          </span>
+        </div>
+        {debugData && (
+          <pre className="mt-3 p-3 bg-white border border-gray-200 rounded-lg text-gray-700 overflow-x-auto" style={{ fontSize: "0.7rem", lineHeight: 1.5 }}>
+            {JSON.stringify(debugData, null, 2)}
+          </pre>
+        )}
+      </div>
 
       {/* ── Status ── */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

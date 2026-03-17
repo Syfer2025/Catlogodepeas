@@ -1,57 +1,59 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { Link } from "react-router";
-import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle } from "lucide-react";
+import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken, refreshAdminToken, clearAdminStorage, ADMIN_EMAIL_KEY, ADMIN_NAME_KEY } from "./adminAuth";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
 
 var ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
 
 // ── Lazy-loaded admin tab components (only load when the tab is activated) ──
-const AdminProducts = lazy(function () { return import("./AdminProducts").then(function (m) { return { default: m.AdminProducts }; }); });
-const AdminCategories = lazy(function () { return import("./AdminCategories").then(function (m) { return { default: m.AdminCategories }; }); });
-const AdminSettings = lazy(function () { return import("./AdminSettings").then(function (m) { return { default: m.AdminSettings }; }); });
-const AdminAttributes = lazy(function () { return import("./AdminAttributes").then(function (m) { return { default: m.AdminAttributes }; }); });
-const AdminClients = lazy(function () { return import("./AdminClients").then(function (m) { return { default: m.AdminClients }; }); });
-const AdminApiSige = lazy(function () { return import("./AdminApiSige").then(function (m) { return { default: m.AdminApiSige }; }); });
-const AdminPagHiper = lazy(function () { return import("./AdminPagHiper").then(function (m) { return { default: m.AdminPagHiper }; }); });
-const AdminShipping = lazy(function () { return import("./AdminShipping").then(function (m) { return { default: m.AdminShipping }; }); });
-const AdminMercadoPago = lazy(function () { return import("./AdminMercadoPago").then(function (m) { return { default: m.AdminMercadoPago }; }); });
-const AdminOrders = lazy(function () { return import("./AdminOrders").then(function (m) { return { default: m.AdminOrders }; }); });
-const AdminAuditLog = lazy(function () { return import("./AdminAuditLog").then(function (m) { return { default: m.AdminAuditLog }; }); });
-const AdminBanners = lazy(function () { return import("./AdminBanners").then(function (m) { return { default: m.AdminBanners }; }); });
-const AdminSuperPromo = lazy(function () { return import("./AdminSuperPromo").then(function (m) { return { default: m.AdminSuperPromo }; }); });
-const AdminAdmins = lazy(function () { return import("./AdminAdmins").then(function (m) { return { default: m.AdminAdmins }; }); });
-const AdminHomepageCategories = lazy(function () { return import("./AdminHomepageCategories").then(function (m) { return { default: m.AdminHomepageCategories }; }); });
-const AdminMidBanners = lazy(function () { return import("./AdminMidBanners").then(function (m) { return { default: m.AdminMidBanners }; }); });
-const AdminFooterBadges = lazy(function () { return import("./AdminFooterBadges").then(function (m) { return { default: m.AdminFooterBadges }; }); });
-const AdminEmailMarketing = lazy(function () { return import("./AdminEmailMarketing").then(function (m) { return { default: m.AdminEmailMarketing }; }); });
-const AdminDashboard = lazy(function () { return import("./AdminDashboard").then(function (m) { return { default: m.AdminDashboard }; }); });
-const AdminCoupons = lazy(function () { return import("./AdminCoupons").then(function (m) { return { default: m.AdminCoupons }; }); });
-const AdminLgpdRequests = lazy(function () { return import("./AdminLgpdRequests").then(function (m) { return { default: m.AdminLgpdRequests }; }); });
-const AdminBrands = lazy(function () { return import("./AdminBrands").then(function (m) { return { default: m.AdminBrands }; }); });
-const AdminAutoCateg = lazy(function () { return import("./AdminAutoCateg").then(function (m) { return { default: m.AdminAutoCateg }; }); });
-const AdminReviews = lazy(function () { return import("./AdminReviews").then(function (m) { return { default: m.AdminReviews }; }); });
-const AdminWarranty = lazy(function () { return import("./AdminWarranty").then(function (m) { return { default: m.AdminWarranty }; }); });
-const AdminAffiliates = lazy(function () { return import("./AdminAffiliates").then(function (m) { return { default: m.AdminAffiliates }; }); });
-const AdminBranches = lazy(function () { return import("./AdminBranches").then(function (m) { return { default: m.AdminBranches }; }); });
-const AdminSafrapay = lazy(function () { return import("./AdminSafrapay").then(function (m) { return { default: m.AdminSafrapay }; }); });
-const AdminSisfreteWT = lazy(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
-const AdminRegressionTest = lazy(function () { return import("./AdminRegressionTest").then(function (m) { return { default: m.AdminRegressionTest }; }); });
-const AdminErrorScanner = lazy(function () { return import("./AdminErrorScanner").then(function (m) { return { default: m.AdminErrorScanner }; }); });
-const AdminMarketing = lazy(function () { return import("./AdminMarketing").then(function (m) { return { default: m.AdminMarketing }; }); });
-const AdminExitIntent = lazy(function () { return import("./AdminExitIntent").then(function (m) { return { default: m.AdminExitIntent }; }); });
-const AdminWhatsApp = lazy(function () { return import("./AdminWhatsApp").then(function (m) { return { default: m.AdminWhatsApp }; }); });
+const AdminProducts = lazyWithRetry(function () { return import("./AdminProducts").then(function (m) { return { default: m.AdminProducts }; }); });
+const AdminCategories = lazyWithRetry(function () { return import("./AdminCategories").then(function (m) { return { default: m.AdminCategories }; }); });
+const AdminSettings = lazyWithRetry(function () { return import("./AdminSettings").then(function (m) { return { default: m.AdminSettings }; }); });
+const AdminAttributes = lazyWithRetry(function () { return import("./AdminAttributes").then(function (m) { return { default: m.AdminAttributes }; }); });
+const AdminClients = lazyWithRetry(function () { return import("./AdminClients").then(function (m) { return { default: m.AdminClients }; }); });
+const AdminApiSige = lazyWithRetry(function () { return import("./AdminApiSige").then(function (m) { return { default: m.AdminApiSige }; }); });
+const AdminPagHiper = lazyWithRetry(function () { return import("./AdminPagHiper").then(function (m) { return { default: m.AdminPagHiper }; }); });
+const AdminShipping = lazyWithRetry(function () { return import("./AdminShipping").then(function (m) { return { default: m.AdminShipping }; }); });
+const AdminMercadoPago = lazyWithRetry(function () { return import("./AdminMercadoPago").then(function (m) { return { default: m.AdminMercadoPago }; }); });
+const AdminOrders = lazyWithRetry(function () { return import("./AdminOrders").then(function (m) { return { default: m.AdminOrders }; }); });
+const AdminAuditLog = lazyWithRetry(function () { return import("./AdminAuditLog").then(function (m) { return { default: m.AdminAuditLog }; }); });
+const AdminBanners = lazyWithRetry(function () { return import("./AdminBanners").then(function (m) { return { default: m.AdminBanners }; }); });
+const AdminSuperPromo = lazyWithRetry(function () { return import("./AdminSuperPromo").then(function (m) { return { default: m.AdminSuperPromo }; }); });
+const AdminAdmins = lazyWithRetry(function () { return import("./AdminAdmins").then(function (m) { return { default: m.AdminAdmins }; }); });
+const AdminHomepageCategories = lazyWithRetry(function () { return import("./AdminHomepageCategories").then(function (m) { return { default: m.AdminHomepageCategories }; }); });
+const AdminMidBanners = lazyWithRetry(function () { return import("./AdminMidBanners").then(function (m) { return { default: m.AdminMidBanners }; }); });
+const AdminFooterBadges = lazyWithRetry(function () { return import("./AdminFooterBadges").then(function (m) { return { default: m.AdminFooterBadges }; }); });
+const AdminEmailMarketing = lazyWithRetry(function () { return import("./AdminEmailMarketing").then(function (m) { return { default: m.AdminEmailMarketing }; }); });
+const AdminDashboard = lazyWithRetry(function () { return import("./AdminDashboard").then(function (m) { return { default: m.AdminDashboard }; }); });
+const AdminCoupons = lazyWithRetry(function () { return import("./AdminCoupons").then(function (m) { return { default: m.AdminCoupons }; }); });
+const AdminLgpdRequests = lazyWithRetry(function () { return import("./AdminLgpdRequests").then(function (m) { return { default: m.AdminLgpdRequests }; }); });
+const AdminBrands = lazyWithRetry(function () { return import("./AdminBrands").then(function (m) { return { default: m.AdminBrands }; }); });
+const AdminAutoCateg = lazyWithRetry(function () { return import("./AdminAutoCateg").then(function (m) { return { default: m.AdminAutoCateg }; }); });
+const AdminReviews = lazyWithRetry(function () { return import("./AdminReviews").then(function (m) { return { default: m.AdminReviews }; }); });
+const AdminWarranty = lazyWithRetry(function () { return import("./AdminWarranty").then(function (m) { return { default: m.AdminWarranty }; }); });
+const AdminAffiliates = lazyWithRetry(function () { return import("./AdminAffiliates").then(function (m) { return { default: m.AdminAffiliates }; }); });
+const AdminBranches = lazyWithRetry(function () { return import("./AdminBranches").then(function (m) { return { default: m.AdminBranches }; }); });
+const AdminSafrapay = lazyWithRetry(function () { return import("./AdminSafrapay").then(function (m) { return { default: m.AdminSafrapay }; }); });
+const AdminSisfreteWT = lazyWithRetry(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
+const AdminRegressionTest = lazyWithRetry(function () { return import("./AdminRegressionTest").then(function (m) { return { default: m.AdminRegressionTest }; }); });
+const AdminErrorScanner = lazyWithRetry(function () { return import("./AdminErrorScanner").then(function (m) { return { default: m.AdminErrorScanner }; }); });
+const AdminMarketing = lazyWithRetry(function () { return import("./AdminMarketing").then(function (m) { return { default: m.AdminMarketing }; }); });
+const AdminExitIntent = lazyWithRetry(function () { return import("./AdminExitIntent").then(function (m) { return { default: m.AdminExitIntent }; }); });
+const AdminWhatsApp = lazyWithRetry(function () { return import("./AdminWhatsApp").then(function (m) { return { default: m.AdminWhatsApp }; }); });
 
-const AdminReels = lazy(function () { return import("./AdminReels").then(function (m) { return { default: m.AdminReels }; }); });
-const AdminInfluencers = lazy(function () { return import("./AdminInfluencers").then(function (m) { return { default: m.AdminInfluencers }; }); });
+const AdminReels = lazyWithRetry(function () { return import("./AdminReels").then(function (m) { return { default: m.AdminReels }; }); });
+const AdminInfluencers = lazyWithRetry(function () { return import("./AdminInfluencers").then(function (m) { return { default: m.AdminInfluencers }; }); });
 
-const AdminInfrastructure = lazy(function () { return import("./AdminInfrastructure").then(function (m) { return { default: m.AdminInfrastructure }; }); });
-const AdminFaq = lazy(function () { return import("./AdminFaq").then(function (m) { return { default: m.AdminFaq }; }); });
+const AdminInfrastructure = lazyWithRetry(function () { return import("./AdminInfrastructure").then(function (m) { return { default: m.AdminInfrastructure }; }); });
+const AdminFaq = lazyWithRetry(function () { return import("./AdminFaq").then(function (m) { return { default: m.AdminFaq }; }); });
+const AdminDimensions = lazyWithRetry(function () { return import("./AdminDimensions").then(function (m) { return { default: m.AdminDimensions }; }); });
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "safrapay" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq";
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "safrapay" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -79,6 +81,7 @@ const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "paghiper", label: "PagHiper (PIX/Boleto)", icon: CreditCard },
   { id: "mercadopago", label: "Mercado Pago", icon: Wallet },
   { id: "safrapay", label: "SafraPay (Cartao)", icon: CreditCard },
+  { id: "dimensions", label: "Dimensoes & Peso", icon: Ruler },
   { id: "shipping", label: "SisFrete Config", icon: Truck },
   { id: "sisfrete-wt", label: "Tabela de Frete", icon: Truck },
   { id: "api-sige", label: "API SIGE / ERP", icon: Plug },
@@ -123,7 +126,7 @@ const navSections: NavSection[] = [
   { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
   { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
   { label: "Aparencia", icon: Palette, items: ["reels", "influencers", "banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches", "faq"], collapsible: true },
-  { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "safrapay", "shipping", "sisfrete-wt"], collapsible: true },
+  { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "safrapay", "dimensions", "shipping", "sisfrete-wt"], collapsible: true },
   { label: "Integracoes", icon: Plug, items: ["api-sige"], collapsible: true },
   { label: "Sistema", icon: Wrench, items: ["settings", "admins", "audit-log", "lgpd-requests", "regression-test", "error-scanner", "infrastructure"], collapsible: true },
 ];
@@ -589,6 +592,8 @@ export function AdminPage() {
         return <AdminInfrastructure />;
       case "faq":
         return <AdminFaq />;
+      case "dimensions":
+        return <AdminDimensions />;
     }
   };
 
