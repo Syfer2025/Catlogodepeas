@@ -14924,6 +14924,15 @@ app.post(BASE + "/user/save-order", async (c) => {
     // Payment status: all payments start as awaiting_payment (MP webhook confirms later)
     var initialStatus = "awaiting_payment";
 
+    // EXCEPTION: Credit card payments processed via Checkout Transparente are
+    // verified server-side BEFORE save-order is called.  When the frontend sends
+    // initialStatus="paid" together with a valid mpPaymentId, we trust it because
+    // the card was already charged in /mercadopago/process-card-payment.
+    if (body.initialStatus === "paid" && (paymentMethod === "cartao_credito" || paymentMethod === "credit_card") && body.mpPaymentId) {
+      initialStatus = "paid";
+      console.log("[save-order] Credit card payment approved — setting initialStatus=paid, mpPaymentId=" + body.mpPaymentId);
+    }
+
     const orderRecord: any = {
       localOrderId,
       sigeOrderId: sigeOrderId || null,
@@ -14970,9 +14979,25 @@ app.post(BASE + "/user/save-order", async (c) => {
     // Coupon info
     if (body.coupon) orderRecord.coupon = body.coupon;
 
+    // Store mpPaymentId if provided (useful for lookups)
+    if (body.mpPaymentId) orderRecord.mpPaymentId = String(body.mpPaymentId);
+    if (initialStatus === "paid") orderRecord.paidAt = new Date().toISOString();
+
     const kvKey = `user_order:${userId}:${localOrderId}`;
     await kv.set(kvKey, JSON.stringify(orderRecord));
     // save-order: saved successfully
+
+    // If already paid (credit card), confirm SIGE order + send payment email
+    if (initialStatus === "paid") {
+      if (orderRecord.sigeOrderId) {
+        confirmSigeOrder(String(orderRecord.sigeOrderId)).catch(function(ce) {
+          console.error("[save-order] SIGE confirm on paid order error (non-fatal): " + (ce.message || ce));
+        });
+      }
+      _sendPaymentApprovedEmail(orderRecord).catch(function(pe) {
+        console.error("[save-order] Payment approved email error (non-fatal): " + pe);
+      });
+    }
 
     // Fire-and-forget: send order confirmation email + admin notification
     _sendOrderConfirmationEmail(orderRecord).catch(function(emailErr) {
@@ -19588,23 +19613,43 @@ function _createSmtpTransport(cfg: any) {
     },
     tls: {
       rejectUnauthorized: false
-    }
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
+    pool: false,
+    maxConnections: 1,
   });
 }
 
-async function _sendSmtpEmail(cfg: any, opts: { from: string; to: string; subject: string; html: string; replyTo?: string }) {
-  var transport = _createSmtpTransport(cfg);
-  var mailOpts: any = {
-    from: opts.from,
-    to: opts.to,
-    subject: opts.subject,
-    html: opts.html,
-  };
-  if (opts.replyTo) {
-    mailOpts.replyTo = opts.replyTo;
+async function _sendSmtpEmailWithRetry(cfg: any, opts: { from: string; to: string; subject: string; html: string; replyTo?: string }, maxRetries = 2) {
+  var lastErr: any;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log("[SMTP] Retry attempt " + attempt + "/" + maxRetries + " for " + opts.to);
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+      }
+      var transport = _createSmtpTransport(cfg);
+      var mailOpts: any = { from: opts.from, to: opts.to, subject: opts.subject, html: opts.html };
+      if (opts.replyTo) mailOpts.replyTo = opts.replyTo;
+      var info = await transport.sendMail(mailOpts);
+      return info;
+    } catch (e: any) {
+      lastErr = e;
+      var code = e.code || "";
+      var msg = e.message || String(e);
+      console.error("[SMTP] Attempt " + attempt + " failed: " + code + " " + msg);
+      if (code !== "ETIMEDOUT" && code !== "ESOCKET" && code !== "ECONNECTION" && !msg.includes("timeout") && !msg.includes("Greeting never received")) {
+        throw e;
+      }
+    }
   }
-  var info = await transport.sendMail(mailOpts);
-  return info;
+  throw lastErr;
+}
+
+async function _sendSmtpEmail(cfg: any, opts: { from: string; to: string; subject: string; html: string; replyTo?: string }) {
+  return _sendSmtpEmailWithRetry(cfg, opts);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

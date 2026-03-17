@@ -1045,7 +1045,9 @@ export function CheckoutPage() {
 
         setTxId(ccResult.payment_id || null);
 
-        // Save order
+        // Save order — for approved card payments, set initialStatus="paid" so
+        // the order is immediately marked as paid in "Meus Pedidos"
+        var ccInitialStatus = ccResult.status === "approved" ? "paid" : undefined;
         try {
           await api.saveUserOrder(accessToken, {
             localOrderId,
@@ -1058,6 +1060,8 @@ export function CheckoutPage() {
             shippingAddress: orderShippingAddr,
             shippingOption: orderShippingOpt,
             coupon: orderCouponInfo,
+            initialStatus: ccInitialStatus,
+            mpPaymentId: ccResult.payment_id,
           } as any);
           trackAffiliateSale(localOrderId, totalWithShipping, profile.email, accessToken);
           _useCouponOnce();
@@ -1603,6 +1607,13 @@ export function CheckoutPage() {
     );
   }
 
+  // ─── Auto-redirect on success ───
+  useEffect(() => {
+    if (step !== "success") return;
+    const t = setTimeout(() => navigate("/minha-conta?tab=pedidos", { replace: true }), 5000);
+    return () => clearTimeout(t);
+  }, [step, navigate]);
+
   // ─── Success ───
   if (step === "success") {
     return (
@@ -1650,6 +1661,14 @@ export function CheckoutPage() {
               </p>
             )}
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                to="/minha-conta?tab=pedidos"
+                className="flex items-center justify-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-lg hover:bg-red-700 transition-colors"
+                style={{ fontSize: "0.88rem", fontWeight: 600 }}
+              >
+                <Package className="w-4 h-4" />
+                Ver Meus Pedidos
+              </Link>
               <a
                 href={`https://wa.me/5544997330202?text=${encodeURIComponent(
                   `Olá! Meu pagamento foi confirmado.\nPedido: ${orderId}${sigeOrderId ? `\nSIGE: #${sigeOrderId}` : ""}\nNome: ${effectiveName}`
@@ -1670,6 +1689,9 @@ export function CheckoutPage() {
                 Continuar Comprando
               </Link>
             </div>
+            <p className="text-gray-400 mt-4" style={{ fontSize: "0.75rem" }}>
+              Você será redirecionado para seus pedidos em alguns segundos...
+            </p>
           </div>
         </div>
       </div>
