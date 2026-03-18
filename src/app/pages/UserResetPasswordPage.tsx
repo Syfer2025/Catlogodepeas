@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { Link, useNavigate } from "react-router";
 import Lock from "lucide-react/dist/esm/icons/lock.js";
 import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
@@ -131,7 +131,7 @@ export function UserResetPasswordPage() {
       }
 
       setMode("success");
-      setTimeout(() => navigate("/minha-conta"), 3000);
+      setTimeout(() => startTransition(() => { navigate("/minha-conta"); }), 3000);
     } catch (err: any) {
       console.error("Reset password error:", err);
       setError(err.message || "Erro de conexão. Tente novamente.");

@@ -4,7 +4,7 @@
  * imagem, titulo e SKU. Historico salvo em localStorage (max 5). Versoes: header e mobile.
  * Prefetch: ao selecionar, prefetcha chunk do catalogo e detalhe do produto.
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, startTransition } from "react";
 import { useNavigate } from "react-router";
 import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
 import "../utils/emptyStateAnimations";
@@ -144,7 +144,7 @@ export function SearchAutocomplete({
   const goToProduct = (sku: string) => {
     if (query.trim().length >= 2) saveSearchHistory(query.trim());
     suppressHistoryRef.current = true;
-    navigate("/produto/" + encodeURIComponent(sku));
+    startTransition(() => { navigate("/produto/" + encodeURIComponent(sku)); });
     setQuery("");
     setIsOpen(false);
     setShowHistory(false);
@@ -157,7 +157,7 @@ export function SearchAutocomplete({
     if (query.trim()) {
       saveSearchHistory(query.trim());
       suppressHistoryRef.current = true;
-      navigate("/catalogo?busca=" + encodeURIComponent(query.trim()));
+      startTransition(() => { navigate("/catalogo?busca=" + encodeURIComponent(query.trim())); });
       setQuery("");
       setIsOpen(false);
       setShowHistory(false);

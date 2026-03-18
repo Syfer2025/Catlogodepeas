@@ -239,14 +239,15 @@ export function CouponMegaMenu() {
         className={
           "flex items-center gap-1.5 px-4 py-2.5 relative cursor-pointer " +
           (isOpen
-            ? "bg-red-600 text-white rounded-t-lg z-[201]"
-            : "text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg")
+            ? "text-white rounded-t-lg z-[201]"
+            : "text-white hover:bg-white/15 rounded-lg")
         }
         style={{
           fontSize: "0.9rem",
           fontWeight: isOpen ? 600 : 500,
           transition: "background-color 220ms ease, color 220ms ease, box-shadow 220ms ease, border-radius 220ms ease, font-weight 220ms ease",
-          boxShadow: isOpen ? "0 -2px 12px rgba(220,38,38,0.15)" : "none",
+          boxShadow: isOpen ? "0 -2px 12px rgba(222,3,22,0.2)" : "none",
+          backgroundColor: isOpen ? "#b50212" : undefined,
         }}
       >
         <Ticket

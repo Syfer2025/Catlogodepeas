@@ -34,12 +34,12 @@ const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b0
 // A second "belt-and-suspenders" ping fires after 2s to cover cases where
 // the first attempt was swallowed by the browser during page load.
 // ═══════════════════════════════════════════════════════════════════════════
-var _warmupDone = false;
+let _warmupDone = false;
 
 // Warmup promise — resolves when edge function is confirmed hot,
 // or after a max wait (so we never block indefinitely).
-var _warmupResolve: (() => void) | null = null;
-var _warmupPromise: Promise<void> = new Promise(function (resolve) {
+let _warmupResolve: (() => void) | null = null;
+const _warmupPromise: Promise<void> = new Promise(function (resolve) {
   _warmupResolve = resolve;
 });
 // Safety: auto-resolve after 10s so requests are never blocked forever
@@ -55,15 +55,11 @@ function _markWarmupReady() {
 function _doWarmup() {
   if (_warmupDone) return;
   _warmupDone = true;
-  var url = BASE_URL + "/health";
-  // Try sendBeacon first — cheapest possible fire-and-forget
-  if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-    try { navigator.sendBeacon(url); } catch (_e) { /* ignore */ }
-  }
-  // Also fire a proper fetch so the edge function fully boots (sendBeacon
-  // doesn't guarantee the response is read / runtime fully inits).
-  var ac = new AbortController();
-  var tid = setTimeout(function () { ac.abort(); }, 12000);
+  // NOTE: sendBeacon removed — it sends POST but /health is GET-only,
+  // so it would get 405 and NOT warm the edge function.
+  const url = BASE_URL + "/health";
+  const ac = new AbortController();
+  const tid = setTimeout(function () { ac.abort(); }, 12000);
   fetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + publicAnonKey },
@@ -78,19 +74,21 @@ function _doWarmup() {
     }).catch(function () { /* silent — cache priming is best-effort */ });
   }).catch(function () {
     clearTimeout(tid);
-    // Silent — warmup failure is non-critical; retry logic in request() handles it
+    // Warmup failed — mark ready so requests proceed immediately
+    // instead of waiting for the 10s safety timeout.
+    _markWarmupReady();
   });
 }
 
 // Track whether warmup has completed (edge function is hot)
-var _warmupReady = false;
+let _warmupReady = false;
 
 // Fire immediately at module load
 _doWarmup();
 
 // Belt-and-suspenders: second ping after 2s in case the first was throttled
 setTimeout(function () {
-  var url = BASE_URL + "/health";
+  const url = BASE_URL + "/health";
   fetch(url, {
     method: "GET",
     headers: { Authorization: "Bearer " + publicAnonKey },
@@ -134,53 +132,68 @@ async function _requestFastFail<T>(path: string, options?: RequestInit): Promise
       }) : new Promise<void>(function () {}),
     ]);
   }
-  await _acquireSlotWithSignal(callerSignal);
-  try {
-    if (callerSignal && callerSignal.aborted) {
-      throw new DOMException("Aborted", "AbortError");
-    }
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function () { controller.abort(); }, _FAST_TIMEOUT_MS);
-    var _onCallerAbort: (() => void) | null = null;
-    if (callerSignal) {
-      _onCallerAbort = function () { controller.abort(); };
-      callerSignal.addEventListener("abort", _onCallerAbort, { once: true });
-    }
+  // Retry once on network errors ("Failed to fetch" = TCP/DNS/TLS failure, not HTTP error)
+  var _maxAttempts = 2;
+  var _lastErr: any = null;
+  for (var _attempt = 0; _attempt < _maxAttempts; _attempt++) {
+    await _acquireSlotWithSignal(callerSignal);
     try {
-      var _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
-      var _finalPath = path;
-      if (_merged["X-User-Token"]) {
-        var _ut = _merged["X-User-Token"];
-        delete _merged["X-User-Token"];
-        _finalPath = _finalPath + (_finalPath.includes("?") ? "&" : "?") + "_ut=" + encodeURIComponent(_ut);
-      }
-      var res = await fetch(BASE_URL + _finalPath, {
-        ...options,
-        headers: _merged,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
-      if (!res.ok) {
-        var errorBody = await res.json().catch(function () { return {}; });
-        var msg = (errorBody as any)?.error || "HTTP " + res.status + " on " + path;
-        throw new Error(msg);
-      }
-      return res.json();
-    } catch (e: any) {
-      clearTimeout(timeoutId);
-      if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
       if (callerSignal && callerSignal.aborted) {
         throw new DOMException("Aborted", "AbortError");
       }
-      if (e.name === "AbortError") {
-        console.warn("[API] Fast-fail timeout (" + (_FAST_TIMEOUT_MS / 1000) + "s) on " + path);
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, _FAST_TIMEOUT_MS);
+      var _onCallerAbort: (() => void) | null = null;
+      if (callerSignal) {
+        _onCallerAbort = function () { controller.abort(); };
+        callerSignal.addEventListener("abort", _onCallerAbort, { once: true });
       }
-      throw e;
+      try {
+        var _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
+        var _finalPath = path;
+        if (_merged["X-User-Token"]) {
+          var _ut = _merged["X-User-Token"];
+          delete _merged["X-User-Token"];
+          _finalPath = _finalPath + (_finalPath.includes("?") ? "&" : "?") + "_ut=" + encodeURIComponent(_ut);
+        }
+        var res = await fetch(BASE_URL + _finalPath, {
+          ...options,
+          headers: _merged,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
+        if (!res.ok) {
+          var errorBody = await res.json().catch(function () { return {}; });
+          var msg = (errorBody as any)?.error || "HTTP " + res.status + " on " + path;
+          throw new Error(msg);
+        }
+        return res.json();
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        if (_onCallerAbort && callerSignal) callerSignal.removeEventListener("abort", _onCallerAbort);
+        if (callerSignal && callerSignal.aborted) {
+          throw new DOMException("Aborted", "AbortError");
+        }
+        if (e.name === "AbortError") {
+          console.warn("[API] Fast-fail timeout (" + (_FAST_TIMEOUT_MS / 1000) + "s) on " + path);
+          throw e; // Don't retry timeouts
+        }
+        _lastErr = e;
+        // Retry only network errors (TypeError: Failed to fetch), not HTTP errors
+        var isNetworkErr = e instanceof TypeError && /failed to fetch/i.test(e.message);
+        if (isNetworkErr && _attempt < _maxAttempts - 1) {
+          console.warn("[API] Fast-fail network error on " + path + ", retrying in 1.5s... (attempt " + (_attempt + 1) + ")");
+          await new Promise(function (r) { setTimeout(r, 1500); });
+          continue;
+        }
+        throw e;
+      }
+    } finally {
+      _releaseSlot();
     }
-  } finally {
-    _releaseSlot();
   }
+  throw _lastErr || new Error("Unexpected: _requestFastFail exhausted attempts on " + path);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1345,6 +1358,18 @@ export const adminUpdateOrderStatus = (
     method: "POST",
     headers: { "X-User-Token": accessToken, "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+
+export const adminFixCardOrders = (accessToken: string) =>
+  request<{ success: boolean; fixed: number; skipped: number; notApproved: number; noPaymentId: number; fixedIds: string[]; notApprovedIds: string[] }>("/admin/fix-card-orders", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const adminRevertBlindFix = (accessToken: string) =>
+  request<{ success: boolean; reverted: number; reApproved: number; revertedIds: string[]; reApprovedIds: string[] }>("/admin/revert-blind-fix", {
+    method: "POST",
+    headers: { "X-User-Token": accessToken },
   });
 
 export const adminRetrySigeRegistration = (
@@ -3191,8 +3216,14 @@ export const calculateShipping = (
     body: JSON.stringify({ cep, items, totalValue }),
   });
 
-export const lookupCep = (cep: string) =>
-  request<CepInfo>(`/shipping/cep/${cep.replace(/\D/g, "")}`);
+export const lookupCep = (cep: string): Promise<CepInfo> => {
+  var digits = cep.replace(/\D/g, "");
+  // Reject obviously invalid CEPs client-side to avoid unnecessary API calls
+  if (digits.length !== 8 || /^0+$/.test(digits)) {
+    return Promise.reject(new Error("CEP invalido."));
+  }
+  return request<CepInfo>("/shipping/cep/" + digits);
+};
 
 // Test external shipping API (admin debug)
 export interface ShippingTestStep {
@@ -3929,6 +3960,8 @@ export interface HomepageInitData {
   marketingConfig?: MarketingConfig;
   exitIntentConfig?: ExitIntentConfig;
   googleReviewsConfig?: GoogleReviewsConfig;
+  /** Settings piggyback — eliminates separate GET /settings call */
+  settings?: { catalogMode: boolean; maintenanceMode: boolean };
 }
 
 /** Fetches all homepage data in a single API call */
@@ -4302,7 +4335,7 @@ export interface AdminPendingCounts {
 }
 
 export const getAdminPendingCounts = (accessToken: string) =>
-  request<AdminPendingCounts>("/admin/pending-counts", {
+  _requestFastFail<AdminPendingCounts>("/admin/pending-counts", {
     headers: { "X-User-Token": accessToken },
   });
 
@@ -5423,3 +5456,30 @@ export const clearPsiHistory = (accessToken: string) =>
     method: "DELETE",
     headers: { "X-User-Token": accessToken },
   });
+
+// ═══════════════════════════════════════════════════════════════════════
+// MEMORY CLEANUP — Clear stale in-flight maps and caches when the tab
+// is hidden (user switches away). This prevents memory leaks from
+// promises that will never resolve in a background tab, and ensures
+// fresh data when the user returns.
+// ═══════════════════════════════════════════════════════════════════════
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") {
+      // Clear in-flight dedup maps — promises may never resolve
+      _balanceInflight.clear();
+      _bulkBalanceInflight.clear();
+      // Flush pending balance batch with fallback data
+      if (_balanceBatchTimer) {
+        clearTimeout(_balanceBatchTimer);
+        _balanceBatchTimer = null;
+      }
+      if (_balanceBatchQueue.length > 0) {
+        const staleQueue = _balanceBatchQueue.splice(0);
+        for (let sq = 0; sq < staleQueue.length; sq++) {
+          staleQueue[sq].resolve({ sku: staleQueue[sq].sku, found: false, sige: true, quantidade: 0 } as any);
+        }
+      }
+    }
+  });
+}

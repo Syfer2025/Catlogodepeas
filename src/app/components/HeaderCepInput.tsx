@@ -162,8 +162,8 @@ export function HeaderCepInput() {
           (justSaved
             ? "bg-green-100 text-green-600"
             : savedCep
-              ? "bg-red-100 text-red-600"
-              : "bg-gray-200 text-gray-500 group-hover:bg-red-100 group-hover:text-red-500"
+              ? "bg-white/20 text-white"
+              : "bg-white/15 text-white/70 group-hover:bg-white/25 group-hover:text-white"
           )
         }>
           {justSaved ? (
@@ -176,32 +176,32 @@ export function HeaderCepInput() {
         <div className="text-left leading-none">
           {savedCep ? (
             <>
-              <p className="text-gray-700 group-hover:text-red-600 transition-colors" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+              <p className="text-white group-hover:text-gray-200 transition-colors" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
                 {isMobile ? formatCep(savedCep).slice(0, 5) + "..." : formatCep(savedCep)}
               </p>
               {savedCity && !isMobile ? (
-                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.64rem" }}>
+                <p className="text-white/60 mt-0.5" style={{ fontSize: "0.64rem" }}>
                   {savedCity}
                 </p>
               ) : (
-                <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.6rem" }}>
+                <p className="text-white/60 mt-0.5" style={{ fontSize: "0.6rem" }}>
                   {isMobile ? (savedCity ? savedCity.split("/")[1] : "CEP") : "Alterar"}
                 </p>
               )}
             </>
           ) : (
             <>
-              <p className="text-gray-500 group-hover:text-red-600 transition-colors" style={{ fontSize: isMobile ? "0.68rem" : "0.74rem", fontWeight: 500 }}>
+              <p className="text-white group-hover:text-gray-200 transition-colors" style={{ fontSize: isMobile ? "0.68rem" : "0.74rem", fontWeight: 500 }}>
                 {isMobile ? "CEP" : "Seu CEP"}
               </p>
-              <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.6rem" }}>
+              <p className="text-white/60 mt-0.5" style={{ fontSize: "0.6rem" }}>
                 {isMobile ? "Frete" : "Calcule o frete"}
               </p>
             </>
           )}
         </div>
 
-        <ChevronRight className="w-3 h-3 text-gray-300 group-hover:text-red-400 transition-colors hidden md:block" />
+        <ChevronRight className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors hidden md:block" />
       </button>
     );
   }
@@ -211,11 +211,11 @@ export function HeaderCepInput() {
     <div ref={containerRef} className="relative">
       {/* Trigger area - keeps consistent position */}
       <div className="flex items-center gap-1.5 md:gap-2 py-1.5 md:py-2 px-1">
-        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-red-100 text-red-600">
+        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-white/20 text-white">
           <MapPin className="w-3.5 h-3.5" />
         </div>
         <div className="text-left leading-none">
-          <p className="text-red-600" style={{ fontSize: isMobile ? "0.68rem" : "0.74rem", fontWeight: 600 }}>
+          <p className="text-white" style={{ fontSize: isMobile ? "0.68rem" : "0.74rem", fontWeight: 600 }}>
             {isMobile ? "CEP" : "Seu CEP"}
           </p>
         </div>

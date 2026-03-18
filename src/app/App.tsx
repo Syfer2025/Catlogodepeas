@@ -13,30 +13,23 @@
  * 5. WishlistProvider    → Favoritos sincronizados com servidor (se logado)
  * 6. RouterProvider      → React Router com Data Mode (routes.ts)
  *
- * PREFETCH: Apos 3s do mount, importa chunks mais usados (Catalogo + Detalhe)
- * para que navegacoes futuras sejam instantaneas (browser cacheia o modulo).
+ * PREFETCH: Delegado ao useIdlePrefetch() no Layout.tsx, que usa
+ * requestIdleCallback para carregar chunks progressivamente durante
+ * tempo ocioso do browser — mais eficiente que o setTimeout fixo anterior.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 import { RouterProvider } from "react-router";
-import { useEffect } from "react";
 import { router } from "./routes";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CartProvider } from "./contexts/CartContext";
 import { WishlistProvider } from "./contexts/WishlistContext";
 import { AffiliateProvider } from "./contexts/AffiliateContext";
 import { CatalogModeProvider } from "./contexts/CatalogModeContext";
-import { prefetchCatalog, prefetchProductDetail } from "./utils/prefetch";
 
 // Force clean rebuild
 export default function App() {
-  // Prefetch the most common route chunks after initial hydration
-  useEffect(function () {
-    var t = setTimeout(function () {
-      prefetchCatalog();
-      prefetchProductDetail();
-    }, 3000);
-    return function () { clearTimeout(t); };
-  }, []);
+  // Prefetch is now handled by useIdlePrefetch() in Layout.tsx
+  // which uses requestIdleCallback for better scheduling.
 
   return (
     <ErrorBoundary>

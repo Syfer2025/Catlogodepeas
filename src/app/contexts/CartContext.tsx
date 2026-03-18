@@ -101,7 +101,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     function onStorage(e: StorageEvent) {
       if (e.key !== CART_STORAGE_KEY) return;
       try {
-        var updated = e.newValue ? JSON.parse(e.newValue) : [];
+        const updated = e.newValue ? JSON.parse(e.newValue) : [];
         setItems(updated);
       } catch {}
     }

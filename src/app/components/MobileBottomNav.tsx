@@ -4,6 +4,7 @@
  * Oculta automaticamente durante scroll down; reaparece no scroll up.
  * Highlight ativo baseado na rota atual via useLocation().
  */
+import { startTransition } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Home, Heart, ShoppingCart, Ticket, User } from "lucide-react";
 import { useCart } from "../contexts/CartContext";
@@ -91,7 +92,7 @@ export function MobileBottomNav() {
   var isProfile = path === "/minha-conta" || path === "/conta";
 
   function goTo(to: string) {
-    navigate(to);
+    startTransition(function () { navigate(to); });
   }
 
   return (

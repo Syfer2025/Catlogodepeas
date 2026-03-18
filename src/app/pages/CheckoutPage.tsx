@@ -4,7 +4,7 @@
  * Pagamentos: PIX (PagHiper), Boleto (PagHiper), Mercado Pago, Cartão de Crédito (MP Checkout Transparente).
  * Integra: CartContext, Auth, GA4 (begin_checkout, purchase), Marketing.
  */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, startTransition } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { useCatalogMode } from "../contexts/CatalogModeContext";
 import ShoppingCart from "lucide-react/dist/esm/icons/shopping-cart.js";
@@ -464,7 +464,7 @@ export function CheckoutPage() {
     }
 
     // Clean URL params
-    navigate("/checkout", { replace: true });
+    startTransition(() => { navigate("/checkout", { replace: true }); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, mpReturnHandled, clearCart, trackEvent, totalWithShipping, navigate, accessToken, startMPPolling]);
 
@@ -1610,7 +1610,7 @@ export function CheckoutPage() {
   // ─── Auto-redirect on success ───
   useEffect(() => {
     if (step !== "success") return;
-    const t = setTimeout(() => navigate("/minha-conta?tab=pedidos", { replace: true }), 5000);
+    const t = setTimeout(() => startTransition(() => { navigate("/minha-conta?tab=pedidos", { replace: true }); }), 5000);
     return () => clearTimeout(t);
   }, [step, navigate]);
 

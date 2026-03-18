@@ -1,41 +1,13 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════════
- * LAYOUT.TSX — Shell principal da aplicacao (Header + Outlet + Footer + overlays)
- * ═══════════════════════════════════════════════════════════════════════════════
+ * Layout.tsx - Shell principal da aplicacao (Header + Outlet + Footer + overlays)
  *
  * Este componente envolve TODAS as paginas publicas via React Router <Outlet>.
- * O admin (/admin) tem layout proprio — nao passa por aqui.
- *
- * ESTRUTURA:
- * <MaintenanceGate>           → Bloqueia acesso se modo manutencao ativo
- *   <HomepageInitProvider>    → Cache centralizado dos dados da homepage
- *     <GTMProvider>           → Google Tag Manager
- *       <GA4Provider>         → Google Analytics 4
- *         <MarketingPixelsProvider> → Meta/TikTok Pixel
- *           <Header />        → Cabecalho com busca, carrinho, menu
- *           <Outlet />        → Conteudo da pagina atual (rota ativa)
- *           <Footer />        → Rodape (lazy)
- *           +overlays lazy:   CartDrawer, WhatsApp, Cookie, ExitIntent,
- *                             MobileNav, ScrollToTop, WebVitals, CartTracker
- *
- * IIFE (RUNS AT MODULE LOAD TIME, antes do React):
- * - Injeta meta tags SEO (title, description, OG, JSON-LD)
- * - Injeta security headers (CSP, X-Frame-Options, etc.)
- * - Injeta pre-render skeleton shell (evita flash branco, melhora FCP)
- * - Define document.lang = "pt-BR"
+ * O admin (/admin) tem layout proprio - nao passa por aqui.
  *
  * LAZY LOADING:
- * ~10 componentes sao lazy-loaded com lazyWithRetry (retry ate 3x).
- * Componentes nao-criticos (Footer, WhatsApp, ScrollToTop) so carregam
- * apos o conteudo principal estar renderizado.
- *
- * COMPONENTES INTERNOS:
- * - MaintenanceGate: verifica GET /settings para modo manutencao
- * - ScrollToTop: reseta scroll no topo ao navegar entre rotas
- * - PriceConfigSeeder: injeta config de tier de preco no PriceBadge
- * - FaviconLoader: carrega favicon dinamico do Supabase Storage
- * - TesterBanner: banner de "ambiente de teste" (removido em prod)
- * ═══════════════════════════════════════════════════════════════════════════════
+ * ~10 componentes sao carregados imperativamente (sem React.lazy) para evitar
+ * "component suspended while responding to synchronous input". Os chunks sao
+ * importados no momento da avaliacao do modulo e renderizados apos resolverem.
  */
 import { Outlet, useLocation } from "react-router";
 import { Header } from "./Header";
@@ -43,137 +15,161 @@ import { HomepageInitProvider, useHomepageInit } from "../contexts/HomepageInitC
 import { GA4Provider } from "./GA4Provider";
 import { MarketingPixelsProvider } from "./MarketingPixels";
 import { GTMProvider } from "./GTMProvider";
-import "../utils/utmTracker"; // Auto-captures UTM params on load
-import { Suspense, lazy, useEffect, useState, Component } from "react";
-import type { ReactNode, ErrorInfo } from "react";
+import "../utils/utmTracker";
+import { Suspense, useEffect, useState, useRef } from "react";
+import type { ReactNode } from "react";
 import { seedPriceConfig } from "./PriceBadge";
+import { seedCatalogMode } from "../contexts/CatalogModeContext";
 import { Toaster } from "sonner";
 import * as api from "../services/api";
 import { Wrench } from "lucide-react";
 import { useIdlePrefetch } from "../hooks/useIdlePrefetch";
 
-// ── Retry wrapper for lazy imports — retries up to 2× on network failure ──
-function lazyWithRetry(importFn: () => Promise<any>, retries?: number) {
-  var maxRetries = retries || 2;
-  return lazy(function () {
-    return importFn().catch(function (err: any) {
-      if (maxRetries <= 0) throw err;
-      return new Promise(function (resolve) {
-        setTimeout(resolve, 1500);
-      }).then(function () {
-        maxRetries--;
-        return importFn();
-      }).catch(function (err2: any) {
-        if (maxRetries <= 0) throw err2;
-        return new Promise(function (resolve) {
-          setTimeout(resolve, 3000);
-        }).then(function () {
-          maxRetries--;
-          return importFn();
-        });
-      });
+// ══════════════════════════════════════════════════════════════════════════
+// NON-SUSPENDING IMPERATIVE LAZY LOADING
+// ══════════════════════════════════════════════════════════════════════════
+// React.lazy() throws a Promise (suspends) when the chunk isn't loaded yet.
+// During synchronous renders (setState, context changes), React throws
+// "component suspended while responding to synchronous input" which React
+// Router catches in its RenderErrorBoundary, breaking the app.
+//
+// Instead, we load modules imperatively and store the resolved component
+// in a module-level map. Each wrapper is a proper top-level named function
+// so React Fast Refresh / HMR can track it correctly.
+//
+// Flow:
+// 1. At module evaluation time, all imports start immediately.
+// 2. Each Deferred* component renders null until its chunk resolves.
+// 3. A shared listener list triggers re-renders when chunks finish loading.
+// ══════════════════════════════════════════════════════════════════════════
+
+var _loaded: Record<string, React.ComponentType<any>> = {};
+var _loading: Record<string, Promise<void>> = {};
+var _listeners: Set<() => void> = new Set();
+
+function _notifyLoaded() {
+  _listeners.forEach(function (fn) { fn(); });
+}
+
+function _startLoad(key: string, importFn: () => Promise<any>, exportName: string) {
+  if (_loading[key]) return;
+  _loading[key] = importFn()
+    .then(function (mod) {
+      var comp = mod[exportName] || mod.default;
+      if (typeof comp === "function") {
+        _loaded[key] = comp;
+        _notifyLoaded();
+      } else {
+        console.error("[DeferredLoad] " + key + "." + exportName + " is not a component, got:", typeof comp);
+      }
+    })
+    .catch(function (err) {
+      console.error("[DeferredLoad] Failed to load " + key + ":", err);
+      delete _loading[key]; // allow retry on next render
     });
-  });
 }
 
-// ── Error boundary: catches failed lazy imports without crashing the whole app ──
-interface LazyBoundaryProps { children: ReactNode; }
-interface LazyBoundaryState { hasError: boolean; }
+// Start ALL imports immediately at module evaluation time
+_startLoad("Footer", function () { return import("./Footer"); }, "Footer");
+_startLoad("MobileBottomNav", function () { return import("./MobileBottomNav"); }, "MobileBottomNav");
+_startLoad("CartDrawer", function () { return import("./CartDrawer"); }, "CartDrawer");
+_startLoad("CookieConsentBanner", function () { return import("./CookieConsentBanner"); }, "CookieConsentBanner");
+_startLoad("WhatsAppButton", function () { return import("./WhatsAppButton"); }, "WhatsAppButton");
+_startLoad("ScrollToTopButton", function () { return import("./ScrollToTopButton"); }, "ScrollToTopButton");
+_startLoad("ExitIntentPopup", function () { return import("./ExitIntentPopup"); }, "ExitIntentPopup");
+_startLoad("GoogleReviewsBadge", function () { return import("./GoogleReviewsBadge"); }, "GoogleReviewsBadge");
+_startLoad("CartAbandonedTracker", function () { return import("./CartAbandonedTracker"); }, "CartAbandonedTracker");
+_startLoad("WebVitalsReporter", function () { return import("./WebVitalsReporter"); }, "WebVitalsReporter");
 
-class LazyBoundary extends Component<LazyBoundaryProps, LazyBoundaryState> {
-  constructor(props: LazyBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(_error: Error): LazyBoundaryState {
-    return { hasError: true };
-  }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[LazyBoundary] Component failed to load:", error.message);
-  }
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
+/** Hook: subscribes to chunk-load notifications, re-renders when any chunk finishes */
+function useDeferredReady(): number {
+  var ref = useRef(0);
+  var setState = useState(0)[1];
+  useEffect(function () {
+    function onLoad() {
+      ref.current++;
+      setState(ref.current);
+    }
+    _listeners.add(onLoad);
+    // If chunks already loaded before mount, trigger a render
+    if (Object.keys(_loaded).length > 0) {
+      ref.current++;
+      setState(ref.current);
+    }
+    return function () { _listeners.delete(onLoad); };
+  }, []);
+  return ref.current;
 }
 
-// Lazy-load CartDrawer — defers the heavy 'motion' library from the critical path
-const CartDrawer = lazyWithRetry(function () {
-  return import("./CartDrawer").then(function (m) { return { default: m.CartDrawer }; });
-});
+// ── Individually named wrapper components (NEVER suspend) ──────────────
 
-// Lazy-load CookieConsentBanner — not needed for critical path
-const CookieConsentBanner = lazyWithRetry(function () {
-  return import("./CookieConsentBanner").then(function (m) { return { default: m.CookieConsentBanner }; });
-});
+function DeferredFooter() {
+  useDeferredReady();
+  var C = _loaded["Footer"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load WhatsAppButton — not needed for initial render (desktop only)
-const WhatsAppButton = lazyWithRetry(function () {
-  return import("./WhatsAppButton").then(function (m) { return { default: m.WhatsAppButton }; });
-});
+function DeferredCookieConsentBanner() {
+  useDeferredReady();
+  var C = _loaded["CookieConsentBanner"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load ScrollToTopButton — not needed for initial render
-const ScrollToTopButton = lazyWithRetry(function () {
-  return import("./ScrollToTopButton").then(function (m) { return { default: m.ScrollToTopButton }; });
-});
+function DeferredWhatsAppButton() {
+  useDeferredReady();
+  var C = _loaded["WhatsAppButton"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load ExitIntentPopup — not needed for initial render
-const ExitIntentPopup = lazyWithRetry(function () {
-  return import("./ExitIntentPopup").then(function (m) { return { default: m.ExitIntentPopup }; });
-});
+function DeferredScrollToTopButton() {
+  useDeferredReady();
+  var C = _loaded["ScrollToTopButton"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load GoogleReviewsBadge — not needed for initial render
-const GoogleReviewsBadge = lazyWithRetry(function () {
-  return import("./GoogleReviewsBadge").then(function (m) { return { default: m.GoogleReviewsBadge }; });
-});
+function DeferredExitIntentPopup() {
+  useDeferredReady();
+  var C = _loaded["ExitIntentPopup"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load CartAbandonedTracker — syncs cart snapshots for WhatsApp recovery
-const CartAbandonedTracker = lazyWithRetry(function () {
-  return import("./CartAbandonedTracker").then(function (m) { return { default: m.CartAbandonedTracker }; });
-});
+function DeferredGoogleReviewsBadge() {
+  useDeferredReady();
+  var C = _loaded["GoogleReviewsBadge"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load WebVitalsReporter — field metrics collection (non-critical)
-const WebVitalsReporter = lazyWithRetry(function () {
-  return import("./WebVitalsReporter").then(function (m) { return { default: m.WebVitalsReporter }; });
-});
+function DeferredCartAbandonedTracker() {
+  useDeferredReady();
+  var C = _loaded["CartAbandonedTracker"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load MobileBottomNav — only needed on mobile
-const MobileBottomNav = lazyWithRetry(function () {
-  return import("./MobileBottomNav").then(function (m) { return { default: m.MobileBottomNav }; });
-});
+function DeferredWebVitalsReporter() {
+  useDeferredReady();
+  var C = _loaded["WebVitalsReporter"];
+  return C ? <C /> : null;
+}
 
-// Lazy-load Footer — always below the fold, not needed for FCP
-const Footer = lazyWithRetry(function () {
-  return import("./Footer").then(function (m) { return { default: m.Footer }; });
-});
+function DeferredMobileBottomNav() {
+  useDeferredReady();
+  var C = _loaded["MobileBottomNav"];
+  return C ? <C /> : null;
+}
+
+function DeferredCartDrawerInner() {
+  useDeferredReady();
+  var C = _loaded["CartDrawer"];
+  return C ? <C /> : null;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * IIFE — runs at module load time, before React renders.
+ * IIFE - runs at module load time, before React renders.
  * Injects SEO meta, structured data, OG tags, preconnects, and a
  * pre-render skeleton shell for faster perceived FCP.
- *
- * STEP 2: Google Fonts removed — Inter is now self-hosted via
- *         @fontsource-variable/inter (imported in fonts.css).
- *         This eliminates 2 DNS lookups + external stylesheet.
- *
- * STEP 3: Pre-render shell + JSON-LD + Open Graph tags.
  * ═══════════════════════════════════════════════════════════════════════════ */
 (function injectHeadAssets() {
-  // Set lang on HTML element (a11y + SEO requirement — PageSpeed flags missing lang)
   document.documentElement.lang = "pt-BR";
-
-  // ═════════════════════════════════════════════════════════════════════
-  // Security meta tags — applied client-side because the CDN/edge layer
-  // (Figma Sites / Cloudflare) serves the HTML without our custom headers.
-  // These cover headers that support <meta> equivalents.
-  // ══════════════════════════════════════════════════════════════════════
-
-  // NOTE: Content-Security-Policy via <meta http-equiv> was intentionally
-  // NOT added here because it breaks dynamic import() / code-splitting
-  // used by React lazy(). The CSP policy is enforced on API responses
-  // via the Hono backend middleware where it actually matters.
-  // X-Frame-Options, X-Content-Type-Options, Permissions-Policy, COOP,
-  // and CORP have no <meta> equivalents — they are HTTP-header-only.
 
   // Referrer-Policy via meta name
   if (!document.querySelector('meta[name="referrer"]')) {
@@ -183,9 +179,7 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(refMeta);
   }
 
-  // ── FIX: Remove noindex injected by the hosting platform ──────────────
-  // The platform injects <meta name="robots" content="noindex"> which blocks
-  // search engine indexation. We remove it and set "index, follow" instead.
+  // Remove noindex injected by the hosting platform
   var noindexMetas = document.querySelectorAll('meta[name="robots"]');
   for (var ri = 0; ri < noindexMetas.length; ri++) {
     noindexMetas[ri].remove();
@@ -195,15 +189,15 @@ const Footer = lazyWithRetry(function () {
   robotsMeta.content = "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
   document.head.appendChild(robotsMeta);
 
-  // ── Meta description (SEO — PageSpeed flags missing description) ──
+  // Meta description
   if (!document.querySelector('meta[name="description"]')) {
     var metaDesc = document.createElement("meta");
     metaDesc.name = "description";
-    metaDesc.content = "Carretão Auto Peças - Especialista em peças para caminhões. Catálogo com mais de 15.000 peças, entrega para todo o Brasil, garantia e atendimento especializado. Compre online com desconto no PIX.";
+    metaDesc.content = "Carretao Auto Pecas - Especialista em pecas para caminhoes. Catalogo com mais de 15.000 pecas, entrega para todo o Brasil, garantia e atendimento especializado. Compre online com desconto no PIX.";
     document.head.appendChild(metaDesc);
   }
 
-  // ── Theme color (Best Practices) ──
+  // Theme color
   if (!document.querySelector('meta[name="theme-color"]')) {
     var metaTheme = document.createElement("meta");
     metaTheme.name = "theme-color";
@@ -211,12 +205,12 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(metaTheme);
   }
 
-  // ── Open Graph meta tags (SEO + social sharing) ──
+  // Open Graph
   var ogTags: Array<{ property: string; content: string }> = [
     { property: "og:type", content: "website" },
-    { property: "og:site_name", content: "Carretão Auto Peças" },
-    { property: "og:title", content: "Carretão Auto Peças - Peças para Caminhões" },
-    { property: "og:description", content: "Catálogo com mais de 15.000 peças automotivas. Especialista em caminhões, entrega para todo o Brasil, garantia e atendimento especializado." },
+    { property: "og:site_name", content: "Carretao Auto Pecas" },
+    { property: "og:title", content: "Carretao Auto Pecas - Pecas para Caminhoes" },
+    { property: "og:description", content: "Catalogo com mais de 15.000 pecas automotivas. Especialista em caminhoes, entrega para todo o Brasil, garantia e atendimento especializado." },
     { property: "og:locale", content: "pt_BR" },
   ];
   for (var i = 0; i < ogTags.length; i++) {
@@ -229,25 +223,22 @@ const Footer = lazyWithRetry(function () {
     }
   }
 
-  // ── JSON-LD Structured Data (LocalBusiness schema — SEO rich snippets) ──
+  // JSON-LD LocalBusiness
   if (!document.querySelector('script[type="application/ld+json"]')) {
     var jsonLd = document.createElement("script");
     jsonLd.type = "application/ld+json";
     jsonLd.textContent = JSON.stringify({
       "@context": "https://schema.org",
       "@type": "AutoPartsStore",
-      "name": "Carretão Auto Peças",
-      "description": "Especialista em peças para caminhões. Catálogo com mais de 15.000 peças.",
+      "name": "Carretao Auto Pecas",
+      "description": "Especialista em pecas para caminhoes. Catalogo com mais de 15.000 pecas.",
       "url": window.location.origin,
       "telephone": "0800 643 1170",
       "email": "contato@carretaoautopecas.com.br",
-      "address": {
-        "@type": "PostalAddress",
-        "addressCountry": "BR"
-      },
+      "address": { "@type": "PostalAddress", "addressCountry": "BR" },
       "areaServed": "BR",
       "priceRange": "$$",
-      "paymentAccepted": ["PIX", "Boleto", "Cartão de Crédito", "Cartão de Débito"],
+      "paymentAccepted": ["PIX", "Boleto", "Cartao de Credito", "Cartao de Debito"],
       "currenciesAccepted": "BRL",
       "numberOfEmployees": { "@type": "QuantitativeValue", "minValue": 50 },
       "foundingDate": "2000",
@@ -256,7 +247,7 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(jsonLd);
   }
 
-  // ── JSON-LD WebSite + SearchAction (enables Google Sitelinks Search Box) ──
+  // JSON-LD WebSite + SearchAction
   if (!document.querySelector('script[data-website-jsonld]')) {
     var wsJsonLd = document.createElement("script");
     wsJsonLd.type = "application/ld+json";
@@ -264,7 +255,7 @@ const Footer = lazyWithRetry(function () {
     wsJsonLd.textContent = JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
-      "name": "Carretão Auto Peças",
+      "name": "Carretao Auto Pecas",
       "url": window.location.origin,
       "potentialAction": {
         "@type": "SearchAction",
@@ -278,9 +269,7 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(wsJsonLd);
   }
 
-  // ── Preconnect to Supabase (used for API + storage images) ──
-  // Two preconnects needed: one with crossorigin (for fetch/XHR API calls)
-  // and one without (for <img> tags which use no-CORS mode).
+  // Preconnect to Supabase
   var supabaseOrigin = "https://aztdgagxvrlylszieujs.supabase.co";
   if (!document.querySelector('link[rel="preconnect"][href="' + supabaseOrigin + '"]:not([crossorigin])')) {
     var linkNoCors = document.createElement("link");
@@ -296,7 +285,7 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(linkCors);
   }
 
-  // ── DNS-prefetch for Supabase (backup for browsers that don't support preconnect) ──
+  // DNS-prefetch for Supabase
   if (!document.querySelector('link[rel="dns-prefetch"][href="' + supabaseOrigin + '"]')) {
     var dnsPrefetch = document.createElement("link");
     dnsPrefetch.rel = "dns-prefetch";
@@ -304,7 +293,7 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(dnsPrefetch);
   }
 
-  // ── DNS-prefetch for Unsplash (fallback hero / CTA images) ──
+  // DNS-prefetch for Unsplash
   var unsplashOrigin = "https://images.unsplash.com";
   if (!document.querySelector('link[rel="dns-prefetch"][href="' + unsplashOrigin + '"]')) {
     var unsplashDns = document.createElement("link");
@@ -313,38 +302,23 @@ const Footer = lazyWithRetry(function () {
     document.head.appendChild(unsplashDns);
   }
 
-  // ── NOTE: Google Fonts preconnect and loading code has been REMOVED.             ──
-  // ── Inter is now self-hosted via @fontsource-variable/inter (see fonts.css).     ──
-  // ── This eliminates 2 external DNS lookups (fonts.googleapis.com,                ──
-  // ── fonts.gstatic.com) and the render-blocking external stylesheet.              ──
-
-  // ── Pre-render skeleton shell (Step 3) ───────────────────────���──────────
-  // Injects a lightweight CSS-only skeleton into #root BEFORE React hydrates.
-  // This gives immediate visual feedback (perceived FCP improvement).
-  // React will replace this content when the app mounts.
+  // Pre-render skeleton shell
   var root = document.getElementById("root");
   if (root && root.children.length === 0) {
     root.innerHTML = [
       '<div style="min-height:100vh;display:flex;flex-direction:column;font-family:Inter Variable,Inter,system-ui,sans-serif">',
-      // ── Skip-to-content link (a11y) ──
-      '  <a href="#main-content" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;z-index:9999;background:#fff;color:#b91c1c;padding:8px 16px;font-weight:600;font-size:0.9rem;border-radius:0 0 8px 0" onfocus="this.style.position=\'fixed\';this.style.left=\'0\';this.style.top=\'0\';this.style.width=\'auto\';this.style.height=\'auto\';this.style.overflow=\'visible\'" onblur="this.style.position=\'absolute\';this.style.left=\'-9999px\';this.style.width=\'1px\';this.style.height=\'1px\';this.style.overflow=\'hidden\'">Pular para o conteúdo</a>',
-      // ── Header skeleton ──
+      '  <a href="#main-content" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;z-index:9999;background:#fff;color:#b91c1c;padding:8px 16px;font-weight:600;font-size:0.9rem;border-radius:0 0 8px 0">Pular para o conteudo</a>',
       '  <header role="banner" style="background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 16px;display:flex;align-items:center;gap:12px">',
       '    <div style="width:140px;height:40px;background:#f3f4f6;border-radius:8px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       '    <div style="flex:1;max-width:400px;height:40px;background:#f3f4f6;border-radius:8px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       '    <div style="width:40px;height:40px;background:#f3f4f6;border-radius:50%;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;margin-left:auto"></div>',
       '  </header>',
-      // ── Banner skeleton ──
       '  <main id="main-content" role="main" style="flex:1;display:flex;flex-direction:column">',
       '    <div style="background:#1f2937;width:100%;padding-bottom:clamp(200px,32vw,500px);animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      // ── Benefits strip skeleton ──
       '    <div style="padding:24px 16px;display:flex;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #f3f4f6">',
       '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
       '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
-      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
-      '      <div style="flex:1;min-width:140px;height:56px;background:#f3f4f6;border-radius:12px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;display:none" class="shell-hide-sm"></div>',
       '    </div>',
-      // ── Products skeleton ──
       '    <div style="background:#f9fafb;padding:48px 16px;flex:1">',
       '      <div style="max-width:1280px;margin:0 auto">',
       '        <div style="width:200px;height:28px;background:#e5e7eb;border-radius:8px;margin-bottom:24px;animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite"></div>',
@@ -358,18 +332,22 @@ const Footer = lazyWithRetry(function () {
       '    </div>',
       '  </main>',
       '</div>',
-      // ── Pulse animation (CSS @keyframes injected inline) ──
       '<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style>',
     ].join("\n");
   }
 })();
 
-/** Seeds PriceBadge config cache from homepage-init to eliminate the /price-config call */
+/** Seeds PriceBadge config cache from homepage-init */
 function PriceConfigSeeder() {
   var { data: initData, loading: initLoading } = useHomepageInit();
   useEffect(function () {
-    if (!initLoading && initData && initData.priceConfig) {
-      seedPriceConfig(initData.priceConfig);
+    if (!initLoading && initData) {
+      if (initData.priceConfig) {
+        seedPriceConfig(initData.priceConfig);
+      }
+      if (initData.settings) {
+        seedCatalogMode(!!initData.settings.catalogMode);
+      }
     }
   }, [initData, initLoading]);
   return null;
@@ -377,29 +355,21 @@ function PriceConfigSeeder() {
 
 function ScrollToTop() {
   var loc = useLocation();
-
-  // Disable browser's native scroll restoration so it doesn't fight our manual scroll
   useEffect(function () {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
   }, []);
-
   useEffect(function () {
-    // Skip scroll-to-top when navigating to a hash anchor (e.g. #avaliacoes)
     if (loc.hash) return;
-
-    // Force-reset scroll immediately via DOM properties (synchronous, not
-    // affected by CSS scroll-behavior) AND via scrollTo with behavior:'instant'.
-    // Using multiple approaches to guarantee it works across all browsers.
     document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0; // Safari fallback
+    document.body.scrollTop = 0;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
   }, [loc.pathname, loc.search]);
   return null;
 }
 
-/** Loads favicon from backend and applies it to the page */
+/** Loads favicon from backend */
 function FaviconLoader() {
   useEffect(function () {
     api.getFavicon().then(function (data) {
@@ -412,28 +382,22 @@ function FaviconLoader() {
         }
         existing.href = data.url;
       }
-    }).catch(function () { /* ignore */ });
+    }).catch(function () {});
   }, []);
   return null;
 }
 
-// Lazy-mount wrapper: only renders CartDrawer after first user interaction or 4s idle
-function DeferredCartDrawer() {
+/** Lazy-mount CartDrawer after first user interaction or 4s idle */
+function DeferredCartDrawerMount() {
   var [ready, setReady] = useState(false);
-
   useEffect(function () {
-    // Once ready, no need to set up listeners again
     if (ready) return;
-
-    // Mount after user interacts or after 4s idle (whichever comes first)
     var mounted = true;
     var timer: ReturnType<typeof setTimeout>;
-
     function trigger() {
       if (mounted && !ready) setReady(true);
       cleanup();
     }
-
     function cleanup() {
       clearTimeout(timer);
       document.removeEventListener("click", trigger);
@@ -441,76 +405,45 @@ function DeferredCartDrawer() {
       document.removeEventListener("keydown", trigger);
       document.removeEventListener("scroll", trigger);
     }
-
-    // Defer 4s or first interaction
     timer = setTimeout(trigger, 4000);
     document.addEventListener("click", trigger, { once: true, passive: true });
     document.addEventListener("touchstart", trigger, { once: true, passive: true });
     document.addEventListener("keydown", trigger, { once: true });
     document.addEventListener("scroll", trigger, { once: true, passive: true });
-
-    return function () {
-      mounted = false;
-      cleanup();
-    };
+    return function () { mounted = false; cleanup(); };
   }, [ready]);
-
   if (!ready) return null;
-
-  return (
-    <LazyBoundary>
-      <Suspense fallback={null}>
-        <CartDrawer />
-      </Suspense>
-    </LazyBoundary>
-  );
+  return <DeferredCartDrawerInner />;
 }
 
-/** Checks maintenance mode and renders overlay if active */
+/** MaintenanceGate - checks maintenance mode */
 function MaintenanceGate({ children }: { children: ReactNode }) {
   var [maintenance, setMaintenance] = useState(false);
   var [bypassed, setBypassed] = useState(false);
-
-  // ── /docs page is ALWAYS accessible, even during maintenance ──
   var isDocsPage = typeof window !== "undefined" && window.location.pathname === "/docs";
 
   useEffect(function () {
-    // /docs is exempt from maintenance gate — skip all checks
     if (isDocsPage) return;
-
-    // ── Maintenance Bypass ──────────────────────────────────────────────
-    // Access with ?preview=carretao2026 to bypass maintenance mode.
-    // The token is saved in a cookie so you don't need to add it on every page.
-    // To revoke access, clear cookies or use ?preview=off
-    // ────────────────────────────────────────────────────────────────────
     var BYPASS_TOKEN = "carretao2026";
     var COOKIE_NAME = "maint_bypass";
-
-    // Check URL param first
     try {
       var params = new URLSearchParams(window.location.search);
       var previewParam = params.get("preview");
       if (previewParam === BYPASS_TOKEN) {
-        // Set cookie valid for 24 hours
         document.cookie = COOKIE_NAME + "=" + BYPASS_TOKEN + ";path=/;max-age=86400;SameSite=Lax";
         setBypassed(true);
-        // Clean URL (remove ?preview= without reload)
         params.delete("preview");
         var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
         window.history.replaceState({}, "", cleanUrl);
         return;
       }
       if (previewParam === "off") {
-        // Revoke bypass
         document.cookie = COOKIE_NAME + "=;path=/;max-age=0;SameSite=Lax";
         params.delete("preview");
         var cleanUrl2 = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
         window.history.replaceState({}, "", cleanUrl2);
-        // Don't return — continue to check maintenance normally
       }
-    } catch (e) { /* ignore URL parsing errors */ }
-
-    // Check cookie
+    } catch (e) {}
     try {
       var cookies = document.cookie.split(";");
       for (var ci = 0; ci < cookies.length; ci++) {
@@ -520,83 +453,55 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
           return;
         }
       }
-    } catch (e) { /* ignore */ }
-
-    // Only enforce maintenance mode on production domains
+    } catch (e) {}
     var host = window.location.hostname;
     var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br";
-    if (!isProduction) {
-      return;
-    }
-
+    if (!isProduction) return;
     var attempts = 0;
     var maxAttempts = 3;
-
     function tryCheck() {
       attempts++;
       api.getSettings().then(function (s) {
-        if (s && s.maintenanceMode) {
-          setMaintenance(true);
-        }
+        if (s && s.maintenanceMode) setMaintenance(true);
       }).catch(function () {
         if (attempts < maxAttempts) {
-          // Retry after 2s — could be a transient network issue
           setTimeout(tryCheck, 2000);
         } else {
-          // FAIL-CLOSED: if API is unreachable after 3 attempts on production,
-          // assume maintenance is active to protect the site
-          console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — failing closed (showing maintenance)");
+          console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts");
           setMaintenance(true);
         }
       });
     }
-
     tryCheck();
   }, []);
 
-  // Bypass active — show site even in maintenance + floating indicator
   if (bypassed && maintenance) {
     return (
       <>
         <div
           style={{
-            position: "fixed",
-            bottom: 16,
-            left: 16,
-            zIndex: 99999,
+            position: "fixed", bottom: 16, left: 16, zIndex: 99999,
             background: "linear-gradient(135deg, #b91c1c, #dc2626)",
-            color: "#fff",
-            padding: "8px 16px",
-            borderRadius: 10,
-            fontSize: "0.75rem",
-            fontWeight: 700,
+            color: "#fff", padding: "8px 16px", borderRadius: 10,
+            fontSize: "0.75rem", fontWeight: 700,
             boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            letterSpacing: "0.02em",
-            userSelect: "none",
+            display: "flex", alignItems: "center", gap: 8,
+            letterSpacing: "0.02em", userSelect: "none",
           }}
         >
-          <span style={{ fontSize: "1rem" }}>🔧</span>
-          <span>PREVIEW — Site em manutenção para visitantes</span>
+          <span style={{ fontSize: "1rem" }}>&#128295;</span>
+          <span>PREVIEW - Site em manutencao para visitantes</span>
           <button
             onClick={function () {
               document.cookie = "maint_bypass=;path=/;max-age=0;SameSite=Lax";
               window.location.reload();
             }}
             style={{
-              background: "rgba(255,255,255,0.2)",
-              border: "none",
-              color: "#fff",
-              padding: "2px 8px",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: "0.7rem",
-              fontWeight: 600,
-              marginLeft: 4,
+              background: "rgba(255,255,255,0.2)", border: "none",
+              color: "#fff", padding: "2px 8px", borderRadius: 6,
+              cursor: "pointer", fontSize: "0.7rem", fontWeight: 600, marginLeft: 4,
             }}
-            title="Desativar preview e ver tela de manutenção"
+            title="Desativar preview"
           >
             Sair
           </button>
@@ -605,17 +510,7 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
       </>
     );
   }
-
-  // Bypass active, no maintenance — just render normally
-  if (bypassed) {
-    return <>{children}</>;
-  }
-
-  // /docs page is always accessible, even during maintenance
-  if (isDocsPage) {
-    return <>{children}</>;
-  }
-
+  if (bypassed || isDocsPage) return <>{children}</>;
   if (maintenance) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -624,11 +519,11 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
             <Wrench className="w-10 h-10 text-red-600" />
           </div>
           <h1 className="text-gray-900 mb-3" style={{ fontSize: "1.8rem", fontWeight: 800 }}>
-            Estamos em manutenção
+            Estamos em manutencao
           </h1>
           <p className="text-gray-500 mb-6" style={{ fontSize: "1rem", lineHeight: 1.6 }}>
-            Nosso site está passando por uma manutenção programada para melhorias.
-            Voltaremos em breve! Agradecemos a compreensão.
+            Nosso site esta passando por uma manutencao programada para melhorias.
+            Voltaremos em breve! Agradecemos a compreensao.
           </p>
           <div className="bg-white border border-gray-200 rounded-xl p-5 inline-block">
             <p className="text-gray-600 mb-1" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
@@ -646,7 +541,6 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
   return <>{children}</>;
 }
 
@@ -655,9 +549,7 @@ function TesterBanner() {
   var [show, setShow] = useState(false);
   useEffect(function () {
     var host = window.location.hostname;
-    if (host === "cafe-puce-47800704.figma.site") {
-      setShow(true);
-    }
+    if (host === "cafe-puce-47800704.figma.site") setShow(true);
   }, []);
   if (!show) return null;
   return (
@@ -665,22 +557,18 @@ function TesterBanner() {
       className="w-full text-center text-white font-bold tracking-wide flex items-center justify-center gap-2 select-none"
       style={{
         background: "repeating-linear-gradient(135deg, #b91c1c, #b91c1c 10px, #991b1b 10px, #991b1b 20px)",
-        padding: "10px 16px",
-        fontSize: "0.82rem",
-        letterSpacing: "0.04em",
-        zIndex: 9999,
-        position: "relative",
+        padding: "10px 16px", fontSize: "0.82rem", letterSpacing: "0.04em",
+        zIndex: 9999, position: "relative",
       }}
     >
-      <span style={{ fontSize: "1.1rem" }}>⚠</span>
-      <span>VERSÃO DE TESTES — Este site é apenas para demonstração. Compras realizadas aqui NÃO serão processadas.</span>
-      <span style={{ fontSize: "1.1rem" }}>⚠</span>
+      <span style={{ fontSize: "1.1rem" }}>&#9888;</span>
+      <span>VERSAO DE TESTES - Este site e apenas para demonstracao. Compras realizadas aqui NAO serao processadas.</span>
+      <span style={{ fontSize: "1.1rem" }}>&#9888;</span>
     </div>
   );
 }
 
 export function Layout() {
-  // Prefetch route chunks during browser idle time for instant navigations
   useIdlePrefetch();
 
   return (
@@ -690,12 +578,11 @@ export function Layout() {
         <GA4Provider>
         <MarketingPixelsProvider>
           <div className="min-h-screen flex flex-col">
-            {/* Skip-to-content link (a11y — matches skeleton version) */}
             <a
               href="#main-content"
               className="sr-only focus:not-sr-only focus:fixed focus:top-0 focus:left-0 focus:z-[9999] focus:bg-white focus:text-red-700 focus:px-4 focus:py-2 focus:font-semibold focus:text-sm focus:rounded-br-lg focus:shadow-lg"
             >
-              Pular para o conteúdo
+              Pular para o conteudo
             </a>
             <TesterBanner />
             <ScrollToTop />
@@ -713,54 +600,18 @@ export function Layout() {
                 <Outlet />
               </Suspense>
             </main>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <Footer />
-              </Suspense>
-            </LazyBoundary>
-            {/* Spacer for mobile bottom nav so footer content isn't hidden behind it */}
+            <DeferredFooter />
+            {/* Spacer for mobile bottom nav */}
             <div className="md:hidden" style={{ height: "68px" }} />
-            <DeferredCartDrawer />
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <CookieConsentBanner />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <WhatsAppButton />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <ScrollToTopButton />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <MobileBottomNav />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <ExitIntentPopup />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <GoogleReviewsBadge />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <CartAbandonedTracker />
-              </Suspense>
-            </LazyBoundary>
-            <LazyBoundary>
-              <Suspense fallback={null}>
-                <WebVitalsReporter />
-              </Suspense>
-            </LazyBoundary>
+            <DeferredCartDrawerMount />
+            <DeferredCookieConsentBanner />
+            <DeferredWhatsAppButton />
+            <DeferredScrollToTopButton />
+            <DeferredMobileBottomNav />
+            <DeferredExitIntentPopup />
+            <DeferredGoogleReviewsBadge />
+            <DeferredCartAbandonedTracker />
+            <DeferredWebVitalsReporter />
             <Toaster position="top-right" richColors closeButton duration={3500} />
           </div>
         </MarketingPixelsProvider>

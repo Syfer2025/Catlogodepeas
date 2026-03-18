@@ -4,7 +4,7 @@
  * Supabase Auth. CNPJ auto-preenche via Receita Federal.
  * Pos-login: redireciona para /minha-conta ou /checkout.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { Link, useNavigate } from "react-router";
 import User from "lucide-react/dist/esm/icons/user";
 import Mail from "lucide-react/dist/esm/icons/mail";
@@ -108,7 +108,7 @@ export function UserAuthPage() {
     const goToAccount = () => {
       if (redirected) return;
       redirected = true;
-      navigate("/", { replace: true });
+      startTransition(() => { navigate("/", { replace: true }); });
     };
 
     // 0) Check if Supabase returned an OAuth error in the URL (?error=...&error_description=...)
@@ -480,7 +480,7 @@ export function UserAuthPage() {
       trackEvent("login", { method: "email" });
 
       if (data.session?.access_token) {
-        navigate("/", { replace: true });
+        startTransition(() => { navigate("/", { replace: true }); });
       }
     } catch (err: any) {
       console.error("Login error:", err);

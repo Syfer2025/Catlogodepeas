@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense, startTransition } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
 import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode, SigeMatchResult } from "../../services/api";
@@ -253,7 +253,7 @@ export function AdminProducts() {
   };
 
   const openProductPage = (sku: string) => {
-    navigate(`/produto/${encodeURIComponent(sku)}`);
+    startTransition(() => { navigate(`/produto/${encodeURIComponent(sku)}`); });
   };
 
   // ─── Apply client-side filters and sorting (memoized) ───
@@ -1788,7 +1788,7 @@ function ProductEditPanel({ sku, initialTitulo, onClose, onUpdated, onDeleted, s
               <h3 className="text-gray-800 truncate" style={{ fontSize: "1.05rem", fontWeight: 600 }}>{titulo || initialTitulo}</h3>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => navigate(`/produto/${encodeURIComponent(sku)}`)} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Ver no site"><ExternalLink className="w-4 h-4" /></button>
+              <button onClick={() => startTransition(() => { navigate(`/produto/${encodeURIComponent(sku)}`); })} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Ver no site"><ExternalLink className="w-4 h-4" /></button>
               <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
             </div>
           </div>

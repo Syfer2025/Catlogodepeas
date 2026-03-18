@@ -4,7 +4,7 @@
  * Requer autenticacao; redireciona para /conta se nao logado.
  * Consome API: /auth/user/me, /auth/user/profile, /auth/user/addresses, etc.
  */
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, startTransition } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
 import User from "lucide-react/dist/esm/icons/user";
 import Mail from "lucide-react/dist/esm/icons/mail";
@@ -256,7 +256,7 @@ export function UserAccountPage() {
       }
 
       if (!token) {
-        if (!cancelled) navigate("/conta", { replace: true });
+        if (!cancelled) startTransition(() => { navigate("/conta", { replace: true }); });
         return;
       }
 
@@ -272,7 +272,7 @@ export function UserAccountPage() {
         setAccessToken(session.access_token);
         var result = await loadProfile(session.access_token);
         if (result === "redirect" && !cancelled) {
-          navigate("/conta", { replace: true });
+          startTransition(() => { navigate("/conta", { replace: true }); });
         }
         if (!cancelled) setLoading(false);
       }
@@ -285,7 +285,7 @@ export function UserAccountPage() {
         setAccessToken(session.access_token);
       }
       if (event === "SIGNED_OUT") {
-        navigate("/conta", { replace: true });
+        startTransition(() => { navigate("/conta", { replace: true }); });
       }
     });
 
@@ -560,7 +560,7 @@ export function UserAccountPage() {
   // Logout
   var handleLogout = async function () {
     await supabase.auth.signOut();
-    navigate("/conta", { replace: true });
+    startTransition(() => { navigate("/conta", { replace: true }); });
   };
 
   // IMPORTANT: useMemo MUST be declared before any conditional returns

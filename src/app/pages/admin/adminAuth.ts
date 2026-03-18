@@ -42,14 +42,21 @@ export var ADMIN_NAME_KEY  = "carretao_admin_name";
 // so it never writes to localStorage or fires onAuthStateChange on
 // the customer-facing shared Supabase client.
 var _adminSupabaseUrl = "https://" + projectId + ".supabase.co";
-var _adminSupabase = createClient(_adminSupabaseUrl, publicAnonKey, {
-  auth: {
-    detectSessionInUrl: false,
-    autoRefreshToken: false,
-    persistSession: false,  // ← key: never touches localStorage
-    storageKey: "sb-" + projectId + "-admin-token", // ← unique key: avoids "Multiple GoTrueClient instances" warning
-  },
-});
+var _adminSupabase: ReturnType<typeof createClient> | null = null;
+
+function getAdminSupabase() {
+  if (!_adminSupabase) {
+    _adminSupabase = createClient(_adminSupabaseUrl, publicAnonKey, {
+      auth: {
+        detectSessionInUrl: false,
+        autoRefreshToken: false,
+        persistSession: false,
+        storageKey: "sb-" + projectId + "-admin-token",
+      },
+    });
+  }
+  return _adminSupabase;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Safely clear Supabase client session WITHOUT revoking the JWT     */
@@ -146,17 +153,19 @@ async function _doRefreshAdminToken(): Promise<string | null> {
     if (!at) { _adminRefreshInflight = null; return null; }
 
     // Use dedicated client — never touches the shared client's session
-    var setResult = await _adminSupabase.auth.setSession({
+    var setResult = await getAdminSupabase().auth.setSession({
       access_token: at,
       refresh_token: rt,
     });
     if (setResult.error) {
       console.warn("[AdminTokenRefresh] setSession failed:", setResult.error.message);
+      // Refresh token is invalid/consumed — clear stale admin session
+      clearAdminStorage();
       _adminRefreshInflight = null;
       return null;
     }
 
-    var refreshResult = await _adminSupabase.auth.refreshSession();
+    var refreshResult = await getAdminSupabase().auth.refreshSession();
     var fresh = refreshResult.data?.session;
     if (fresh?.access_token) {
       localStorage.setItem(ADMIN_AT_KEY, fresh.access_token);
@@ -173,6 +182,8 @@ async function _doRefreshAdminToken(): Promise<string | null> {
     return null;
   } catch (e) {
     console.warn("[AdminTokenRefresh] Error:", e);
+    // On unexpected errors, clear stale session to avoid infinite retry loops
+    clearAdminStorage();
     _adminRefreshInflight = null;
     return null;
   }

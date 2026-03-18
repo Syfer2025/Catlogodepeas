@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { Link, useNavigate } from "react-router";
 import { Lock, Loader2, AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowLeft, ShieldCheck, Mail } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
@@ -168,7 +168,7 @@ export function AdminResetPasswordPage() {
       }
 
       setMode("success");
-      setTimeout(() => navigate("/admin"), 3000);
+      setTimeout(() => startTransition(() => { navigate("/admin"); }), 3000);
     } catch (err: any) {
       console.error("Exceção ao redefinir senha:", err);
       setError(err.message || "Erro de conexão. Tente novamente.");

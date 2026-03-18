@@ -47,7 +47,7 @@ async function getAuthUserId(request: Request): Promise<string | null> {
   // Priority order for user token:
   // 1. Query param _ut (avoids CORS preflight AND Gateway 401 on user JWTs in Authorization)
   // 2. Legacy header X-User-Token (backward compat)
-  // 3. Authorization Bearer (fallback — note: may be the anon key, not a user JWT)
+  // 3. Authorization Bearer (fallback �� note: may be the anon key, not a user JWT)
   var url = new URL(request.url);
   var queryToken = url.searchParams.get("_ut");
   var legacyToken = request.headers.get("X-User-Token");
@@ -1655,7 +1655,7 @@ app.get(BASE + "/auth/admin-whitelist", async (c) => {
   }
 });
 
-// ─── Password Recovery (polling last_sign_in_at) ───
+// ──��� Password Recovery (polling last_sign_in_at) ───
 // GoTrue's OTP verification is broken in this project, and the Edge Functions
 // Gateway blocks unauthenticated GET requests (401), so we can't use a server
 // callback to capture redirect tokens either.
@@ -5888,7 +5888,7 @@ app.get(BASE + "/produtos/imagens/:sku", async (c) => {
   }
 });
 
-// ═══════════════════════════════════════════════════
+// ═════════════════��═════════════════════════════════
 // ─── PRODUCT ATTRIBUTES (CSV from Supabase Storage)
 // ═══════════════════════════════════════════════════
 
@@ -15588,6 +15588,173 @@ app.post(BASE + "/admin/update-order-status", async (c) => {
   }
 });
 
+// POST /admin/fix-card-orders — FIX: mark credit card orders as "paid" ONLY if
+// Mercado Pago API confirms the payment status is "approved". Never blindly marks.
+app.post(BASE + "/admin/fix-card-orders", async (c) => {
+  try {
+    var adminId = await getAuthUserId(c.req.raw);
+    if (!adminId) return c.json({ error: "Nao autorizado." }, 401);
+
+    var mpCreds = await getMPCredentials();
+    if (!mpCreds || !mpCreds.accessToken) {
+      return c.json({ error: "Mercado Pago nao configurado. Impossivel verificar pagamentos." }, 400);
+    }
+
+    var allOrders = await kv.getByPrefix("user_order:");
+    var fixed = 0;
+    var skipped = 0;
+    var notApproved = 0;
+    var noPaymentId = 0;
+    var fixedIds: string[] = [];
+    var notApprovedIds: string[] = [];
+
+    for (var i = 0; i < allOrders.length; i++) {
+      try {
+        var raw = allOrders[i];
+        var order = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+        if (
+          (order.paymentMethod === "cartao_credito" || order.paymentMethod === "credit_card") &&
+          order.status === "awaiting_payment"
+        ) {
+          var mpId = order.mpPaymentId || order.mp_payment_id || order.paymentId;
+          if (!mpId) {
+            noPaymentId++;
+            skipped++;
+            continue;
+          }
+
+          try {
+            var mpRes = await fetch(MP_API_BASE + "/v1/payments/" + mpId, {
+              headers: { "Authorization": "Bearer " + mpCreds.accessToken },
+            });
+            if (!mpRes.ok) {
+              console.log("[fix-card-orders] MP API error for payment " + mpId + ": " + mpRes.status);
+              skipped++;
+              continue;
+            }
+            var mpData = await mpRes.json();
+            var mpStatus = mpData.status;
+
+            if (mpStatus === "approved") {
+              order.status = "paid";
+              order.paidAt = order.paidAt || mpData.date_approved || order.createdAt || new Date().toISOString();
+              order.fixedBy = "admin-fix-card-orders-verified";
+              order.fixedAt = new Date().toISOString();
+              order.mpVerifiedStatus = mpStatus;
+              var fixKey = "user_order:" + (order.createdBy || "") + ":" + (order.localOrderId || "");
+              await kv.set(fixKey, JSON.stringify(order));
+              fixedIds.push(order.localOrderId || "unknown");
+              fixed++;
+            } else {
+              notApprovedIds.push((order.localOrderId || "unknown") + " (MP: " + mpStatus + ")");
+              notApproved++;
+            }
+          } catch (mpErr: any) {
+            console.log("[fix-card-orders] Error verifying payment " + mpId + ": " + mpErr.message);
+            skipped++;
+          }
+        } else {
+          skipped++;
+        }
+      } catch (_) { skipped++; }
+    }
+
+    console.log("[admin/fix-card-orders] Fixed " + fixed + " (verified), notApproved " + notApproved + ", noPaymentId " + noPaymentId + ", skipped " + skipped);
+    return c.json({ success: true, fixed, skipped, notApproved, noPaymentId, fixedIds, notApprovedIds });
+  } catch (e: any) {
+    console.error("[admin/fix-card-orders] Exception:", e);
+    return c.json({ error: "Erro ao corrigir pedidos." }, 500);
+  }
+});
+
+// POST /admin/revert-blind-fix — Revert orders that were marked as paid by the old
+// blind fix (fixedBy === "admin-fix-card-orders") back to awaiting_payment, then
+// re-verify each one against Mercado Pago API.
+app.post(BASE + "/admin/revert-blind-fix", async (c) => {
+  try {
+    var adminId = await getAuthUserId(c.req.raw);
+    if (!adminId) return c.json({ error: "Nao autorizado." }, 401);
+
+    var mpCreds = await getMPCredentials();
+    if (!mpCreds || !mpCreds.accessToken) {
+      return c.json({ error: "Mercado Pago nao configurado." }, 400);
+    }
+
+    var allOrders = await kv.getByPrefix("user_order:");
+    var reverted = 0;
+    var reApproved = 0;
+    var skipped = 0;
+    var revertedIds: string[] = [];
+    var reApprovedIds: string[] = [];
+    var skippedIds: string[] = [];
+
+    for (var i = 0; i < allOrders.length; i++) {
+      try {
+        var raw = allOrders[i];
+        var order = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+        // Only target orders fixed by the old blind fix
+        if (order.fixedBy === "admin-fix-card-orders" && order.status === "paid") {
+          var mpId = order.mpPaymentId || order.mp_payment_id || order.paymentId;
+          var orderKey = "user_order:" + (order.createdBy || "") + ":" + (order.localOrderId || "");
+          var orderId = order.localOrderId || "unknown";
+
+          if (!mpId) {
+            // No MP ID — can't verify, DON'T touch, leave as-is
+            skippedIds.push(orderId + " (sem MP ID)");
+            skipped++;
+            continue;
+          }
+
+          // Verify with MP — ONLY revert if MP explicitly says NOT approved
+          try {
+            var mpRes = await fetch(MP_API_BASE + "/v1/payments/" + mpId, {
+              headers: { "Authorization": "Bearer " + mpCreds.accessToken },
+            });
+            if (mpRes.ok) {
+              var mpData = await mpRes.json();
+              if (mpData.status === "approved") {
+                // Actually was approved — keep as paid, mark as verified
+                order.fixedBy = "admin-fix-card-orders-verified";
+                order.fixedAt = new Date().toISOString();
+                order.mpVerifiedStatus = "approved";
+                await kv.set(orderKey, JSON.stringify(order));
+                reApprovedIds.push(orderId);
+                reApproved++;
+              } else {
+                // MP explicitly says NOT approved — revert
+                order.status = "awaiting_payment";
+                delete order.paidAt;
+                order.fixedBy = "reverted-mp-" + mpData.status;
+                order.fixedAt = new Date().toISOString();
+                order.mpVerifiedStatus = mpData.status;
+                await kv.set(orderKey, JSON.stringify(order));
+                revertedIds.push(orderId + " (MP: " + mpData.status + ")");
+                reverted++;
+              }
+            } else {
+              // API error — DON'T touch, leave as-is to be safe
+              skippedIds.push(orderId + " (API HTTP " + mpRes.status + ")");
+              skipped++;
+            }
+          } catch (fetchErr: any) {
+            // Fetch error — DON'T touch, leave as-is
+            skippedIds.push(orderId + " (fetch error)");
+            skipped++;
+          }
+        }
+      } catch (_) { /* skip */ }
+    }
+
+    console.log("[admin/revert-blind-fix] Reverted " + reverted + ", re-approved " + reApproved + ", skipped " + skipped);
+    return c.json({ success: true, reverted, reApproved, skipped, revertedIds, reApprovedIds, skippedIds });
+  } catch (e: any) {
+    console.error("[admin/revert-blind-fix] Exception:", e);
+    return c.json({ error: "Erro ao reverter pedidos." }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // ─── ADMIN: RETRY SIGE REGISTRATION ─────────────────────────
 // ═══════════════════════════════════════════════════════════════
@@ -18539,7 +18706,8 @@ app.get(BASE + "/homepage-init", async (c) => {
       "price_config",
       "marketing_config",
       "exit_intent_config",
-      "google_reviews_config"
+      "google_reviews_config",
+      "settings"
     ];
 
     var kvPromise = supabaseAdmin
@@ -18596,6 +18764,13 @@ app.get(BASE + "/homepage-init", async (c) => {
     var marketingConfigRaw = kvMap["marketing_config"] || null;
     var exitIntentConfigRaw = kvMap["exit_intent_config"] || null;
     var googleReviewsConfigRaw = kvMap["google_reviews_config"] || null;
+
+    // ── Settings (catalogMode, maintenanceMode) — piggyback on homepage-init
+    // to eliminate the duplicate GET /settings call from CatalogModeProvider ──
+    var settingsRaw = kvMap["settings"] || null;
+    var settingsParsed = settingsRaw
+      ? (typeof settingsRaw === "string" ? JSON.parse(settingsRaw) : settingsRaw)
+      : {};
 
     // ── Logo signed URL ──
     var logoResult = { hasLogo: false, url: null as string | null };
@@ -18879,6 +19054,7 @@ app.get(BASE + "/homepage-init", async (c) => {
       marketingConfig: marketingConfigRaw || DEFAULT_MARKETING_CONFIG,
       exitIntentConfig: exitIntentConfigRaw || DEFAULT_EXIT_INTENT_CONFIG,
       googleReviewsConfig: googleReviewsConfigRaw || { enabled: false, merchantId: "", badgePosition: "BOTTOM_RIGHT" },
+      settings: { catalogMode: !!settingsParsed.catalogMode, maintenanceMode: !!settingsParsed.maintenanceMode },
     };
 
     // Cache the full response for subsequent requests
@@ -21352,14 +21528,21 @@ app.get(BASE + "/admin/pending-counts", async (c: any) => {
         }
       })(),
 
-      // 4. Affiliates: count pending registrations
+      // 4. Affiliates: count pending registrations (batch mget instead of sequential)
       (async function () {
         try {
           var ids = await _getAllAffiliateIds();
+          if (ids.length === 0) return 0;
+          var affKeys: string[] = [];
+          for (var ai = 0; ai < ids.length; ai++) affKeys.push("affiliate:" + ids[ai]);
+          var affData = await kv.mget(affKeys);
           var pCount = 0;
-          for (var ai = 0; ai < ids.length; ai++) {
-            var aff = await _getAffiliateById(ids[ai]);
-            if (aff && aff.status === "pending") pCount++;
+          for (var aj = 0; aj < affData.length; aj++) {
+            if (!affData[aj]) continue;
+            try {
+              var affParsed = typeof affData[aj] === "string" ? JSON.parse(affData[aj] as string) : affData[aj];
+              if (affParsed && affParsed.status === "pending") pCount++;
+            } catch (_) { /* skip */ }
           }
           return pCount;
         } catch (e) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { useParams, useNavigate } from "react-router";
 import { getValidAccessToken } from "../services/supabaseClient";
 import { TrackingPageContent } from "../components/TrackingTimeline";
@@ -45,7 +45,7 @@ export function TrackingPage() {
           Você precisa estar logado para acompanhar seus pedidos.
         </p>
         <button
-          onClick={function () { navigate("/conta"); }}
+          onClick={function () { startTransition(function () { navigate("/conta"); }); }}
           className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl transition-colors cursor-pointer"
           style={{ fontSize: "0.9rem", fontWeight: 600 }}
         >
@@ -68,7 +68,7 @@ export function TrackingPage() {
     <TrackingPageContent
       accessToken={accessToken}
       localOrderId={params.orderId}
-      onBack={function () { navigate("/minha-conta?tab=pedidos"); }}
+      onBack={function () { startTransition(function () { navigate("/minha-conta?tab=pedidos"); }); }}
     />
   );
 }

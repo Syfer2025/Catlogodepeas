@@ -97,6 +97,7 @@ export function AdminOrders() {
   const [sortField, setSortField] = useState<"date" | "total">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [fixingCards, setFixingCards] = useState(false);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -234,14 +235,71 @@ export function AdminOrders() {
             Gerencie todos os pedidos da loja
           </p>
         </div>
-        <button
-          onClick={loadOrders}
-          className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-600"
-          style={{ fontSize: "0.85rem" }}
-        >
-          <RefreshCw className="w-4 h-4" />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadOrders}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-600"
+            style={{ fontSize: "0.85rem" }}
+          >
+            <RefreshCw className="w-4 h-4" />
+            Atualizar
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm("Verificar no Mercado Pago e corrigir pedidos de cartão que estão como 'Aguardando Pagamento'? Só serão marcados como 'Pago' os que o MP confirmar como approved.")) return;
+              setFixingCards(true);
+              setError("");
+              try {
+                const tk = await getToken();
+                const res = await api.adminFixCardOrders(tk);
+                var msg = "Verificados no MP: " + res.fixed + " aprovado(s) corrigido(s).";
+                if (res.fixedIds && res.fixedIds.length) msg += " IDs: " + res.fixedIds.join(", ") + ".";
+                if (res.notApproved > 0) msg += " " + res.notApproved + " NAO aprovado(s): " + (res.notApprovedIds || []).join(", ") + ".";
+                if (res.noPaymentId > 0) msg += " " + res.noPaymentId + " sem ID de pagamento MP.";
+                setSuccess(msg);
+                setTimeout(() => setSuccess(""), 8000);
+                await loadOrders();
+              } catch (e: any) {
+                setError(e.message || "Erro ao corrigir pedidos.");
+              } finally {
+                setFixingCards(false);
+              }
+            }}
+            disabled={fixingCards}
+            className="flex items-center gap-2 px-4 py-2.5 border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors text-orange-700 disabled:opacity-50"
+            style={{ fontSize: "0.85rem" }}
+          >
+            {fixingCards ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+            Corrigir Cartões
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirm("REVERTER pedidos que foram marcados como 'Pago' pelo fix antigo (sem verificação MP). Cada pedido será re-verificado no Mercado Pago. Continuar?")) return;
+              setFixingCards(true);
+              setError("");
+              try {
+                const tk = await getToken();
+                const res = await api.adminRevertBlindFix(tk);
+                var msg = "Revertidos: " + res.reverted + " pedido(s).";
+                if (res.revertedIds && res.revertedIds.length) msg += " IDs: " + res.revertedIds.join(", ") + ".";
+                if (res.reApproved > 0) msg += " " + res.reApproved + " confirmado(s) como aprovado(s) no MP: " + (res.reApprovedIds || []).join(", ") + ".";
+                setSuccess(msg);
+                setTimeout(() => setSuccess(""), 12000);
+                await loadOrders();
+              } catch (e: any) {
+                setError(e.message || "Erro ao reverter pedidos.");
+              } finally {
+                setFixingCards(false);
+              }
+            }}
+            disabled={fixingCards}
+            className="flex items-center gap-2 px-4 py-2.5 border border-red-200 rounded-lg hover:bg-red-50 transition-colors text-red-700 disabled:opacity-50"
+            style={{ fontSize: "0.85rem" }}
+          >
+            {fixingCards ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            Reverter Fix Cego
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
