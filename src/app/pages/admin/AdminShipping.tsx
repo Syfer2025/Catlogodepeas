@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Save, Loader2, Check, Truck, Plus, Trash2, ChevronDown, ChevronRight, MapPin, Package, AlertTriangle, Info, ToggleLeft, ToggleRight, Copy, Settings, Globe, Zap, Bike, FileSpreadsheet, Plug, Layers, Eye, EyeOff, Search, Braces, CheckCircle, ArrowRight, Upload, Play, Terminal, RotateCcw, ChevronUp, ExternalLink, Scale } from "lucide-react";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
-// Lazy-load AdminShippingTables — only shown when the shipping tables sub-tab is active
-const AdminShippingTables = lazy(function () { return import("./AdminShippingTables").then(function (m) { return { default: m.AdminShippingTables }; }); });
+import { AdminShippingTables } from "./AdminShippingTables";
 
 // Physical field names for highlighting in debug UI
 const SIGE_WEIGHT_FIELDS_UI = ["peso", "pesoliquido", "pesobruto", "pesoliq", "peso_liquido", "peso_bruto", "weight", "pesokg", "pesogr", "pesounitario"];
@@ -1069,9 +1068,7 @@ export function AdminShipping() {
 
       {/* ═══ TABLES TAB ═══ */}
       {activeTab === "tables" && (
-        <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
-          <AdminShippingTables />
-        </Suspense>
+        <AdminShippingTables />
       )}
 
       {/* ═══ API TAB ═══ */}

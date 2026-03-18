@@ -28,12 +28,11 @@ import { Link } from "react-router";
 import { ProductCard } from "../components/ProductCard";
 import type { ProdutoItem } from "../components/ProductCard";
 import { ArrowRight, ChevronRight, ChevronLeft, Package, MessageCircle, Sparkles, Search } from "lucide-react";
-import { useState, useEffect, useRef, useCallback, lazy, Suspense, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "../services/api";
 import type { BannerItem, ProductBalance, ProductPrice, HomepageCategoryCard, MidBanner } from "../services/api";
 // Lazy-load below-fold sections for better initial load performance
-import { lazyWithRetry } from "../utils/lazyWithRetry";
-const SuperPromoSection = lazyWithRetry(function () { return import("../components/SuperPromoSection").then(function (m) { return { default: m.SuperPromoSection }; }); });
+import { SuperPromoSection } from "../components/SuperPromoSection";
 import { seedPriceCache } from "../components/PriceBadge";
 import { seedStockCache } from "../components/StockBar";
 import { seedReviewStarsCache } from "../components/ReviewStars";
@@ -43,10 +42,10 @@ import React from "react";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { ProductCardSkeletonGrid } from "../components/ProductCardSkeleton";
-const RecentlyViewedSection = lazyWithRetry(function () { return import("../components/RecentlyViewedSection").then(function (m) { return { default: m.RecentlyViewedSection }; }); });
-const BrandCarousel = lazyWithRetry(function () { return import("../components/BrandCarousel").then(function (m) { return { default: m.BrandCarousel }; }); });
-const HomeReels = lazyWithRetry(function () { return import("../components/HomeReels").then(function (m) { return { default: m.HomeReels }; }); });
-const InfluencerCarousel = lazyWithRetry(function () { return import("../components/InfluencerCarousel").then(function (m) { return { default: m.InfluencerCarousel }; }); });
+import { RecentlyViewedSection } from "../components/RecentlyViewedSection";
+import { BrandCarousel } from "../components/BrandCarousel";
+import { HomeReels } from "../components/HomeReels";
+import { InfluencerCarousel } from "../components/InfluencerCarousel";
 import "../utils/emptyStateAnimations";
 
 /** Hook to animate elements when they scroll into view */
@@ -739,9 +738,7 @@ export function HomePage() {
   const brandsSection = useMemo(function () {
     if (!initData || !initData.brands || initData.brands.length === 0) return null;
     return (
-      <Suspense fallback={null}>
-        <BrandCarousel brands={initData.brands} />
-      </Suspense>
+      <BrandCarousel brands={initData.brands} />
     );
   }, [initData]);
 
@@ -769,15 +766,11 @@ export function HomePage() {
 
       {/* Super Promo Section — between categories and reels */}
       <ErrorBoundary>
-        <Suspense fallback={null}>
-          <SuperPromoSection />
-        </Suspense>
+        <SuperPromoSection />
       </ErrorBoundary>
 
       {/* Home Reels — short product videos, TikTok style */}
-      <Suspense fallback={null}>
-        <HomeReels />
-      </Suspense>
+      <HomeReels />
 
       {/* Mid-Page Banners (Position 1) — slots 3 & 4, after Super Promo */}
       {midBannersTop}
@@ -830,17 +823,13 @@ export function HomePage() {
       {midBannersBottom}
 
       {/* Recently Viewed Products */}
-      <Suspense fallback={null}>
-        <RecentlyViewedSection />
-      </Suspense>
+      <RecentlyViewedSection />
 
       {/* Brand Carousel — after Recently Viewed, before CTA */}
       {brandsSection}
 
       {/* Influencer Carousel — Instagram Stories style, above CTA */}
-      <Suspense fallback={null}>
-        <InfluencerCarousel />
-      </Suspense>
+      <InfluencerCarousel />
 
       {/* CTA Banner */}
       <section className="relative overflow-hidden">

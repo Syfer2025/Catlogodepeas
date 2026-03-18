@@ -247,7 +247,7 @@ export function Header() {
                         Minha Conta
                       </Link>
                       <Link
-                        to="/meus-pedidos"
+                        to="/minha-conta?tab=pedidos"
                         className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         onClick={function () { setUserMenuOpen(false); }}
                       >
@@ -375,13 +375,6 @@ export function Header() {
                     WhatsApp: (44) 99100-1170
                   </a>
                 </div>
-
-                <style>{`
-                  @keyframes contactDropIn {
-                    from { opacity: 0; transform: translateY(-4px); }
-                    to   { opacity: 1; transform: translateY(0); }
-                  }
-                `}</style>
               </div>
             )}
           </div>
@@ -451,7 +444,6 @@ export function Header() {
               className="flex-1 overflow-y-auto overscroll-contain"
               style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}
             >
-              <style>{`.mobile-drawer-scroll::-webkit-scrollbar{display:none}`}</style>
               <div className="mobile-drawer-scroll">
                 {/* Quick nav links */}
                 <div className="py-1">
@@ -473,7 +465,7 @@ export function Header() {
                   </Link>
                   {userLoggedIn && (
                     <Link
-                      to="/meus-pedidos"
+                      to="/minha-conta?tab=pedidos"
                       className="flex items-center gap-3 px-4 py-3 text-gray-700 active:bg-gray-100 transition-colors"
                       onClick={closeMobileMenu}
                     >
@@ -552,12 +544,6 @@ export function Header() {
           </div>
         </div>
       )}
-
-      {/* Keyframes for mobile drawer */}
-      <style>{`
-        @keyframes slideInLeft{from{transform:translateX(-100%)}to{transform:translateX(0)}}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-      `}</style>
     </header>
   );
 }

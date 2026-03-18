@@ -8,19 +8,8 @@ import { useCatalogMode } from "../contexts/CatalogModeContext";
 import { useGA4 } from "./GA4Provider";
 import { useMarketing } from "./MarketingPixels";
 
-/* Empty cart animation keyframes — injected once */
-var _emptyCartCssInjected = false;
-(function injectEmptyCartCss() {
-  if (_emptyCartCssInjected || typeof document === "undefined") return;
-  _emptyCartCssInjected = true;
-  var style = document.createElement("style");
-  style.textContent = [
-    "@keyframes empty-cart-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}",
-    "@keyframes empty-cart-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}",
-    "@keyframes empty-cart-twinkle{0%,100%{opacity:0.4;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}",
-  ].join("");
-  document.head.appendChild(style);
-})();
+/* Empty cart animation keyframes — now defined in /src/styles/index.css
+ * to avoid CSP 'unsafe-inline' violations from runtime style injection. */
 
 function formatPrice(value: number): string {
   return value.toLocaleString("pt-BR", {

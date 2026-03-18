@@ -15,18 +15,8 @@ import { getValidAccessToken } from "../services/supabaseClient";
 import * as api from "../services/api";
 import { UserAvatar } from "./AvatarPicker";
 
-/* Badge bounce animation — injected once */
-var _bottomNavCssInjected = false;
-(function injectBottomNavCss() {
-  if (_bottomNavCssInjected || typeof document === "undefined") return;
-  _bottomNavCssInjected = true;
-  var style = document.createElement("style");
-  style.textContent = [
-    "@keyframes bnav-badge-pop{0%{transform:scale(0.5)}50%{transform:scale(1.2)}100%{transform:scale(1)}}",
-    "@keyframes bnav-cart-pulse{0%{box-shadow:0 -4px 20px rgba(220,38,38,0.25)}50%{box-shadow:0 -4px 28px rgba(220,38,38,0.4)}100%{box-shadow:0 -4px 20px rgba(220,38,38,0.25)}}",
-  ].join("");
-  document.head.appendChild(style);
-})();
+/* Badge bounce animation keyframes — now defined in /src/styles/index.css
+ * to avoid CSP 'unsafe-inline' violations from runtime style injection. */
 
 export function MobileBottomNav() {
   var location = useLocation();

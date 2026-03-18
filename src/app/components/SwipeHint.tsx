@@ -9,39 +9,12 @@ import { Hand, ChevronUp } from "lucide-react";
 
 var HINT_DURATION = 3000;
 
-// CSS keyframes injected once
-var styleInjected = false;
-function injectStyles() {
-  if (styleInjected || typeof document === "undefined") return;
-  styleInjected = true;
-  var style = document.createElement("style");
-  style.textContent = `
-@keyframes swipeHandMove {
-  0% { transform: translateY(0); }
-  35% { transform: translateY(-32px); }
-  55% { transform: translateY(-32px); }
-  80% { transform: translateY(0); }
-  100% { transform: translateY(0); }
-}
-@keyframes swipeHintFadeIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes swipeHintFadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-  `;
-  document.head.appendChild(style);
-}
+// CSS keyframes now defined in /src/styles/index.css to avoid CSP violations.
+// No runtime style injection needed.
 
 export function SwipeHint({ visible }: { visible: boolean }) {
   var [show, setShow] = useState(true);
   var [fading, setFading] = useState(false);
-
-  useEffect(function () {
-    injectStyles();
-  }, []);
 
   // Auto-dismiss
   useEffect(function () {

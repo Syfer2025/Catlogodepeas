@@ -31,7 +31,7 @@
  * - Infraestrutura, Testes de Regressao, Error Scanner
  * ═══════════════════════════════════════════════════════════════════════════════
  */
-import { useState, useEffect, useCallback, lazy, Suspense, startTransition } from "react";
+import { useState, useEffect, useCallback, startTransition } from "react";
 import { Link } from "react-router";
 import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
@@ -39,51 +39,48 @@ import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken, refreshAdminToken, clearAdminStorage, ADMIN_EMAIL_KEY, ADMIN_NAME_KEY } from "./adminAuth";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
-import { lazyWithRetry } from "../../utils/lazyWithRetry";
 
 var ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
 
-// ── Lazy-loaded admin tab components (only load when the tab is activated) ──
-const AdminProducts = lazyWithRetry(function () { return import("./AdminProducts").then(function (m) { return { default: m.AdminProducts }; }); });
-const AdminCategories = lazyWithRetry(function () { return import("./AdminCategories").then(function (m) { return { default: m.AdminCategories }; }); });
-const AdminSettings = lazyWithRetry(function () { return import("./AdminSettings").then(function (m) { return { default: m.AdminSettings }; }); });
-const AdminAttributes = lazyWithRetry(function () { return import("./AdminAttributes").then(function (m) { return { default: m.AdminAttributes }; }); });
-const AdminClients = lazyWithRetry(function () { return import("./AdminClients").then(function (m) { return { default: m.AdminClients }; }); });
-const AdminApiSige = lazyWithRetry(function () { return import("./AdminApiSige").then(function (m) { return { default: m.AdminApiSige }; }); });
-const AdminPagHiper = lazyWithRetry(function () { return import("./AdminPagHiper").then(function (m) { return { default: m.AdminPagHiper }; }); });
-const AdminShipping = lazyWithRetry(function () { return import("./AdminShipping").then(function (m) { return { default: m.AdminShipping }; }); });
-const AdminMercadoPago = lazyWithRetry(function () { return import("./AdminMercadoPago").then(function (m) { return { default: m.AdminMercadoPago }; }); });
-const AdminOrders = lazyWithRetry(function () { return import("./AdminOrders").then(function (m) { return { default: m.AdminOrders }; }); });
-const AdminAuditLog = lazyWithRetry(function () { return import("./AdminAuditLog").then(function (m) { return { default: m.AdminAuditLog }; }); });
-const AdminBanners = lazyWithRetry(function () { return import("./AdminBanners").then(function (m) { return { default: m.AdminBanners }; }); });
-const AdminSuperPromo = lazyWithRetry(function () { return import("./AdminSuperPromo").then(function (m) { return { default: m.AdminSuperPromo }; }); });
-const AdminAdmins = lazyWithRetry(function () { return import("./AdminAdmins").then(function (m) { return { default: m.AdminAdmins }; }); });
-const AdminHomepageCategories = lazyWithRetry(function () { return import("./AdminHomepageCategories").then(function (m) { return { default: m.AdminHomepageCategories }; }); });
-const AdminMidBanners = lazyWithRetry(function () { return import("./AdminMidBanners").then(function (m) { return { default: m.AdminMidBanners }; }); });
-const AdminFooterBadges = lazyWithRetry(function () { return import("./AdminFooterBadges").then(function (m) { return { default: m.AdminFooterBadges }; }); });
-const AdminEmailMarketing = lazyWithRetry(function () { return import("./AdminEmailMarketing").then(function (m) { return { default: m.AdminEmailMarketing }; }); });
-const AdminDashboard = lazyWithRetry(function () { return import("./AdminDashboard").then(function (m) { return { default: m.AdminDashboard }; }); });
-const AdminCoupons = lazyWithRetry(function () { return import("./AdminCoupons").then(function (m) { return { default: m.AdminCoupons }; }); });
-const AdminLgpdRequests = lazyWithRetry(function () { return import("./AdminLgpdRequests").then(function (m) { return { default: m.AdminLgpdRequests }; }); });
-const AdminBrands = lazyWithRetry(function () { return import("./AdminBrands").then(function (m) { return { default: m.AdminBrands }; }); });
-const AdminAutoCateg = lazyWithRetry(function () { return import("./AdminAutoCateg").then(function (m) { return { default: m.AdminAutoCateg }; }); });
-const AdminReviews = lazyWithRetry(function () { return import("./AdminReviews").then(function (m) { return { default: m.AdminReviews }; }); });
-const AdminWarranty = lazyWithRetry(function () { return import("./AdminWarranty").then(function (m) { return { default: m.AdminWarranty }; }); });
-const AdminAffiliates = lazyWithRetry(function () { return import("./AdminAffiliates").then(function (m) { return { default: m.AdminAffiliates }; }); });
-const AdminBranches = lazyWithRetry(function () { return import("./AdminBranches").then(function (m) { return { default: m.AdminBranches }; }); });
-const AdminSisfreteWT = lazyWithRetry(function () { return import("./AdminSisfreteWT").then(function (m) { return { default: m.AdminSisfreteWT }; }); });
-const AdminRegressionTest = lazyWithRetry(function () { return import("./AdminRegressionTest").then(function (m) { return { default: m.AdminRegressionTest }; }); });
-const AdminErrorScanner = lazyWithRetry(function () { return import("./AdminErrorScanner").then(function (m) { return { default: m.AdminErrorScanner }; }); });
-const AdminMarketing = lazyWithRetry(function () { return import("./AdminMarketing").then(function (m) { return { default: m.AdminMarketing }; }); });
-const AdminExitIntent = lazyWithRetry(function () { return import("./AdminExitIntent").then(function (m) { return { default: m.AdminExitIntent }; }); });
-const AdminWhatsApp = lazyWithRetry(function () { return import("./AdminWhatsApp").then(function (m) { return { default: m.AdminWhatsApp }; }); });
-
-const AdminReels = lazyWithRetry(function () { return import("./AdminReels").then(function (m) { return { default: m.AdminReels }; }); });
-const AdminInfluencers = lazyWithRetry(function () { return import("./AdminInfluencers").then(function (m) { return { default: m.AdminInfluencers }; }); });
-
-const AdminInfrastructure = lazyWithRetry(function () { return import("./AdminInfrastructure").then(function (m) { return { default: m.AdminInfrastructure }; }); });
-const AdminFaq = lazyWithRetry(function () { return import("./AdminFaq").then(function (m) { return { default: m.AdminFaq }; }); });
-const AdminDimensions = lazyWithRetry(function () { return import("./AdminDimensions").then(function (m) { return { default: m.AdminDimensions }; }); });
+// ── Direct imports for admin tab components (no lazy loading in this environment) ──
+import { AdminProducts } from "./AdminProducts";
+import { AdminCategories } from "./AdminCategories";
+import { AdminSettings } from "./AdminSettings";
+import { AdminAttributes } from "./AdminAttributes";
+import { AdminClients } from "./AdminClients";
+import { AdminApiSige } from "./AdminApiSige";
+import { AdminPagHiper } from "./AdminPagHiper";
+import { AdminShipping } from "./AdminShipping";
+import { AdminMercadoPago } from "./AdminMercadoPago";
+import { AdminOrders } from "./AdminOrders";
+import { AdminAuditLog } from "./AdminAuditLog";
+import { AdminBanners } from "./AdminBanners";
+import { AdminSuperPromo } from "./AdminSuperPromo";
+import { AdminAdmins } from "./AdminAdmins";
+import { AdminHomepageCategories } from "./AdminHomepageCategories";
+import { AdminMidBanners } from "./AdminMidBanners";
+import { AdminFooterBadges } from "./AdminFooterBadges";
+import { AdminEmailMarketing } from "./AdminEmailMarketing";
+import { AdminDashboard } from "./AdminDashboard";
+import { AdminCoupons } from "./AdminCoupons";
+import { AdminLgpdRequests } from "./AdminLgpdRequests";
+import { AdminBrands } from "./AdminBrands";
+import { AdminAutoCateg } from "./AdminAutoCateg";
+import { AdminReviews } from "./AdminReviews";
+import { AdminWarranty } from "./AdminWarranty";
+import { AdminAffiliates } from "./AdminAffiliates";
+import { AdminBranches } from "./AdminBranches";
+import { AdminSisfreteWT } from "./AdminSisfreteWT";
+import { AdminRegressionTest } from "./AdminRegressionTest";
+import { AdminErrorScanner } from "./AdminErrorScanner";
+import { AdminMarketing } from "./AdminMarketing";
+import { AdminExitIntent } from "./AdminExitIntent";
+import { AdminWhatsApp } from "./AdminWhatsApp";
+import { AdminReels } from "./AdminReels";
+import { AdminInfluencers } from "./AdminInfluencers";
+import { AdminInfrastructure } from "./AdminInfrastructure";
+import { AdminFaq } from "./AdminFaq";
+import { AdminDimensions } from "./AdminDimensions";
 
 type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
 
@@ -1049,13 +1046,7 @@ export function AdminPage() {
         {/* Page Content */}
         <main className="p-4 lg:p-6">
           <ErrorBoundary>
-            <Suspense fallback={
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
-              </div>
-            }>
-              {renderContent()}
-            </Suspense>
+            {renderContent()}
           </ErrorBoundary>
         </main>
       </div>

@@ -9057,13 +9057,18 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
   var ac1 = new AbortController();
   var timer1 = setTimeout(function () { ac1.abort(); }, SIGE_CALL_TIMEOUT);
   let response: Response;
+  let responseText: string;
   try {
     var opts1 = buildFetchOpts(tokenData.token);
     opts1.signal = ac1.signal;
     response = await fetch(url, opts1);
+    // Read body inside the same try-catch: there's a race condition where the abort timer
+    // fires AFTER fetch() resolves (headers received) but BEFORE response.text() completes.
+    // In that case response.text() throws "The signal has been aborted" which must be caught here.
+    responseText = await response.text();
   } catch (fetchErr: any) {
     clearTimeout(timer1);
-    if (fetchErr.name === "AbortError") {
+    if (fetchErr.name === "AbortError" || (fetchErr.message && fetchErr.message.indexOf("signal") !== -1 && fetchErr.message.indexOf("aborted") !== -1)) {
       console.warn("SIGE proxy: TIMEOUT (" + (SIGE_CALL_TIMEOUT / 1000) + "s) on " + method + " " + path);
       return { ok: false, status: 408, data: { error: "SIGE timeout (" + (SIGE_CALL_TIMEOUT / 1000) + "s) on " + path } };
     }
@@ -9072,7 +9077,6 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
     return { ok: false, status: 502, data: { error: "SIGE network error: " + (fetchErr.message || "connection failed") } };
   }
   clearTimeout(timer1);
-  const responseText = await response.text();
   // SIGE proxy response received
 
   // Auto-retry on 401 (token expired/invalid)
@@ -9088,15 +9092,16 @@ async function sigeAuthFetch(method: string, path: string, body?: any): Promise<
         var opts2 = buildFetchOpts(newToken);
         opts2.signal = ac2.signal;
         const retryResponse = await fetch(url, opts2);
-        clearTimeout(timer2);
+        // Read body inside try-catch: same race condition fix as primary fetch
         const retryText = await retryResponse.text();
+        clearTimeout(timer2);
         // SIGE proxy retry response received
         let retryData: any;
         try { retryData = JSON.parse(retryText); } catch { retryData = { rawText: retryText }; }
         return { ok: retryResponse.ok, status: retryResponse.status, data: retryData };
       } catch (retryErr: any) {
         clearTimeout(timer2);
-        if (retryErr.name === "AbortError") {
+        if (retryErr.name === "AbortError" || (retryErr.message && retryErr.message.indexOf("signal") !== -1 && retryErr.message.indexOf("aborted") !== -1)) {
           console.warn("SIGE proxy: TIMEOUT on 401 retry " + method + " " + path);
           return { ok: false, status: 408, data: { error: "SIGE timeout on retry " + path } };
         }

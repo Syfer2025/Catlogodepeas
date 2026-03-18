@@ -1,12 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router";
-import Home from "lucide-react/dist/esm/icons/home";
-import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
-import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
-import Search from "lucide-react/dist/esm/icons/search";
-import HelpCircle from "lucide-react/dist/esm/icons/help-circle";
-import MessageCircle from "lucide-react/dist/esm/icons/message-circle";
+import { Home, ChevronRight, HelpCircle, Search, ChevronDown, MessageCircle } from "lucide-react";
 import * as api from "../services/api";
+import DOMPurify from "dompurify";
 
 // ─── Default FAQ items shown while loading / if none configured ───
 var DEFAULT_FAQ: api.FaqItem[] = [
@@ -238,7 +234,7 @@ export function FaqPage() {
                       <div className="border-t border-gray-100 pt-4">
                         <div
                           className="text-gray-600 text-sm leading-relaxed whitespace-pre-line"
-                          dangerouslySetInnerHTML={{ __html: item.answer }}
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.answer) }}
                         />
                       </div>
                     </div>
@@ -264,7 +260,7 @@ export function FaqPage() {
               Fale Conosco
             </Link>
             <a
-              href="https://wa.me/5544312300"
+              href="https://wa.me/5544991001170"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"

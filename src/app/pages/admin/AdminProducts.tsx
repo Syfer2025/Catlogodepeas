@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense, startTransition } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, startTransition } from "react";
 import { useNavigate } from "react-router";
 import * as api from "../../services/api";
 import type { ProdutoDB, ProductMeta, ProductImage, CategoryNode, SigeMatchResult } from "../../services/api";
@@ -6,9 +6,8 @@ import type { ProductBalance, StockSummary } from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import { defaultCategoryTree } from "../../data/categoryTree";
-// Lazy-load SigeStockSync — only shown when the stock sync sub-tab is active
-import { lazyWithRetry } from "../../utils/lazyWithRetry";
-const SigeStockSync = lazyWithRetry(function () { return import("./SigeStockSync").then(function (m) { return { default: m.SigeStockSync }; }); });
+// Direct import SigeStockSync
+import { SigeStockSync } from "./SigeStockSync";
 import { PriceBadge } from "../../components/PriceBadge";
 import { convertImageToWebP, ProductImage as ProductImage2 } from "../../components/ProductImage";
 import { Search, Package, Loader2, RefreshCw, Hash, Eye, EyeOff, ChevronLeft, ChevronRight, Grid3X3, List, Database, X, Plus, Edit3, Trash2, Save, ImagePlus, Check, AlertCircle, CheckCircle2, ChevronDown, FileText, Tag, ExternalLink, Camera, PenLine, PackageCheck, PackageX, Filter, ArrowUpDown, SlidersHorizontal, BarChart3, TrendingUp, TrendingDown, AlertOctagon, DollarSign, Truck, Scale, RotateCcw, Info, Zap, Link2, Weight, Ruler, Barcode } from "lucide-react";
@@ -531,12 +530,10 @@ export function AdminProducts() {
       </div>
 
       {/* SIGE Sync Panel */}
-      <Suspense fallback={<div className="flex items-center justify-center py-6"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
-        <SigeStockSync onSyncComplete={() => {
+      <SigeStockSync onSyncComplete={() => {
           loadData();
           loadGlobalSummary();
         }} />
-      </Suspense>
 
       {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

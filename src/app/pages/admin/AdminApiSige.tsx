@@ -1,33 +1,33 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plug, CheckCircle2, XCircle, Loader2, Globe, Shield, Key, Clock, Zap, RefreshCw, Eye, EyeOff, Save, Wifi, WifiOff, AlertTriangle, LogIn, LogOut, ChevronDown, ChevronRight, Lock, Mail, Link2, Users, UserPlus, Play, User, KeyRound, Hash } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { publicAnonKey } from "../../../../utils/supabase/info";
-// ── Lazy-loaded Sige modules (only loaded when their tab is activated) ──
-const SigeDepModule = lazy(function () { return import("./SigeDepModule").then(function (m) { return { default: m.SigeDepModule }; }); });
-const SigeCategoryModule = lazy(function () { return import("./SigeCategoryModule").then(function (m) { return { default: m.SigeCategoryModule }; }); });
-const SigeCustomerModule = lazy(function () { return import("./SigeCustomerModule").then(function (m) { return { default: m.SigeCustomerModule }; }); });
-const SigeCustomerAddressModule = lazy(function () { return import("./SigeCustomerAddressModule").then(function (m) { return { default: m.SigeCustomerAddressModule }; }); });
-const SigeCustomerComplementModule = lazy(function () { return import("./SigeCustomerComplementModule").then(function (m) { return { default: m.SigeCustomerComplementModule }; }); });
-const SigeCustomerContactModule = lazy(function () { return import("./SigeCustomerContactModule").then(function (m) { return { default: m.SigeCustomerContactModule }; }); });
-const SigeProductModule = lazy(function () { return import("./SigeProductModule").then(function (m) { return { default: m.SigeProductModule }; }); });
-const SigeProductBalanceModule = lazy(function () { return import("./SigeProductBalanceModule").then(function (m) { return { default: m.SigeProductBalanceModule }; }); });
-const SigeProductPcpModule = lazy(function () { return import("./SigeProductPcpModule").then(function (m) { return { default: m.SigeProductPcpModule }; }); });
-const SigeProductPromotionModule = lazy(function () { return import("./SigeProductPromotionModule").then(function (m) { return { default: m.SigeProductPromotionModule }; }); });
-const SigeProductReferenceModule = lazy(function () { return import("./SigeProductReferenceModule").then(function (m) { return { default: m.SigeProductReferenceModule }; }); });
-const SigeProductTechnicalSheetModule = lazy(function () { return import("./SigeProductTechnicalSheetModule").then(function (m) { return { default: m.SigeProductTechnicalSheetModule }; }); });
-const SigeProductPriceModule = lazy(function () { return import("./SigeProductPriceModule").then(function (m) { return { default: m.SigeProductPriceModule }; }); });
-const SigeOrderModule = lazy(function () { return import("./SigeOrderModule").then(function (m) { return { default: m.SigeOrderModule }; }); });
-const SigeOrderObservationModule = lazy(function () { return import("./SigeOrderObservationModule").then(function (m) { return { default: m.SigeOrderObservationModule }; }); });
-const SigeOrderInstallmentModule = lazy(function () { return import("./SigeOrderInstallmentModule").then(function (m) { return { default: m.SigeOrderInstallmentModule }; }); });
-const SigeOrderItemsModule = lazy(function () { return import("./SigeOrderItemsModule").then(function (m) { return { default: m.SigeOrderItemsModule }; }); });
-const SigeOrderItemsTextModule = lazy(function () { return import("./SigeOrderItemsTextModule").then(function (m) { return { default: m.SigeOrderItemsTextModule }; }); });
-const SigeTestRunner = lazy(function () { return import("./SigeTestRunner").then(function (m) { return { default: m.SigeTestRunner }; }); });
-const SigeStockExplorer = lazy(function () { return import("./SigeStockExplorer").then(function (m) { return { default: m.SigeStockExplorer }; }); });
-const SigeIntegrationModule = lazy(function () { return import("./SigeIntegrationModule").then(function (m) { return { default: m.SigeIntegrationModule }; }); });
-const SigeApiDocsModule = lazy(function () { return import("./SigeApiDocsModule").then(function (m) { return { default: m.SigeApiDocsModule }; }); });
-const SigeOrderDiagnoseModule = lazy(function () { return import("./SigeOrderDiagnoseModule").then(function (m) { return { default: m.SigeOrderDiagnoseModule }; }); });
+// ── Direct imports for Sige modules ──
+import { SigeDepModule } from "./SigeDepModule";
+import { SigeCategoryModule } from "./SigeCategoryModule";
+import { SigeCustomerModule } from "./SigeCustomerModule";
+import { SigeCustomerAddressModule } from "./SigeCustomerAddressModule";
+import { SigeCustomerComplementModule } from "./SigeCustomerComplementModule";
+import { SigeCustomerContactModule } from "./SigeCustomerContactModule";
+import { SigeProductModule } from "./SigeProductModule";
+import { SigeProductBalanceModule } from "./SigeProductBalanceModule";
+import { SigeProductPcpModule } from "./SigeProductPcpModule";
+import { SigeProductPromotionModule } from "./SigeProductPromotionModule";
+import { SigeProductReferenceModule } from "./SigeProductReferenceModule";
+import { SigeProductTechnicalSheetModule } from "./SigeProductTechnicalSheetModule";
+import { SigeProductPriceModule } from "./SigeProductPriceModule";
+import { SigeOrderModule } from "./SigeOrderModule";
+import { SigeOrderObservationModule } from "./SigeOrderObservationModule";
+import { SigeOrderInstallmentModule } from "./SigeOrderInstallmentModule";
+import { SigeOrderItemsModule } from "./SigeOrderItemsModule";
+import { SigeOrderItemsTextModule } from "./SigeOrderItemsTextModule";
+import { SigeTestRunner } from "./SigeTestRunner";
+import { SigeStockExplorer } from "./SigeStockExplorer";
+import { SigeIntegrationModule } from "./SigeIntegrationModule";
+import { SigeApiDocsModule } from "./SigeApiDocsModule";
+import { SigeOrderDiagnoseModule } from "./SigeOrderDiagnoseModule";
 
 interface SigeStatus {
   configured: boolean;
@@ -728,7 +728,6 @@ export function AdminApiSige() {
         </div>
       </div>
 
-      <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
       {/* ═══ API Docs Storage ═══ */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <SigeApiDocsModule isConnected={!!isConnected} />
@@ -747,7 +746,6 @@ export function AdminApiSige() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <SigeStockExplorer isConnected={!!isConnected} />
       </div>
-      </Suspense>
 
       {/* ═══ API Modules ═══ */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -949,7 +947,6 @@ export function AdminApiSige() {
               )}
             </div>
 
-            <Suspense fallback={<div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
             {/* ─── Module 3: Dependencias ─── */}
             <SigeDepModule isConnected={!!isConnected} />
 
@@ -979,7 +976,6 @@ export function AdminApiSige() {
             <SigeOrderInstallmentModule isConnected={!!isConnected} />
             <SigeOrderItemsModule isConnected={!!isConnected} />
             <SigeOrderItemsTextModule isConnected={!!isConnected} />
-            </Suspense>
 
             {/* Next modules placeholder */}
             <div className="p-5">

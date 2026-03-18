@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Layers, Plus, Edit3, Trash2, X, Check, ChevronRight, ChevronDown, Search, Loader2, RefreshCw, FolderTree, FolderOpen, Folder, Upload, Save, AlertCircle, CheckCircle2, PackagePlus } from "lucide-react";
 import type { CategoryNode } from "../../services/api";
 import * as api from "../../services/api";
 import { defaultCategoryTree, countNodes } from "../../data/categoryTree";
 import { getValidAdminToken } from "./adminAuth";
-import { lazyWithRetry } from "../../utils/lazyWithRetry";
-const AdminBulkCategoryAssign = lazyWithRetry(function () { return import("./AdminBulkCategoryAssign").then(function (m) { return { default: m.AdminBulkCategoryAssign }; }); });
+import { AdminBulkCategoryAssign } from "./AdminBulkCategoryAssign";
 
 type SubTab = "tree" | "bulk-assign";
 
@@ -305,9 +304,7 @@ export function AdminCategories() {
 
       {/* Conditional content */}
       {subTab === "bulk-assign" ? (
-        <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div>}>
-          <AdminBulkCategoryAssign key="bulk-assign-view" />
-        </Suspense>
+        <AdminBulkCategoryAssign key="bulk-assign-view" />
       ) : (
       <div key="tree-view" className="space-y-5">
       {/* Header */}
