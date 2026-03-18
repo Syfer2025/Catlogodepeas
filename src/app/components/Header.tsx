@@ -174,7 +174,7 @@ export function Header() {
               <img
                 src={logoUrl}
                 alt="Carretão Auto Peças"
-                className="h-10 w-auto max-w-[160px] object-contain"
+                className="h-[50px] w-auto max-w-[200px] object-contain"
                 loading="eager"
               />
             ) : (
