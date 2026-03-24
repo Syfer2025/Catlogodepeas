@@ -678,25 +678,25 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
         </div>
       )}
 
-      {/* Navigation arrows (desktop) */}
+      {/* Navigation arrows — always visible when multiple reels */}
       {reels.length > 1 && (
         <>
-          {currentIndex > 0 && (
-            <button
-              onClick={goPrev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
-          {currentIndex < reels.length - 1 && (
-            <button
-              onClick={goNext}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={goPrev}
+            disabled={currentIndex === 0}
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full text-white transition-all duration-200"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", opacity: currentIndex === 0 ? 0.3 : 1, pointerEvents: currentIndex === 0 ? "none" : "auto" }}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={goNext}
+            disabled={currentIndex === reels.length - 1}
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full text-white transition-all duration-200"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", opacity: currentIndex === reels.length - 1 ? 0.3 : 1, pointerEvents: currentIndex === reels.length - 1 ? "none" : "auto" }}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </>
       )}
 
