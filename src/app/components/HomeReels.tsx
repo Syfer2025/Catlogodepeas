@@ -684,7 +684,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
           {currentIndex > 0 && (
             <button
               onClick={goPrev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full flex items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -692,7 +692,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
           {currentIndex < reels.length - 1 && (
             <button
               onClick={goNext}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full flex items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-black/40 rounded-full items-center justify-center text-white hover:bg-black/60 transition-colors hidden md:flex"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
