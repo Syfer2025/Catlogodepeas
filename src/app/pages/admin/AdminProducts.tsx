@@ -173,6 +173,23 @@ export function AdminProducts() {
 
   useEffect(() => { loadGlobalSummary(); }, [loadGlobalSummary]);
 
+  // Auto-refresh stock balances every 60 seconds (real-time stock tab update)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (produtos.length === 0) return;
+      const skus = produtos.map((p) => p.sku);
+      api.getProductBalances(skus)
+        .then((res) => {
+          const map: Record<string, ProductBalance> = {};
+          for (const b of (res.results || [])) { map[b.sku] = b; }
+          setBalanceMap((prev) => ({ ...prev, ...map }));
+        })
+        .catch(() => {});
+      loadGlobalSummary();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [produtos, loadGlobalSummary]);
+
   // Scan uncached products
   const runStockScan = async () => {
     if (scanning) return;

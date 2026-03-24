@@ -786,28 +786,60 @@ export const sigeDisconnect = (accessToken: string) =>
     headers: { "X-User-Token": accessToken },
   });
 
+// ─── SIGE: Tipos de resposta ───────────────────────────────────────────────
+/** Resposta generica do proxy SIGE — usada em endpoints CRUD cujo payload varia. */
+export type SigeRawResponse = Record<string, unknown>;
+
+/** Resultado do registro/criacao de usuario SIGE. */
+export interface SigeUserRegisterResult {
+  ok: boolean;
+  userId?: string | number;
+  token?: string;
+  refreshToken?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
+/** Perfil de usuario retornado pelo SIGE (/sige/user/me). */
+export interface SigeUserProfile {
+  id?: string | number;
+  name?: string;
+  email?: string;
+  role?: string;
+  active?: boolean;
+  baseUrl?: string;
+  [key: string]: unknown;
+}
+
+/** Resultado de operacoes de reset/update de usuario SIGE. */
+export interface SigeUserUpdateResult {
+  ok: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
 // ─── SIGE: Usuarios ───
 export const sigeUserRegister = (accessToken: string, data: { name: string; email: string; password: string; baseUrl?: string }) =>
-  request<any>("/sige/user/register", {
+  request<SigeUserRegisterResult>("/sige/user/register", {
     method: "POST",
     headers: { "X-User-Token": accessToken },
     body: JSON.stringify(data),
   });
 
 export const sigeUserCreate = (accessToken: string, data: { name: string; email: string; password: string }) =>
-  request<any>("/sige/user/create", {
+  request<SigeUserRegisterResult>("/sige/user/create", {
     method: "POST",
     headers: { "X-User-Token": accessToken },
     body: JSON.stringify(data),
   });
 
 export const sigeUserMe = (accessToken: string) =>
-  request<any>("/sige/user/me", {
+  request<SigeUserProfile>("/sige/user/me", {
     headers: { "X-User-Token": accessToken },
   });
 
 export const sigeUserResetPassword = (accessToken: string, id: string, data: { password: string; newPassword: string }) =>
-  request<any>(`/sige/user/reset/${encodeURIComponent(id)}`, {
+  request<SigeUserUpdateResult>(`/sige/user/reset/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "X-User-Token": accessToken },
     body: JSON.stringify(data),
@@ -1769,12 +1801,14 @@ export const getProductDetailInit = (sku: string, options?: { signal?: AbortSign
   request<ProductDetailInitResponse>("/produto-detail-init/" + encodeURIComponent(sku), options);
 
 /**
- * Returns the OG proxy URL for a product — use this for social sharing.
- * Crawlers (Facebook, WhatsApp, Twitter) will read correct meta tags
- * from the server-rendered HTML, then human visitors get redirected to the SPA.
+ * Returns the product page URL for social sharing.
+ * Uses the site's own domain so users see the store URL (not Supabase).
  */
 export function getProductOgUrl(sku: string): string {
-  return BASE_URL + "/og/produto/" + encodeURIComponent(sku);
+  if (typeof window !== "undefined") {
+    return window.location.origin + "/produto/" + encodeURIComponent(sku);
+  }
+  return "/produto/" + encodeURIComponent(sku);
 }
 
 // ─── Match SKUs (bulk matching with normalized comparison) ───

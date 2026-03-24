@@ -31,9 +31,17 @@ interface VirtualProductGridProps {
  * - Skip rendering (and API calls for images/prices) for off-screen cards
  * - Maintain correct scroll position and grid layout
  *
- * For < 16 items, renders all cards immediately (no overhead).
- * For 16+ items, virtualizes with a 600px rootMargin buffer.
+ * Threshold: mobile (<640px) = 8 items, desktop = 16 items.
+ * For lists smaller than the threshold, renders all cards immediately (no overhead).
+ * For larger lists, virtualizes with a 600px rootMargin buffer.
  */
+
+/** Returns the virtualization threshold based on current viewport width. */
+function getVirtualThreshold(): number {
+  if (typeof window === "undefined") return 16;
+  return window.innerWidth < 640 ? 8 : 16;
+}
+
 export function VirtualProductGrid({
   products,
   balanceMap,
@@ -44,7 +52,7 @@ export function VirtualProductGrid({
   var cols = gridClass || "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4";
 
   // For small lists, skip virtualization entirely
-  if (products.length < 16) {
+  if (products.length < getVirtualThreshold()) {
     return (
       <div className={"grid gap-3 sm:gap-5 " + cols}>
         {products.map(function (produto) {

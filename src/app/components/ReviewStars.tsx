@@ -102,8 +102,8 @@ function ReviewStarsInner({ sku, preloaded }: ReviewStarsProps) {
       return;
     }
     var cancelled = false;
-    // Debounce individual fetch by 2500ms + stagger to let bulk seed the cache first
-    var stagger = 2500 + Math.random() * 800;
+    // Debounce individual fetch by 1500ms + stagger to let bulk seed the cache first
+    var stagger = 1500 + Math.random() * 500;
     var timer = setTimeout(function () {
       if (cancelled) return;
       // Re-check cache (bulk may have seeded it during debounce)

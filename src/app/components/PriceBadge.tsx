@@ -269,7 +269,7 @@ function PriceBadgeInner({ sku, variant = "full", preloaded, forceShow }: PriceB
       }
       // Debounce individual fetch by 2500ms + random stagger to let bulk results
       // seed the cache first and avoid thundering herd when debounce expires.
-      var stagger = 2500 + Math.random() * 800;
+      var stagger = 1500 + Math.random() * 500;
       setTimeout(() => {
         if (cancelled) return;
         // Re-check if cache was seeded by bulk during the debounce window

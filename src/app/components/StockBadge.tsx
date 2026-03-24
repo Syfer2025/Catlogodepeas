@@ -3,11 +3,79 @@
  * Modos: "full" (quantidade + detalhes), "compact" (dot colorido + label), "inline" (para tabelas).
  * Verde = em estoque, amarelo = estoque baixo (<=5), vermelho = esgotado.
  * Busca saldo via GET /sige/saldo/:sku com cache.
+ *
+ * CACHE DE MODULO:
+ * - _stockCache: Map<sku, {data, fetchedAt}> com TTL de 15min (igual ao backend)
+ * - seedStockCache: "planta" saldo no cache (chamado por CatalogPage/HomePage apos bulk-fetch)
+ * - Debounce de 2500ms + stagger para deixar o bulk semear o cache primeiro
  */
 import React, { useState, useEffect, useCallback } from "react";
 import { Loader2, AlertTriangle, PackageCheck, PackageX, RefreshCw } from "lucide-react";
 import * as api from "../services/api";
 import type { ProductBalance } from "../services/api";
+
+// ═══════════════════════════════════════════════════════════
+// Module-level cache (mesma estrategia do PriceBadge/ReviewStars)
+// ═══════════════════════════════════════════════════════════
+
+const STOCK_CACHE_TTL = 15 * 60_000; // 15 min — alinhado ao TTL do backend
+const _stockCache = new Map<string, { data: ProductBalance; fetchedAt: number }>();
+const _stockInflight = new Map<string, Promise<ProductBalance>>();
+
+const MAX_CONCURRENT = 2;
+let _activeStockFetches = 0;
+const _stockQueue: Array<() => void> = [];
+
+/**
+ * Seed the stock cache from bulk results.
+ * Call from CatalogPage/HomePage after bulk balance fetch to prevent N individual requests.
+ */
+export function seedStockCache(entries: Array<{ sku: string; data: ProductBalance }>): void {
+  const now = Date.now();
+  for (const entry of entries) {
+    if (entry.sku && entry.data) {
+      _stockCache.set(entry.sku, { data: entry.data, fetchedAt: now });
+    }
+  }
+}
+
+function _runNextStock() {
+  while (_activeStockFetches < MAX_CONCURRENT && _stockQueue.length > 0) {
+    const next = _stockQueue.shift();
+    if (next) { _activeStockFetches++; next(); }
+  }
+}
+
+function _enqueueStock<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = () => {
+      fn().then(resolve).catch(reject).finally(() => { _activeStockFetches--; _runNextStock(); });
+    };
+    if (_activeStockFetches < MAX_CONCURRENT) { _activeStockFetches++; run(); }
+    else { _stockQueue.push(run); }
+  });
+}
+
+function fetchBalanceCached(sku: string): Promise<ProductBalance> {
+  const cached = _stockCache.get(sku);
+  if (cached && Date.now() - cached.fetchedAt < STOCK_CACHE_TTL) {
+    return Promise.resolve(cached.data);
+  }
+  const existing = _stockInflight.get(sku);
+  if (existing) return existing;
+  const promise = _enqueueStock(() =>
+    api.getProductBalance(sku, {}).then((data) => {
+      _stockCache.set(sku, { data, fetchedAt: Date.now() });
+      _stockInflight.delete(sku);
+      return data;
+    }).catch((err) => {
+      _stockInflight.delete(sku);
+      throw err;
+    })
+  );
+  _stockInflight.set(sku, promise);
+  return promise;
+}
 
 interface StockBadgeProps {
   sku: string;
@@ -28,6 +96,7 @@ function StockBadgeInner({ sku, variant = "compact", preloaded }: StockBadgeProp
     setFetchError(null);
     api.getProductBalance(sku, { force, debug: force })
       .then((data) => {
+        _stockCache.set(sku, { data, fetchedAt: Date.now() });
         setBalance(data);
         if (data.error) setFetchError(data.error);
       })
@@ -47,14 +116,41 @@ function StockBadgeInner({ sku, variant = "compact", preloaded }: StockBadgeProp
       setFetchError(null);
       return;
     }
-    // Debounce individual fetch by 300ms to let bulk/preloaded results arrive first.
-    // The auto-batching layer in api.ts now handles connection pooling, so we no
-    // longer need the old 1500ms debounce for that purpose.
+    // Check module-level cache synchronously before scheduling any fetch
+    const cached = _stockCache.get(sku);
+    if (cached && Date.now() - cached.fetchedAt < STOCK_CACHE_TTL) {
+      setBalance(cached.data);
+      setLoading(false);
+      return;
+    }
+    // Debounce 2500ms + stagger — gives bulk seed time to populate the cache first,
+    // preventing thundering herd when many cards mount simultaneously.
     let cancelled = false;
+    const stagger = 2500 + Math.random() * 800;
     const timer = setTimeout(() => {
       if (cancelled) return;
-      fetchBalance(false);
-    }, 300);
+      // Re-check cache (bulk may have seeded during debounce)
+      const c2 = _stockCache.get(sku);
+      if (c2 && Date.now() - c2.fetchedAt < STOCK_CACHE_TTL) {
+        setBalance(c2.data);
+        setLoading(false);
+        return;
+      }
+      fetchBalanceCached(sku).then((data) => {
+        if (!cancelled) {
+          setBalance(data);
+          if (data.error) setFetchError(data.error);
+          setLoading(false);
+        }
+      }).catch((e) => {
+        if (!cancelled) {
+          console.error("[StockBadge] Fetch error for " + sku + ":", e);
+          setFetchError(e.message || "Erro");
+          setBalance(null);
+          setLoading(false);
+        }
+      });
+    }, stagger);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [sku, preloaded, fetchBalance]);
 

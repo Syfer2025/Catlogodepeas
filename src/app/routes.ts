@@ -35,8 +35,14 @@ import { TrackingPage } from "./pages/TrackingPage";
 import { FaqPage } from "./pages/FaqPage";
 import { DocsPage } from "./pages/DocsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { AdminPage } from "./pages/admin/AdminPage";
-import { AdminResetPasswordPage } from "./pages/admin/AdminResetPasswordPage";
+
+// Admin routes are lazy-loaded — customers never download the admin bundle
+const AdminPage = React.lazy(() =>
+  import("./pages/admin/AdminPage").then((m) => ({ default: m.AdminPage }))
+);
+const AdminResetPasswordPage = React.lazy(() =>
+  import("./pages/admin/AdminResetPasswordPage").then((m) => ({ default: m.AdminResetPasswordPage }))
+);
 
 export const router = createBrowserRouter([
   {

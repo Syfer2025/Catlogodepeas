@@ -308,7 +308,7 @@ function ReviewForm({
       }
 
       // Upload images if any
-      if (images.length > 0) {
+      if (images.length > 0 && result.reviewId) {
         for (var i = 0; i < images.length; i++) {
           try {
             await api.uploadReviewImage(result.reviewId, images[i], session.access_token);
@@ -317,6 +317,9 @@ function ReviewForm({
             toast.error("Erro ao enviar imagem " + (i + 1));
           }
         }
+      } else if (images.length > 0 && !result.reviewId) {
+        console.error("[ReviewForm] Cannot upload images: reviewId missing in response");
+        toast.error("Avaliação enviada, mas não foi possível anexar as imagens.");
       }
 
       toast.success("Avaliação enviada! Ela será publicada após moderação.");
@@ -515,12 +518,14 @@ export function ProductReviews({ sku }: { sku: string }) {
       } else {
         setMyReviewChecked(true);
       }
+    }).catch(function () {
+      setMyReviewChecked(true);
     });
   }, [sku]);
 
   // Load reviews + summary
-  var loadReviews = useCallback(function () {
-    setLoading(true);
+  var loadReviews = useCallback(function (silent?: boolean) {
+    if (!silent) setLoading(true);
     Promise.all([
       api.getProductReviews(sku),
       api.getReviewSummary(sku),
@@ -533,7 +538,7 @@ export function ProductReviews({ sku }: { sku: string }) {
         console.error("[ProductReviews] Load error:", err);
       })
       .finally(function () {
-        setLoading(false);
+        if (!silent) setLoading(false);
       });
   }, [sku]);
 
@@ -716,7 +721,7 @@ export function ProductReviews({ sku }: { sku: string }) {
                   sku={sku}
                   onSubmitted={function () {
                     setShowForm(false);
-                    loadReviews();
+                    loadReviews(true);
                     supabase.auth.getSession().then(function (res) {
                       var session = res.data ? res.data.session : null;
                       if (session && session.access_token) {

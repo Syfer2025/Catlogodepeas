@@ -670,6 +670,10 @@ export function UserAuthPage() {
     try {
       const result = await api.userForgotPassword(forgotEmail.trim());
 
+      if (!result.sent) {
+        throw new Error("Não foi possível enviar o email de recuperação. Verifique o endereço informado.");
+      }
+
       if (result.recoveryId) {
         localStorage.setItem("recovery_id", result.recoveryId);
         localStorage.setItem("recovery_email", forgotEmail.trim());
@@ -691,6 +695,7 @@ export function UserAuthPage() {
     if (pwd.length >= 6) s++;
     if (pwd.length >= 8) s++;
     if (/[A-Z]/.test(pwd)) s++;
+    if (/[a-z]/.test(pwd)) s++;
     if (/[0-9]/.test(pwd)) s++;
     if (/[^A-Za-z0-9]/.test(pwd)) s++;
     if (s <= 1) return { level: 1, label: "Fraca", color: "bg-red-500" };
@@ -712,7 +717,7 @@ export function UserAuthPage() {
       const { error: oauthErr } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin + "/",
+          redirectTo: window.location.origin + "/minha-conta",
         },
       });
       if (oauthErr) {

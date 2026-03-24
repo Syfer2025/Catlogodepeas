@@ -6,7 +6,7 @@
  * SEO: JSON-LD Product, OG tags, canonical. GA4: view_item event.
  */
 import { useParams, Link } from "react-router";
-import { Home, ArrowLeft, Package, Hash, Loader2, ChevronLeft, ChevronRight, X, Tag, Info, MessageCircle, Copy, Check, Flame, Zap, Share2, ShieldCheck, Play } from "lucide-react";
+import { Home, ArrowLeft, Package, Hash, Loader2, ChevronLeft, ChevronRight, X, Tag, Info, MessageCircle, Flame, Zap, ShieldCheck, Play } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as api from "../services/api";
 import type { ProductImage, SuperPromo, ProductBalance, ProductPrice } from "../services/api";
@@ -20,7 +20,6 @@ import { seedStockCache } from "../components/StockBar";
 import { AddToCartButton } from "../components/AddToCartButton";
 import { ShippingCalculator } from "../components/ShippingCalculator";
 import { WishlistButton } from "../components/WishlistButton";
-import { copyToClipboard } from "../utils/clipboard";
 import { useGA4 } from "../components/GA4Provider";
 import { useMarketing } from "../components/MarketingPixels";
 import { useHomepageInit } from "../contexts/HomepageInitContext";
@@ -127,7 +126,6 @@ export function ProductDetailPage() {
   // Attributes state
   const [attributes, setAttributes] = useState<Record<string, string | string[]> | null>(null);
   const [attrsLoading, setAttrsLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
   const { trackEvent } = useGA4();
   const { trackMetaEvent } = useMarketing();
 
@@ -803,9 +801,10 @@ export function ProductDetailPage() {
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Product Details — dual scroll: images sticky, info scrolls */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10">
           {/* Image Gallery — sticky on desktop */}
-          <div className="lg:sticky lg:top-[130px] lg:self-start">
+          <div>
+            <div className="lg:sticky lg:top-[130px]">
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden relative">
               {/* Promo badge on image gallery */}
               {isInPromo && (
@@ -975,6 +974,7 @@ export function ProductDetailPage() {
                 </div>
               )}
             </div>
+            </div>
           </div>
 
           {/* Info + Attributes — scrolls freely */}
@@ -990,54 +990,6 @@ export function ProductDetailPage() {
                   >
                     {product.sku}
                   </span>
-                </div>
-                <div className="flex items-center gap-0 shrink-0">
-                  <button
-                    onClick={() => {
-                      var ogUrl = getProductOgUrl(product.sku);
-                      copyToClipboard(ogUrl);
-                      setCopied(true);
-                      toast.success("Link copiado!");
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="flex items-center gap-1 text-gray-400 hover:text-red-600 transition-colors px-1.5 py-1 rounded-lg hover:bg-red-50"
-                    title="Copiar link para compartilhar (com preview)"
-                    style={{ fontSize: "0.68rem" }}
-                  >
-                    {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-                    <span className="hidden sm:inline">{copied ? "Copiado!" : "Copiar"}</span>
-                  </button>
-                  <a
-                    href={"https://wa.me/?text=" + encodeURIComponent(product.titulo + " - Confira na Carretão Auto Peças: " + getProductOgUrl(product.sku))}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-gray-400 hover:text-green-600 transition-colors px-1.5 py-1 rounded-lg hover:bg-green-50"
-                    title="Enviar pelo WhatsApp"
-                    style={{ fontSize: "0.68rem" }}
-                  >
-                    <MessageCircle className="w-3 h-3" />
-                    <span className="hidden sm:inline">WhatsApp</span>
-                  </a>
-                  <button
-                    onClick={() => {
-                      var shareUrl = getProductOgUrl(product.sku);
-                      if (navigator.share) {
-                        navigator.share({
-                          title: product.titulo,
-                          text: product.titulo + " - Carretão Auto Peças",
-                          url: shareUrl,
-                        }).catch(function () {});
-                      } else {
-                        copyToClipboard(shareUrl);
-                        toast.success("Link copiado!");
-                      }
-                    }}
-                    className="flex items-center gap-1 text-gray-400 hover:text-blue-600 transition-colors px-1.5 py-1 rounded-lg hover:bg-blue-50"
-                    title="Compartilhar"
-                    style={{ fontSize: "0.68rem" }}
-                  >
-                    <Share2 className="w-3 h-3" />
-                  </button>
                 </div>
               </div>
 

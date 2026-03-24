@@ -71,7 +71,17 @@ export function MobileBottomNav() {
         }
       }
     });
-    return function () { sub.data.subscription.unsubscribe(); };
+    function onAvatarUpdated(e: Event) {
+      var detail = (e as CustomEvent).detail;
+      if (detail) {
+        setAvatarInfo({ avatarId: detail.avatarId ?? null, customAvatarUrl: detail.customAvatarUrl ?? null });
+      }
+    }
+    window.addEventListener("carretao-avatar-updated", onAvatarUpdated);
+    return function () {
+      sub.data.subscription.unsubscribe();
+      window.removeEventListener("carretao-avatar-updated", onAvatarUpdated);
+    };
   }, []);
 
   var path = location.pathname;

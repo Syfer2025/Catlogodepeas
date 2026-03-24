@@ -19,6 +19,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 import { RouterProvider } from "react-router";
+import { Suspense } from "react";
 import { router } from "./routes";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CartProvider } from "./contexts/CartContext";
@@ -37,7 +38,9 @@ export default function App() {
         <AffiliateProvider>
           <CartProvider>
             <WishlistProvider>
-              <RouterProvider router={router} />
+              <Suspense fallback={null}>
+                <RouterProvider router={router} />
+              </Suspense>
             </WishlistProvider>
           </CartProvider>
         </AffiliateProvider>

@@ -645,7 +645,9 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
 
       {/* Swipe hint — only on mobile when multiple reels exist */}
       {reels.length > 1 && (
-        <SwipeHint visible={reels.length > 1} />
+        <div className="md:hidden">
+          <SwipeHint visible={reels.length > 1} />
+        </div>
       )}
 
       {/* Top controls */}

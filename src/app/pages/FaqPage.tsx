@@ -68,9 +68,10 @@ export function FaqPage() {
       result = result.filter(function (i) { return i.category === activeCategory; });
     }
     if (search.trim()) {
-      var q = search.toLowerCase().trim();
+      var normalize = function (s: string) { return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); };
+      var q = normalize(search.trim());
       result = result.filter(function (i) {
-        return i.question.toLowerCase().includes(q) || i.answer.toLowerCase().includes(q);
+        return normalize(i.question).includes(q) || normalize(i.answer).includes(q);
       });
     }
     return result;

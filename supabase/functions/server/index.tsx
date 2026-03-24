@@ -262,7 +262,14 @@ app.use("*", async function (c: any, next: any) {
     p.includes("/sitemap") ||
     p.includes("/robots.txt") ||
     p.includes("/favicon") ||
-    p.includes("/coupons/public")
+    p.includes("/coupons/public") ||
+    // Public product catalog endpoints (read-only, no PII)
+    p.includes("/category-tree") ||
+    p.includes("/produtos/autocomplete") ||
+    p.includes("/produtos/destaques") ||
+    p.includes("/produtos/stock-summary") ||
+    // Main catalog endpoint: only public GET (admin writes use non-GET methods)
+    (p.endsWith("/produtos") || p.includes("/produtos?"))
   );
   var isPrivate = (
     p.includes("/admin") ||
@@ -1716,7 +1723,7 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     // Send recovery email — redirect goes to the Figma site (we don't need
     // to capture the tokens; we detect the click via last_sign_in_at)
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://cafe-puce-47800704.figma.site/admin/reset-password",
+      redirectTo: (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/admin/reset-password",
     });
 
     if (error) {
@@ -3168,13 +3175,12 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     }));
 
     const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://cafe-puce-47800704.figma.site/conta/redefinir-senha",
+      redirectTo: (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/conta/redefinir-senha",
     });
 
     if (error) {
       console.error("User forgot-password error:", error.message);
-    } else {
-      // Recovery email sent
+      return c.json({ sent: false, error: "Erro ao enviar email de recuperação. Tente novamente em alguns minutos." });
     }
 
     return c.json({ sent: true, recoveryId });

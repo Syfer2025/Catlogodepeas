@@ -785,7 +785,7 @@ export function CouponsPage() {
               Ver Produtos
             </Link>
             <Link
-              to="/super-promo"
+              to="/catalogo"
               className="inline-flex items-center gap-2 bg-red-500/30 text-white border border-white/20 px-6 py-3 rounded-xl hover:bg-red-500/40 transition-colors"
               style={{ fontSize: "0.9rem", fontWeight: 600 }}
             >

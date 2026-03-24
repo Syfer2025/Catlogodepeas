@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useRef, useCallback, startTransition } from "react";
 import { useNavigate } from "react-router";
+import DOMPurify from "dompurify";
 import { Search, X, Clock, ChevronRight, Trash2, Loader2, Package, ArrowRight, Hash, Sparkles, CornerDownLeft } from "lucide-react";
 import "../utils/emptyStateAnimations";
 import { prefetchCatalog, prefetchProductDetail } from "../utils/prefetch";
@@ -129,16 +130,20 @@ export function SearchAutocomplete({
     };
   }, [query, doSearch]);
 
-  // Close on click outside
+  // Close on click/touch outside
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
+    const handleClose = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         setShowHistory(false);
       }
     };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", handleClose);
+    document.addEventListener("touchstart", handleClose as EventListener);
+    return () => {
+      document.removeEventListener("mousedown", handleClose);
+      document.removeEventListener("touchstart", handleClose as EventListener);
+    };
   }, []);
 
   const goToProduct = (sku: string) => {
@@ -262,11 +267,11 @@ export function SearchAutocomplete({
     inputRef.current?.focus();
   };
 
-  // Highlight matching text
-  const highlightMatch = (text: string, q: string) => {
-    // Escape HTML entities to prevent XSS via product titles
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const safeText = esc(text);
+  // Highlight matching text — uses DOMPurify to sanitize the final HTML
+  // before injection via dangerouslySetInnerHTML. Only <mark> with the
+  // specific class is allowed; all other tags are stripped.
+  const highlightMatch = (text: string, q: string): string => {
+    const safeText = DOMPurify.sanitize(text, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     if (!q.trim()) return safeText;
     const norm = q
       .toLowerCase()
@@ -277,31 +282,37 @@ export function SearchAutocomplete({
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
 
+    let raw: string;
     const idx = textNorm.indexOf(norm);
     if (idx === -1) {
       // Try each word
       const words = norm.split(/\s+/).filter((w) => w.length >= 2);
-      let result = safeText;
+      raw = safeText;
       for (const word of words) {
-        const wordIdx = result
+        const wordIdx = raw
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .indexOf(word);
         if (wordIdx !== -1) {
-          const before = result.slice(0, wordIdx);
-          const match = result.slice(wordIdx, wordIdx + word.length);
-          const after = result.slice(wordIdx + word.length);
-          result = `${before}<mark>${match}</mark>${after}`;
+          const before = raw.slice(0, wordIdx);
+          const match = raw.slice(wordIdx, wordIdx + word.length);
+          const after = raw.slice(wordIdx + word.length);
+          raw = `${before}<mark>${match}</mark>${after}`;
+          break;
         }
       }
-      return result;
+    } else {
+      const before = safeText.slice(0, idx);
+      const match = safeText.slice(idx, idx + norm.length);
+      const after = safeText.slice(idx + norm.length);
+      raw = `${before}<mark>${match}</mark>${after}`;
     }
 
-    const before = safeText.slice(0, idx);
-    const match = safeText.slice(idx, idx + norm.length);
-    const after = safeText.slice(idx + norm.length);
-    return `${before}<mark>${match}</mark>${after}`;
+    return DOMPurify.sanitize(raw, {
+      ALLOWED_TAGS: ["mark"],
+      ALLOWED_ATTR: ["class", "style"],
+    });
   };
 
   const matchLabel = (type: AutocompleteResult["matchType"]) => {

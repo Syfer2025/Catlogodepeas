@@ -96,9 +96,18 @@ export function Header() {
         setCustomAvatarUrl(undefined);
       }
     });
+    function onAvatarUpdated(e: Event) {
+      var detail = (e as CustomEvent).detail;
+      if (detail) {
+        setUserAvatarId(detail.avatarId ?? undefined);
+        setCustomAvatarUrl(detail.customAvatarUrl ?? undefined);
+      }
+    }
+    window.addEventListener("carretao-avatar-updated", onAvatarUpdated);
     return function () {
       cancelled = true;
       subscription.unsubscribe();
+      window.removeEventListener("carretao-avatar-updated", onAvatarUpdated);
     };
   }, []);
 

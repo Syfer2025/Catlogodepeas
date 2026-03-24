@@ -33,7 +33,7 @@
  */
 import { useState, useEffect, useCallback, startTransition } from "react";
 import { Link } from "react-router";
-import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Zap, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
+import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -42,47 +42,48 @@ import { ErrorBoundary } from "../../components/ErrorBoundary";
 
 var ADMIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
 
-// ── Direct imports for admin tab components (no lazy loading in this environment) ──
-import { AdminProducts } from "./AdminProducts";
-import { AdminCategories } from "./AdminCategories";
-import { AdminSettings } from "./AdminSettings";
-import { AdminAttributes } from "./AdminAttributes";
-import { AdminClients } from "./AdminClients";
-import { AdminApiSige } from "./AdminApiSige";
-import { AdminPagHiper } from "./AdminPagHiper";
-import { AdminShipping } from "./AdminShipping";
-import { AdminMercadoPago } from "./AdminMercadoPago";
-import { AdminOrders } from "./AdminOrders";
-import { AdminAuditLog } from "./AdminAuditLog";
-import { AdminBanners } from "./AdminBanners";
-import { AdminSuperPromo } from "./AdminSuperPromo";
-import { AdminAdmins } from "./AdminAdmins";
-import { AdminHomepageCategories } from "./AdminHomepageCategories";
-import { AdminMidBanners } from "./AdminMidBanners";
-import { AdminFooterBadges } from "./AdminFooterBadges";
-import { AdminEmailMarketing } from "./AdminEmailMarketing";
-import { AdminDashboard } from "./AdminDashboard";
-import { AdminCoupons } from "./AdminCoupons";
-import { AdminLgpdRequests } from "./AdminLgpdRequests";
-import { AdminBrands } from "./AdminBrands";
-import { AdminAutoCateg } from "./AdminAutoCateg";
-import { AdminReviews } from "./AdminReviews";
-import { AdminWarranty } from "./AdminWarranty";
-import { AdminAffiliates } from "./AdminAffiliates";
-import { AdminBranches } from "./AdminBranches";
-import { AdminSisfreteWT } from "./AdminSisfreteWT";
-import { AdminRegressionTest } from "./AdminRegressionTest";
-import { AdminErrorScanner } from "./AdminErrorScanner";
-import { AdminMarketing } from "./AdminMarketing";
-import { AdminExitIntent } from "./AdminExitIntent";
-import { AdminWhatsApp } from "./AdminWhatsApp";
-import { AdminReels } from "./AdminReels";
-import { AdminInfluencers } from "./AdminInfluencers";
-import { AdminInfrastructure } from "./AdminInfrastructure";
-import { AdminFaq } from "./AdminFaq";
-import { AdminDimensions } from "./AdminDimensions";
+// ── Lazy-loaded admin tab components — each tab is a separate JS chunk ──
+// Only downloaded when the admin clicks the corresponding tab.
+import { lazy, Suspense } from "react";
+const AdminDashboard = lazy(() => import("./AdminDashboard").then((m) => ({ default: m.AdminDashboard })));
+const AdminProducts = lazy(() => import("./AdminProducts").then((m) => ({ default: m.AdminProducts })));
+const AdminCategories = lazy(() => import("./AdminCategories").then((m) => ({ default: m.AdminCategories })));
+const AdminSettings = lazy(() => import("./AdminSettings").then((m) => ({ default: m.AdminSettings })));
+const AdminAttributes = lazy(() => import("./AdminAttributes").then((m) => ({ default: m.AdminAttributes })));
+const AdminClients = lazy(() => import("./AdminClients").then((m) => ({ default: m.AdminClients })));
+const AdminApiSige = lazy(() => import("./AdminApiSige").then((m) => ({ default: m.AdminApiSige })));
+const AdminPagHiper = lazy(() => import("./AdminPagHiper").then((m) => ({ default: m.AdminPagHiper })));
+const AdminShipping = lazy(() => import("./AdminShipping").then((m) => ({ default: m.AdminShipping })));
+const AdminMercadoPago = lazy(() => import("./AdminMercadoPago").then((m) => ({ default: m.AdminMercadoPago })));
+const AdminOrders = lazy(() => import("./AdminOrders").then((m) => ({ default: m.AdminOrders })));
+const AdminAuditLog = lazy(() => import("./AdminAuditLog").then((m) => ({ default: m.AdminAuditLog })));
+const AdminBanners = lazy(() => import("./AdminBanners").then((m) => ({ default: m.AdminBanners })));
+const AdminSuperPromo = lazy(() => import("./AdminSuperPromo").then((m) => ({ default: m.AdminSuperPromo })));
+const AdminAdmins = lazy(() => import("./AdminAdmins").then((m) => ({ default: m.AdminAdmins })));
+const AdminHomepageCategories = lazy(() => import("./AdminHomepageCategories").then((m) => ({ default: m.AdminHomepageCategories })));
+const AdminMidBanners = lazy(() => import("./AdminMidBanners").then((m) => ({ default: m.AdminMidBanners })));
+const AdminFooterBadges = lazy(() => import("./AdminFooterBadges").then((m) => ({ default: m.AdminFooterBadges })));
+const AdminEmailMarketing = lazy(() => import("./AdminEmailMarketing").then((m) => ({ default: m.AdminEmailMarketing })));
+const AdminCoupons = lazy(() => import("./AdminCoupons").then((m) => ({ default: m.AdminCoupons })));
+const AdminLgpdRequests = lazy(() => import("./AdminLgpdRequests").then((m) => ({ default: m.AdminLgpdRequests })));
+const AdminBrands = lazy(() => import("./AdminBrands").then((m) => ({ default: m.AdminBrands })));
+const AdminReviews = lazy(() => import("./AdminReviews").then((m) => ({ default: m.AdminReviews })));
+const AdminWarranty = lazy(() => import("./AdminWarranty").then((m) => ({ default: m.AdminWarranty })));
+const AdminAffiliates = lazy(() => import("./AdminAffiliates").then((m) => ({ default: m.AdminAffiliates })));
+const AdminBranches = lazy(() => import("./AdminBranches").then((m) => ({ default: m.AdminBranches })));
+const AdminSisfreteWT = lazy(() => import("./AdminSisfreteWT").then((m) => ({ default: m.AdminSisfreteWT })));
+const AdminRegressionTest = lazy(() => import("./AdminRegressionTest").then((m) => ({ default: m.AdminRegressionTest })));
+const AdminErrorScanner = lazy(() => import("./AdminErrorScanner").then((m) => ({ default: m.AdminErrorScanner })));
+const AdminMarketing = lazy(() => import("./AdminMarketing").then((m) => ({ default: m.AdminMarketing })));
+const AdminExitIntent = lazy(() => import("./AdminExitIntent").then((m) => ({ default: m.AdminExitIntent })));
+const AdminWhatsApp = lazy(() => import("./AdminWhatsApp").then((m) => ({ default: m.AdminWhatsApp })));
+const AdminReels = lazy(() => import("./AdminReels").then((m) => ({ default: m.AdminReels })));
+const AdminInfluencers = lazy(() => import("./AdminInfluencers").then((m) => ({ default: m.AdminInfluencers })));
+const AdminInfrastructure = lazy(() => import("./AdminInfrastructure").then((m) => ({ default: m.AdminInfrastructure })));
+const AdminFaq = lazy(() => import("./AdminFaq").then((m) => ({ default: m.AdminFaq })));
+const AdminDimensions = lazy(() => import("./AdminDimensions").then((m) => ({ default: m.AdminDimensions })));
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "auto-categ" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -91,7 +92,6 @@ const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "categories", label: "Categorias", icon: Layers },
   { id: "attributes", label: "Atributos", icon: Tag },
   { id: "brands", label: "Marcas", icon: Award },
-  { id: "auto-categ", label: "Auto-Categorias", icon: Zap },
   { id: "coupons", label: "Cupons", icon: Ticket },
   { id: "warranty", label: "Garantia Estendida", icon: ShieldCheck },
   { id: "affiliates", label: "Afiliados", icon: Handshake },
@@ -150,7 +150,7 @@ function saveCollapsedSections(state: Record<string, boolean>): void {
 const navSections: NavSection[] = [
   { label: "Geral", icon: LayoutDashboard, items: ["dashboard"], collapsible: false },
   { label: "Vendas", icon: ShoppingCart, items: ["orders", "coupons", "warranty"], collapsible: true },
-  { label: "Catalogo", icon: Package, items: ["products", "categories", "attributes", "brands", "auto-categ"], collapsible: true },
+  { label: "Catalogo", icon: Package, items: ["products", "categories", "attributes", "brands"], collapsible: true },
   { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
   { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
   { label: "Aparencia", icon: Palette, items: ["reels", "influencers", "banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches", "faq"], collapsible: true },
@@ -568,8 +568,6 @@ export function AdminPage() {
         return <AdminSuperPromo />;
       case "brands":
         return <AdminBrands />;
-      case "auto-categ":
-        return <AdminAutoCateg />;
       case "reviews":
         return <AdminReviews />;
       case "api-sige":
@@ -1046,7 +1044,13 @@ export function AdminPage() {
         {/* Page Content */}
         <main className="p-4 lg:p-6">
           <ErrorBoundary>
-            {renderContent()}
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 text-red-600 animate-spin" />
+              </div>
+            }>
+              {renderContent()}
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>

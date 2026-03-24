@@ -407,6 +407,7 @@ export function UserAccountPage() {
         localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(parsed));
       }
     } catch {}
+    window.dispatchEvent(new CustomEvent("carretao-avatar-updated", { detail: { avatarId: newAvatarId, customAvatarUrl: newCustomUrl } }));
   }
 
   // ─── Avatar handlers ───
@@ -2030,7 +2031,7 @@ function OrdersTab({ accessToken }: { accessToken: string | null }) {
                         {statusInfo.label}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-gray-500" style={{ fontSize: "0.78rem" }}>
+                    <div className="flex items-center gap-x-3 gap-y-0.5 mt-1 text-gray-500 flex-wrap" style={{ fontSize: "0.78rem" }}>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatDateShort(order.createdAt)}
