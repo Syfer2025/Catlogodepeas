@@ -17,13 +17,21 @@
  * 3. RETRY: 3 retries com backoff exponencial para 429/502/503/504
  * 4. BULK DEDUP: precos/saldos agrupados em 1 POST por lote de SKUs
  *
- * AUTH: Bearer <anon_key> no header + ?_ut=<user_jwt> para rotas protegidas
+ * AUTH: Bearer <anon_key> no header + X-User-Token header para rotas protegidas
+ *
+ * CLOUDFLARE GATEWAY: Quando VITE_CF_GATEWAY=true (produção), todas as chamadas
+ * vão para /api/* no mesmo domínio (CF Pages Function), que faz proxy para o
+ * Supabase Edge Function com rate limiting, WAF e DDoS protection.
+ * Em dev, vai direto para o Supabase.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { Product, Category } from "../data/products";
 
-const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
+const _useCfGateway = !!import.meta.env.VITE_CF_GATEWAY;
+const BASE_URL = _useCfGateway
+  ? "/api"
+  : `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge Function Warmup — fires at module load time (before React renders).
@@ -100,11 +108,20 @@ const headers = {
   Authorization: `Bearer ${publicAnonKey}`,
 };
 
-// Helper: build URL with user token as query param _ut.
-// Keeps anon key in Authorization for Gateway auth; passes user JWT via _ut.
-function _authUrl(path: string, accessToken: string): string {
-  var sep = path.includes("?") ? "&" : "?";
-  return BASE_URL + path + sep + "_ut=" + encodeURIComponent(accessToken);
+// Helper: build authenticated URL for direct fetch calls.
+// SECURITY: token is now sent via X-User-Token header instead of URL query param
+// to prevent JWT leakage in server logs, browser history, and Referrer headers.
+function _authUrl(path: string, _accessToken: string): string {
+  return BASE_URL + path;
+}
+
+// Helper: build headers for authenticated direct-fetch calls
+function _authHeaders(accessToken: string, extra?: Record<string, string>): Record<string, string> {
+  return {
+    Authorization: "Bearer " + publicAnonKey,
+    "X-User-Token": accessToken,
+    ...(extra || {}),
+  };
 }
 
 const MAX_RETRIES = 3; // 4 total attempts — handles edge function cold starts (up to ~10s)
@@ -151,11 +168,8 @@ async function _requestFastFail<T>(path: string, options?: RequestInit): Promise
       try {
         var _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
         var _finalPath = path;
-        if (_merged["X-User-Token"]) {
-          var _ut = _merged["X-User-Token"];
-          delete _merged["X-User-Token"];
-          _finalPath = _finalPath + (_finalPath.includes("?") ? "&" : "?") + "_ut=" + encodeURIComponent(_ut);
-        }
+        // X-User-Token stays as a header — Authorization already triggers CORS
+        // preflight, so an additional custom header has no extra cost.
         var res = await fetch(BASE_URL + _finalPath, {
           ...options,
           headers: _merged,
@@ -295,16 +309,11 @@ async function _requestInner<T>(path: string, options?: RequestInit): Promise<T>
     }
     try {
       // Merge default + custom headers.
-      // X-User-Token must NOT go as a header (causes CORS preflight the Gateway rejects)
-      // and must NOT replace Authorization (Gateway needs the anon key there, rejects user JWTs with 401).
-      // Solution: pass user token via query parameter _ut, which avoids both problems.
+      // X-User-Token stays as a header — sent alongside Authorization: Bearer <anon_key>.
+      // The Authorization header already triggers CORS preflight, so adding
+      // X-User-Token has no additional CORS cost. The server reads it directly.
       const _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
       let _finalPath = path;
-      if (_merged["X-User-Token"]) {
-        var _ut = _merged["X-User-Token"];
-        delete _merged["X-User-Token"];
-        _finalPath = _finalPath + (_finalPath.includes("?") ? "&" : "?") + "_ut=" + encodeURIComponent(_ut);
-      }
       const res = await fetch(BASE_URL + _finalPath, {
         ...options,
         headers: _merged,
@@ -637,7 +646,7 @@ export const userUploadAvatar = async (file: File, accessToken: string): Promise
   formData.append("file", file);
   var res = await fetch(_authUrl("/auth/user/avatar/upload", accessToken), {
     method: "POST",
-    headers: { Authorization: "Bearer " + publicAnonKey },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
   var data = await res.json().catch(function () { return {}; });
@@ -1258,7 +1267,7 @@ export interface CreateSalePayload {
 export const sigeCreateSale = async (accessToken: string, data: CreateSalePayload): Promise<any> => {
   const res = await fetch(_authUrl("/sige/create-sale", accessToken), {
     method: "POST",
-    headers: headers,
+    headers: { ...headers, "X-User-Token": accessToken },
     body: JSON.stringify(data),
   });
   const body = await res.json().catch(() => ({}));
@@ -1475,7 +1484,7 @@ export const updateOrderStatus = (accessToken: string, localOrderId: string, sta
 export const sigeDebugCreateOrder = async (accessToken: string, data: { codCliFor: number; codTipoMv?: string; items?: any[] }): Promise<any> => {
   const res = await fetch(_authUrl("/sige/debug-create-order", accessToken), {
     method: "POST",
-    headers: headers,
+    headers: { ...headers, "X-User-Token": accessToken },
     body: JSON.stringify(data),
   });
   const body = await res.json().catch(() => ({}));
@@ -1492,7 +1501,7 @@ export const sigeDebugCreateOrder = async (accessToken: string, data: { codCliFo
 export const sigeListOrderTypes = async (accessToken: string): Promise<any> => {
   const res = await fetch(_authUrl("/sige/order-types", accessToken), {
     method: "GET",
-    headers: headers,
+    headers: { ...headers, "X-User-Token": accessToken },
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -1513,7 +1522,7 @@ export const sigeDiagnoseOrder = async (accessToken: string, params?: { sku?: st
   const qsStr = qs.toString() ? `?${qs.toString()}` : "";
   const res = await fetch(_authUrl("/sige/diagnose-order" + qsStr, accessToken), {
     method: "GET",
-    headers: headers,
+    headers: { ...headers, "X-User-Token": accessToken },
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -1529,7 +1538,7 @@ export const sigeDiagnoseOrder = async (accessToken: string, params?: { sku?: st
 export const sigeTestOrderTipoMv = async (accessToken: string, data: { codCliFor: number; codTipoMv_values?: string[]; items?: any[] }): Promise<any> => {
   const res = await fetch(_authUrl("/sige/test-order-tipomv", accessToken), {
     method: "POST",
-    headers: headers,
+    headers: { ...headers, "X-User-Token": accessToken },
     body: JSON.stringify(data),
   });
   const body = await res.json().catch(() => ({}));
@@ -2417,9 +2426,7 @@ export const uploadAttributesCsv = async (
 
   const res = await fetch(_authUrl("/produtos/atributos/upload", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -2442,9 +2449,7 @@ export const getAllAttributes = () => {
 export const deleteAttributesCsv = async (accessToken: string) => {
   const res = await fetch(_authUrl("/produtos/atributos", accessToken), {
     method: "DELETE",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -2472,9 +2477,7 @@ export const uploadLogo = async (file: File, accessToken: string): Promise<LogoM
 
   const res = await fetch(_authUrl("/logo/upload", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -2486,9 +2489,7 @@ export const uploadLogo = async (file: File, accessToken: string): Promise<LogoM
 export const deleteLogo = async (accessToken: string) => {
   const res = await fetch(_authUrl("/logo", accessToken), {
     method: "DELETE",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -2505,9 +2506,7 @@ export const uploadFooterLogo = async (file: File, accessToken: string): Promise
 
   const res = await fetch(_authUrl("/footer-logo/upload", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -2519,9 +2518,7 @@ export const uploadFooterLogo = async (file: File, accessToken: string): Promise
 export const deleteFooterLogo = async (accessToken: string) => {
   const res = await fetch(_authUrl("/footer-logo", accessToken), {
     method: "DELETE",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -2546,7 +2543,7 @@ export const uploadFavicon = async (file: File, accessToken: string): Promise<Fa
   formData.append("file", file);
   var res = await fetch(_authUrl("/favicon/upload", accessToken), {
     method: "POST",
-    headers: { Authorization: "Bearer " + publicAnonKey },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
   var data = await res.json().catch(function () { return {}; });
@@ -2557,7 +2554,7 @@ export const uploadFavicon = async (file: File, accessToken: string): Promise<Fa
 export const deleteFavicon = async (accessToken: string) => {
   var res = await fetch(_authUrl("/favicon", accessToken), {
     method: "DELETE",
-    headers: { Authorization: "Bearer " + publicAnonKey },
+    headers: _authHeaders(accessToken),
   });
   var data = await res.json().catch(function () { return {}; });
   if (!res.ok) throw new Error(data?.error || "HTTP " + res.status);
@@ -2609,9 +2606,7 @@ export const createBanner = async (
 
   const res = await fetch(_authUrl("/admin/banners", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -2650,9 +2645,7 @@ export const updateBannerWithImage = async (
 
   const res = await fetch(_authUrl("/admin/banners/" + bannerId, accessToken), {
     method: "PUT",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -2665,9 +2658,7 @@ export const updateBannerWithImage = async (
 export const deleteBanner = async (bannerId: string, accessToken: string) => {
   const res = await fetch(_authUrl("/admin/banners/" + bannerId, accessToken), {
     method: "DELETE",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
@@ -3729,9 +3720,7 @@ export const createHomepageCategory = async (
 
   const res = await fetch(_authUrl("/admin/homepage-categories", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -3758,9 +3747,7 @@ export const updateHomepageCategory = async (
 
     const res = await fetch(_authUrl("/admin/homepage-categories/" + id, accessToken), {
       method: "PUT",
-      headers: {
-        Authorization: "Bearer " + publicAnonKey,
-      },
+      headers: _authHeaders(accessToken),
       body: formData,
     });
 
@@ -3811,9 +3798,7 @@ export const saveMidBanner = async (
 ): Promise<{ banner: MidBanner }> => {
   const res = await fetch(_authUrl("/admin/mid-banners/" + slot, accessToken), {
     method: "PUT",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
   const data = await res.json().catch(() => ({}));
@@ -3855,9 +3840,7 @@ export const saveFooterBadge = async (
 ): Promise<{ badge: FooterBadge }> => {
   const res = await fetch(_authUrl("/admin/footer-badges/" + key, accessToken), {
     method: "PUT",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
   const data = await res.json();
@@ -3919,9 +3902,7 @@ export const createBrand = async (
 
   const res = await fetch(_authUrl("/admin/brands", accessToken), {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + publicAnonKey,
-    },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
 
@@ -3950,9 +3931,7 @@ export const updateBrand = async (
 
     const res = await fetch(_authUrl("/admin/brands/" + id, accessToken), {
       method: "PUT",
-      headers: {
-        Authorization: "Bearer " + publicAnonKey,
-      },
+      headers: _authHeaders(accessToken),
       body: formData,
     });
 
@@ -5156,7 +5135,7 @@ export const saveBranch = async (
 ): Promise<{ branch: Branch }> => {
   const res = await fetch(_authUrl("/admin/branches/" + encodeURIComponent(id), accessToken), {
     method: "PUT",
-    headers: { Authorization: "Bearer " + publicAnonKey },
+    headers: _authHeaders(accessToken),
     body: formData,
   });
   const data = await res.json().catch(function () { return {}; });
@@ -5449,8 +5428,7 @@ export async function runPsiScan(accessToken: string, options?: {
   // PSI scan can take up to 2 min on Google's servers — use a dedicated
   // long-timeout fetch instead of the 45s default request() helper.
   var path = "/admin/psi-scan";
-  var sep = path.includes("?") ? "&" : "?";
-  var fullUrl = BASE_URL + path + sep + "_ut=" + encodeURIComponent(accessToken);
+  var fullUrl = BASE_URL + path;
   var controller = new AbortController();
   var tid = setTimeout(function () { controller.abort(); }, 150000); // 2.5 min timeout
   try {
@@ -5459,6 +5437,7 @@ export async function runPsiScan(accessToken: string, options?: {
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer " + publicAnonKey,
+        "X-User-Token": accessToken,
       },
       body: JSON.stringify(options || {}),
       signal: controller.signal,

@@ -87,7 +87,7 @@ export var clearSupabaseLocalSession = _clearSupabaseLocalSession;
 /** Return the current admin access-token, or `null` if not stored. */
 export function getAdminToken(): string | null {
   try {
-    return localStorage.getItem(ADMIN_AT_KEY) || null;
+    return sessionStorage.getItem(ADMIN_AT_KEY) || null;
   } catch {
     return null;
   }
@@ -102,22 +102,30 @@ export function saveAdminSession(
   name: string
 ): void {
   try {
-    localStorage.setItem(ADMIN_AT_KEY, accessToken);
-    localStorage.setItem(ADMIN_RT_KEY, refreshToken);
-    localStorage.setItem(ADMIN_EXP_KEY, String(expiresAt));
-    localStorage.setItem(ADMIN_EMAIL_KEY, email);
-    localStorage.setItem(ADMIN_NAME_KEY, name);
+    sessionStorage.setItem(ADMIN_AT_KEY, accessToken);
+    sessionStorage.setItem(ADMIN_RT_KEY, refreshToken);
+    sessionStorage.setItem(ADMIN_EXP_KEY, String(expiresAt));
+    sessionStorage.setItem(ADMIN_EMAIL_KEY, email);
+    sessionStorage.setItem(ADMIN_NAME_KEY, name);
+    // Clean up any old localStorage entries from previous version
+    try {
+      localStorage.removeItem(ADMIN_AT_KEY);
+      localStorage.removeItem(ADMIN_RT_KEY);
+      localStorage.removeItem(ADMIN_EXP_KEY);
+      localStorage.removeItem(ADMIN_EMAIL_KEY);
+      localStorage.removeItem(ADMIN_NAME_KEY);
+    } catch {}
   } catch {}
 }
 
-/** Remove every admin-specific localStorage key. */
+/** Remove every admin-specific sessionStorage key. */
 export function clearAdminStorage(): void {
   try {
-    localStorage.removeItem(ADMIN_AT_KEY);
-    localStorage.removeItem(ADMIN_RT_KEY);
-    localStorage.removeItem(ADMIN_EXP_KEY);
-    localStorage.removeItem(ADMIN_EMAIL_KEY);
-    localStorage.removeItem(ADMIN_NAME_KEY);
+    sessionStorage.removeItem(ADMIN_AT_KEY);
+    sessionStorage.removeItem(ADMIN_RT_KEY);
+    sessionStorage.removeItem(ADMIN_EXP_KEY);
+    sessionStorage.removeItem(ADMIN_EMAIL_KEY);
+    sessionStorage.removeItem(ADMIN_NAME_KEY);
     _clearSupabaseLocalSession();
   } catch {}
 }
@@ -147,9 +155,9 @@ export async function refreshAdminToken(): Promise<string | null> {
 
 async function _doRefreshAdminToken(): Promise<string | null> {
   try {
-    var rt = localStorage.getItem(ADMIN_RT_KEY);
+    var rt = sessionStorage.getItem(ADMIN_RT_KEY);
     if (!rt) { _adminRefreshInflight = null; return null; }
-    var at = localStorage.getItem(ADMIN_AT_KEY);
+    var at = sessionStorage.getItem(ADMIN_AT_KEY);
     if (!at) { _adminRefreshInflight = null; return null; }
 
     // Use dedicated client — never touches the shared client's session
@@ -168,9 +176,9 @@ async function _doRefreshAdminToken(): Promise<string | null> {
     var refreshResult = await getAdminSupabase().auth.refreshSession();
     var fresh = refreshResult.data?.session;
     if (fresh?.access_token) {
-      localStorage.setItem(ADMIN_AT_KEY, fresh.access_token);
-      localStorage.setItem(ADMIN_RT_KEY, fresh.refresh_token || rt);
-      localStorage.setItem(ADMIN_EXP_KEY, String(fresh.expires_at || 0));
+      sessionStorage.setItem(ADMIN_AT_KEY, fresh.access_token);
+      sessionStorage.setItem(ADMIN_RT_KEY, fresh.refresh_token || rt);
+      sessionStorage.setItem(ADMIN_EXP_KEY, String(fresh.expires_at || 0));
       // No need to call _clearSupabaseLocalSession — the dedicated client
       // never wrote anything to localStorage in the first place.
       // Token refreshed successfully
@@ -204,7 +212,7 @@ export async function getValidAdminToken(): Promise<string | null> {
 
   var expStr = "";
   try {
-    expStr = localStorage.getItem(ADMIN_EXP_KEY) || "";
+    expStr = sessionStorage.getItem(ADMIN_EXP_KEY) || "";
   } catch {}
   var expiresAt = parseInt(expStr, 10) || 0;
   var nowSec = Math.floor(Date.now() / 1000);

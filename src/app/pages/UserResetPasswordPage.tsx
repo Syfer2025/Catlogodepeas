@@ -36,7 +36,7 @@ export function UserResetPasswordPage() {
 
   // Start polling
   useEffect(() => {
-    const rid = localStorage.getItem("recovery_id");
+    const rid = sessionStorage.getItem("recovery_id");
 
     if (!rid) {
       setMode("no-session");
@@ -55,8 +55,8 @@ export function UserResetPasswordPage() {
           setMode("password");
         } else if (result.status === "expired" || result.status === "not_found") {
           if (pollRef.current) clearInterval(pollRef.current);
-          localStorage.removeItem("recovery_id");
-          localStorage.removeItem("recovery_email");
+          sessionStorage.removeItem("recovery_id");
+          sessionStorage.removeItem("recovery_email");
           ridRef.current = null;
           setMode("no-session");
         }
@@ -114,11 +114,11 @@ export function UserResetPasswordPage() {
         return;
       }
 
-      const recoveryEmail = localStorage.getItem("recovery_email");
+      const recoveryEmail = sessionStorage.getItem("recovery_email");
 
       // Clean up
-      localStorage.removeItem("recovery_id");
-      localStorage.removeItem("recovery_email");
+      sessionStorage.removeItem("recovery_id");
+      sessionStorage.removeItem("recovery_email");
       ridRef.current = null;
 
       if (recoveryEmail) {

@@ -62,13 +62,9 @@ export function MobileBottomNav() {
         setLoggedIn(true);
         fetchAvatar(session.access_token);
       } else if (_ev === "SIGNED_OUT") {
-        // Only clear if not contaminated by admin token operations
-        var adminToken = null;
-        try { adminToken = localStorage.getItem("carretao_admin_at"); } catch {}
-        if (!adminToken) {
-          setLoggedIn(false);
-          setAvatarInfo(null);
-        }
+        // Always clear on sign-out — admin sessions are isolated in sessionStorage
+        setLoggedIn(false);
+        setAvatarInfo(null);
       }
     });
     function onAvatarUpdated(e: Event) {

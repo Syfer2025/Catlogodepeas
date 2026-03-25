@@ -82,15 +82,12 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
           setAccessToken(session.access_token);
         }
       } else if (_event === "SIGNED_OUT") {
-        // Only clear if not contaminated by admin operations
-        var adminToken = null;
-        try { adminToken = localStorage.getItem("carretao_admin_at"); } catch {}
-        if (!adminToken) {
-          setAccessToken(null);
-          setFavorites([]);
-          updateSet([]);
-          loadedRef.current = false;
-        }
+        // Always clear wishlist state on sign-out — admin sessions are
+        // isolated in their own storage and should not prevent cleanup.
+        setAccessToken(null);
+        setFavorites([]);
+        updateSet([]);
+        loadedRef.current = false;
       }
     });
 
