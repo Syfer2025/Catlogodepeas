@@ -4,7 +4,6 @@ import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import { publicAnonKey } from "../../../../utils/supabase/info";
-import DOMPurify from "dompurify";
 // ── Direct imports for Sige modules ──
 import { SigeDepModule } from "./SigeDepModule";
 import { SigeCategoryModule } from "./SigeCategoryModule";
@@ -304,7 +303,7 @@ export function AdminApiSige() {
         </div>
         <div className="px-3 pb-3 pt-2 space-y-2">
           <p className="text-gray-600" style={{ fontSize: "0.78rem", lineHeight: 1.5 }}
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(description) }} />
+            dangerouslySetInnerHTML={{ __html: description }} />
           {body && (
             <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
               <pre className="text-gray-300" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>

@@ -177,8 +177,8 @@ export function Header() {
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
 
-          {/* Logo — centered on mobile */}
-          <Link to="/" className="shrink-0 md:mr-0 mx-auto md:mx-0" onClick={closeMobileMenu}>
+          {/* Logo */}
+          <Link to="/" className="shrink-0" onClick={closeMobileMenu}>
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -211,10 +211,10 @@ export function Header() {
               <span className="hidden md:inline">Favoritos</span>
             </Link>
 
-            {/* Cart button — hidden on mobile (already in MobileBottomNav) */}
+            {/* Cart button */}
             <button
               onClick={openDrawer}
-              className="hidden md:flex relative items-center gap-1 px-3 py-2 text-gray-600 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 text-sm"
+              className="relative flex items-center gap-1 px-3 py-2 text-gray-600 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 text-sm"
               aria-label={"Carrinho" + (totalItems > 0 ? " (" + totalItems + " itens)" : "")}
             >
               <ShoppingCart className="w-5 h-5" />
@@ -228,8 +228,8 @@ export function Header() {
               )}
             </button>
 
-            {/* User menu — hidden on mobile (already in MobileBottomNav) */}
-            <div className="hidden md:block relative" data-user-menu>
+            {/* User menu */}
+            <div className="relative" data-user-menu>
               {userLoggedIn ? (
                 <>
                   <button

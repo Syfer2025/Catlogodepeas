@@ -311,7 +311,7 @@ export function SearchAutocomplete({
 
     return DOMPurify.sanitize(raw, {
       ALLOWED_TAGS: ["mark"],
-      ALLOWED_ATTR: ["class"],
+      ALLOWED_ATTR: ["class", "style"],
     });
   };
 

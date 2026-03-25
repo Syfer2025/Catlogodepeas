@@ -13,30 +13,10 @@ var CONSENT_DATE_KEY = "lgpd_consent_date";
 
 export type ConsentValue = "accepted" | "rejected" | null;
 
-// ─── Cookie helpers (more persistent than localStorage for LGPD compliance) ───
-function _setCookie(name: string, value: string, days: number): void {
-  var expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = name + "=" + encodeURIComponent(value) + "; expires=" + expires + "; path=/; SameSite=Lax; Secure";
-}
-
-function _getCookie(name: string): string | null {
-  var match = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)"));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 export function getConsentValue(): ConsentValue {
   try {
-    // Read from cookie first, fallback to localStorage for migration
-    var val = _getCookie(CONSENT_KEY);
+    var val = localStorage.getItem(CONSENT_KEY);
     if (val === "accepted" || val === "rejected") return val;
-    // Migration: check localStorage for existing consent
-    var lsVal = localStorage.getItem(CONSENT_KEY);
-    if (lsVal === "accepted" || lsVal === "rejected") {
-      // Migrate to cookie
-      _setCookie(CONSENT_KEY, lsVal, 365);
-      try { localStorage.removeItem(CONSENT_KEY); localStorage.removeItem(CONSENT_DATE_KEY); } catch {}
-      return lsVal;
-    }
     return null;
   } catch {
     return null;
@@ -45,10 +25,8 @@ export function getConsentValue(): ConsentValue {
 
 export function setConsentValue(value: "accepted" | "rejected") {
   try {
-    _setCookie(CONSENT_KEY, value, 365);
-    _setCookie(CONSENT_DATE_KEY, new Date().toISOString(), 365);
-    // Clean up old localStorage entries
-    try { localStorage.removeItem(CONSENT_KEY); localStorage.removeItem(CONSENT_DATE_KEY); } catch {}
+    localStorage.setItem(CONSENT_KEY, value);
+    localStorage.setItem(CONSENT_DATE_KEY, new Date().toISOString());
   } catch {}
 }
 

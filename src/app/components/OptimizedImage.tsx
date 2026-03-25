@@ -18,9 +18,6 @@ const SUPABASE_STORAGE_HOST = "https://aztdgagxvrlylszieujs.supabase.co";
 const STORAGE_PUBLIC_PREFIX = SUPABASE_STORAGE_HOST + "/storage/v1/object/public/";
 const RENDER_PREFIX = SUPABASE_STORAGE_HOST + "/storage/v1/render/image/public/";
 
-/** When true, images are served via Cloudflare edge cache (/img/*) */
-const _useCfGateway = !!import.meta.env.VITE_CF_GATEWAY;
-
 /** Standard breakpoint widths for srcset */
 const SRCSET_WIDTHS = [200, 400, 600, 800, 1200];
 /** Banner-specific widths (larger) */
@@ -52,14 +49,11 @@ function isSupabasePublicUrl(url: string): boolean {
 /**
  * Converts a Supabase public storage URL to a render/transform URL
  * with the given width and quality.
- * When Cloudflare gateway is active, routes through /img/ edge cache.
  */
 function getTransformUrl(originalUrl: string, width: number, quality: number): string {
   if (!isSupabasePublicUrl(originalUrl)) return originalUrl;
+  // Extract the bucket/path portion after /object/public/
   var pathPart = originalUrl.slice(STORAGE_PUBLIC_PREFIX.length);
-  if (_useCfGateway) {
-    return "/img/" + pathPart + "?width=" + width + "&quality=" + quality + "&resize=contain";
-  }
   return RENDER_PREFIX + pathPart + "?width=" + width + "&quality=" + quality + "&resize=contain";
 }
 
@@ -73,15 +67,6 @@ function buildSrcSet(originalUrl: string, widths: number[], quality: number): st
       return getTransformUrl(originalUrl, w, quality) + " " + w + "w";
     })
     .join(", ");
-}
-
-/**
- * Rewrites a Supabase public URL to go through the CF edge proxy (no transform).
- * Returns the original URL unchanged when the gateway is off or URL is not Supabase.
- */
-function proxyUrl(originalUrl: string): string {
-  if (!_useCfGateway || !isSupabasePublicUrl(originalUrl)) return originalUrl;
-  return "/img/" + originalUrl.slice(STORAGE_PUBLIC_PREFIX.length);
 }
 
 /**
@@ -128,7 +113,6 @@ function OptimizedImageInner({
   }, [src, variant, quality, sizes]);
 
   var canTransform = isSupabasePublicUrl(src);
-  var fallbackSrc = proxyUrl(src);
 
   if (error && fallback) {
     return <>{fallback}</>;
@@ -136,7 +120,7 @@ function OptimizedImageInner({
 
   return (
     <img
-      src={useFallbackSrc ? fallbackSrc : mainSrc}
+      src={useFallbackSrc ? src : mainSrc}
       srcSet={!useFallbackSrc ? srcSet : undefined}
       sizes={!useFallbackSrc ? sizesAttr : undefined}
       alt={alt}

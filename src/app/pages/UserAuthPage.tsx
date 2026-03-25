@@ -675,8 +675,8 @@ export function UserAuthPage() {
       }
 
       if (result.recoveryId) {
-        sessionStorage.setItem("recovery_id", result.recoveryId);
-        sessionStorage.setItem("recovery_email", forgotEmail.trim());
+        localStorage.setItem("recovery_id", result.recoveryId);
+        localStorage.setItem("recovery_email", forgotEmail.trim());
       }
 
       setForgotStep("sent");

@@ -455,22 +455,20 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
       }
     } catch (e) {}
     var host = window.location.hostname;
-    var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br" || host.endsWith(".catalogo-pecas.pages.dev") || host === "catalogo-pecas.pages.dev";
+    var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br";
     if (!isProduction) return;
-    // Default to maintenance ON — only turns OFF if API explicitly returns maintenanceMode:false.
-    // This ensures the site stays locked if the backend is unreachable.
-    setMaintenance(true);
     var attempts = 0;
     var maxAttempts = 3;
     function tryCheck() {
       attempts++;
       api.getSettings().then(function (s) {
-        if (s && s.maintenanceMode === false) setMaintenance(false);
+        if (s && s.maintenanceMode) setMaintenance(true);
       }).catch(function () {
         if (attempts < maxAttempts) {
           setTimeout(tryCheck, 2000);
         } else {
-          console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — keeping maintenance ON");
+          console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts");
+          setMaintenance(true);
         }
       });
     }

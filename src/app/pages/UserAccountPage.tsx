@@ -546,8 +546,8 @@ export function UserAccountPage() {
     try {
       var result = await api.userForgotPassword(profile.email);
       if (result.recoveryId) {
-        sessionStorage.setItem("recovery_id", result.recoveryId);
-        sessionStorage.setItem("recovery_email", profile.email);
+        localStorage.setItem("recovery_id", result.recoveryId);
+        localStorage.setItem("recovery_email", profile.email);
       }
       setResetEmailSent(true);
     } catch (err: any) {
