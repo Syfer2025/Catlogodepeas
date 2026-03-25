@@ -77,7 +77,7 @@ async function getAuthUserId(request: Request): Promise<string | null> {
 // Master admin is hardcoded. Other admins via KV whitelist + user_metadata.role
 // ═══════════════════════════════════════════════════════════════════════
 
-var MASTER_ADMIN_EMAIL = "alexmeira@protonmail.com";
+var MASTER_ADMIN_EMAIL = (Deno.env.get("MASTER_ADMIN_EMAIL") || "alexmeira@protonmail.com").toLowerCase().trim();
 
 var ALL_ADMIN_TABS = [
   "dashboard", "orders", "products", "categories", "attributes", "clients",
@@ -316,11 +316,10 @@ app.use(
       for (var i = 0; i < ALLOWED_ORIGINS.length; i++) {
         if (origin === ALLOWED_ORIGINS[i]) return origin;
       }
-      // Allow *.supabase.co for Supabase Studio/Dashboard
-      // SECURITY: endsWith prevents bypass via domains like evil.supabase.co.hacker.com
-      if (origin.endsWith(".supabase.co")) return origin;
-      // Allow any *.figma.site subdomain (production + preview builds)
-      if (origin.endsWith(".figma.site")) return origin;
+      // Allow only the project's own Supabase subdomain (not any *.supabase.co)
+      if (origin === "https://aztdgagxvrlylszieujs.supabase.co") return origin;
+      // Allow only the project's Figma site subdomain
+      if (origin === "https://cafe-puce-47800704.figma.site") return origin;
       console.warn("[CORS] Blocked unknown origin: " + origin);
       return ALLOWED_ORIGINS[0];
     },
@@ -21128,7 +21127,6 @@ app.get(BASE + "/image-cdn", async (c) => {
     var allowedOrigins = [
       "https://aztdgagxvrlylszieujs.supabase.co",
       "https://app.sige.cloud",
-      "http://app.sige.cloud",
       "https://sige.cloud",
     ];
     var urlLower = url.toLowerCase();

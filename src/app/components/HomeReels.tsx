@@ -369,7 +369,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
   onClose: () => void;
 }) {
   var [currentIndex, setCurrentIndex] = useState(initialIndex);
-  var [muted, setMuted] = useState(false);
+  var [muted, setMuted] = useState(true);
   var videoRef = useRef<HTMLVideoElement>(null);
   var touchStartY = useRef(0);
   var touchStartX = useRef(0);
@@ -406,12 +406,16 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
     };
   }, []);
 
-  // Auto-play when index changes
+  // Auto-play when index changes — fallback to muted if browser blocks unmuted autoplay
   useEffect(function () {
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(function () {});
-    }
+    var vid = videoRef.current;
+    if (!vid) return;
+    vid.currentTime = 0;
+    vid.play().catch(function () {
+      vid.muted = true;
+      setMuted(true);
+      vid.play().catch(function () {});
+    });
   }, [currentIndex]);
 
   // Keyboard navigation
@@ -627,13 +631,19 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
     >
       {/* Video */}
       <video
-        ref={videoRef}
+        ref={function (el) {
+          (videoRef as any).current = el;
+          if (el) {
+            el.muted = true;
+            el.play().catch(function () {});
+          }
+        }}
         src={current.videoUrl}
         className="absolute inset-0 w-full h-full object-contain"
         playsInline
         autoPlay
         loop
-        muted={muted}
+        muted
         preload="auto"
         onClick={function () {
           if (videoRef.current) {
@@ -664,38 +674,24 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
         </div>
       </div>
 
-      {/* Progress dots */}
-      {reels.length > 1 && (
-        <div className="absolute top-16 left-0 right-0 flex items-center justify-center gap-1.5 z-10 px-4">
-          {reels.map(function (_, idx) {
-            return (
-              <div
-                key={idx}
-                className={"h-0.5 rounded-full transition-all duration-300 " + (idx === currentIndex ? "bg-white flex-[2]" : "bg-white/30 flex-1")}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Navigation arrows — always visible when multiple reels */}
+      {/* Navigation arrows — bigger on desktop */}
       {reels.length > 1 && (
         <>
           <button
             onClick={goPrev}
             disabled={currentIndex === 0}
-            className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full text-white transition-all duration-200"
+            className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-14 md:h-14 rounded-full text-white transition-all duration-200 hover:scale-110"
             style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", opacity: currentIndex === 0 ? 0.3 : 1, pointerEvents: currentIndex === 0 ? "none" : "auto" }}
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-5 h-5 md:w-7 md:h-7" />
           </button>
           <button
             onClick={goNext}
             disabled={currentIndex === reels.length - 1}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full text-white transition-all duration-200"
+            className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 z-20 w-10 h-10 md:w-14 md:h-14 rounded-full text-white transition-all duration-200 hover:scale-110"
             style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", opacity: currentIndex === reels.length - 1 ? 0.3 : 1, pointerEvents: currentIndex === reels.length - 1 ? "none" : "auto" }}
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-5 h-5 md:w-7 md:h-7" />
           </button>
         </>
       )}
@@ -727,31 +723,6 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
             </div>
             <span className="text-white text-center" style={{ fontSize: "0.6rem", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>Comprar</span>
           </button>
-        )}
-        {currentProducts.length > 1 && (
-          <>
-            <div className="flex flex-col items-center gap-1">
-              <div className="w-11 h-11 bg-blue-600/80 rounded-full flex items-center justify-center text-white">
-                <Package className="w-5 h-5" />
-              </div>
-              <span className="text-white text-center" style={{ fontSize: "0.6rem", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
-                {currentProducts.length} itens
-              </span>
-            </div>
-            {allHavePrice && (
-              <button
-                onClick={function () { handleAddAllToCart(); }}
-                className="flex flex-col items-center gap-1"
-              >
-                <div className={"w-11 h-11 rounded-full flex items-center justify-center text-white shadow-lg transition-colors " + (addedAll > 0 ? "bg-green-500" : "bg-red-600 hover:bg-red-700")}>
-                  <ShoppingBag className="w-5 h-5" />
-                </div>
-                <span className="text-white text-center whitespace-pre-line" style={{ fontSize: "0.6rem", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
-                  {addedAll > 0 ? "Adicionados!" : "Comprar\ntodos"}
-                </span>
-              </button>
-            )}
-          </>
         )}
       </div>
 

@@ -337,8 +337,8 @@ export function AdminPage() {
             setIsAuthenticated(true);
             var savedEmail = "";
             var savedName = "Admin";
-            try { savedEmail = localStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
-            try { savedName = localStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
+            try { savedEmail = sessionStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
+            try { savedName = sessionStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
             setUserEmail(savedEmail);
             setUserName(savedName);
             setIsMaster(adminCheck.isMaster || false);
@@ -362,8 +362,8 @@ export function AdminPage() {
                   setIsAuthenticated(true);
                   var savedEmailR = "";
                   var savedNameR = "Admin";
-                  try { savedEmailR = localStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
-                  try { savedNameR = localStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
+                  try { savedEmailR = sessionStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
+                  try { savedNameR = sessionStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
                   setUserEmail(savedEmailR);
                   setUserName(savedNameR);
                   setIsMaster(retryCheck.isMaster || false);
@@ -401,8 +401,8 @@ export function AdminPage() {
                 setIsAuthenticated(true);
                 var savedEmail2 = "";
                 var savedName2 = "Admin";
-                try { savedEmail2 = localStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
-                try { savedName2 = localStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
+                try { savedEmail2 = sessionStorage.getItem(ADMIN_EMAIL_KEY) || ""; } catch {}
+                try { savedName2 = sessionStorage.getItem(ADMIN_NAME_KEY) || "Admin"; } catch {}
                 setUserEmail(savedEmail2);
                 setUserName(savedName2);
                 setIsMaster(adminCheck2.isMaster || false);
