@@ -306,6 +306,7 @@ var ALLOWED_ORIGINS = [
   "https://www.autopecascarretao.com",
   "https://autopecascarretao.com.br",
   "https://www.autopecascarretao.com.br",
+  "https://catalogo-pecas.pages.dev",
 ];
 app.use(
   "/*",
