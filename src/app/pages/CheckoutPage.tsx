@@ -499,7 +499,8 @@ export function CheckoutPage() {
   // Can proceed to payment? Name, CPF, phone AND address must be filled
   const personalDataComplete = nameValid && cpfValid && phoneValid;
   const hasStockIssues = stockValidation.checked && stockValidation.issues.length > 0;
-  const canProceed = items.length > 0 && totalPrice > 0 && addressComplete && personalDataComplete && !hasStockIssues;
+  const shippingSelected = selectedShipping != null && selectedShipping.price >= 0;
+  const canProceed = items.length > 0 && totalPrice > 0 && addressComplete && personalDataComplete && !hasStockIssues && shippingSelected;
   const cardFieldsValid = paymentMethod !== "cartao_credito" || (
     cardNumber.replace(/\D/g, "").length >= 13 &&
     cardCvv.length >= 3 &&
@@ -622,9 +623,12 @@ export function CheckoutPage() {
           return;
         }
       } catch (stockErr) {
-        console.warn("[Checkout] Stock validation failed (non-blocking):", stockErr);
-        // Non-blocking — if the balance check fails, let the order proceed
-        // The SIGE order confirmation will catch stock issues server-side
+        console.error("[Checkout] Stock validation failed:", stockErr);
+        setErrorMessage("Não foi possível verificar o estoque");
+        setErrorDetail("O sistema de verificação de estoque está temporariamente indisponível. Tente novamente em alguns instantes.");
+        setStep("error");
+        setSubmitting(false);
+        return;
       }
 
       // 0b. Ensure user profile is saved to KV (required for SIGE sync)
@@ -2664,6 +2668,11 @@ export function CheckoutPage() {
                       {hasStockIssues && (
                         <p className="text-red-600" style={{ fontSize: "0.75rem", fontWeight: 600 }}>
                           Resolva os problemas de estoque acima antes de continuar
+                        </p>
+                      )}
+                      {!shippingSelected && addressComplete && (
+                        <p className="text-amber-600" style={{ fontSize: "0.75rem" }}>
+                          Selecione uma opcao de frete
                         </p>
                       )}
                     </div>

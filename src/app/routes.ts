@@ -7,36 +7,78 @@
  * Todas as paginas publicas sao filhas do Layout (Header + Footer + Outlet).
  * O Admin tem rota propria sem Layout publico.
  *
- * All pages are directly imported (no lazy loading) to avoid dynamic import
- * failures in restricted environments.
+ * Public pages use React.lazy() for code splitting — each page loads only
+ * when the user navigates to it, reducing the initial bundle size.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 import { createBrowserRouter } from "react-router";
 import React from "react";
 import { Layout } from "./components/Layout";
-import { HomePage } from "./pages/HomePage";
 import { RouteErrorFallback } from "./components/RouteErrorFallback";
-import { CatalogPage } from "./pages/CatalogPage";
-import { ProductDetailPage } from "./pages/ProductDetailPage";
-import { ContactPage } from "./pages/ContactPage";
-import { AboutPage } from "./pages/AboutPage";
-import { UserAuthPage } from "./pages/UserAuthPage";
-import { UserResetPasswordPage } from "./pages/UserResetPasswordPage";
-import { UserAccountPage } from "./pages/UserAccountPage";
-import { CheckoutPage } from "./pages/CheckoutPage";
-import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
-import { TermsPage } from "./pages/TermsPage";
-import { LgpdRightsPage } from "./pages/LgpdRightsPage";
-import { BrandPage } from "./pages/BrandPage";
-import { AffiliatePage } from "./pages/AffiliatePage";
-import { CouponsPage } from "./pages/CouponsPage";
-import { WishlistPage } from "./pages/WishlistPage";
-import { TrackingPage } from "./pages/TrackingPage";
-import { FaqPage } from "./pages/FaqPage";
-import { DocsPage } from "./pages/DocsPage";
-import { NotFoundPage } from "./pages/NotFoundPage";
 
-// Admin routes are lazy-loaded — customers never download the admin bundle
+// ── Public pages — lazy loaded for smaller initial bundle ────────────────────
+const HomePage = React.lazy(() =>
+  import("./pages/HomePage").then((m) => ({ default: m.HomePage }))
+);
+const CatalogPage = React.lazy(() =>
+  import("./pages/CatalogPage").then((m) => ({ default: m.CatalogPage }))
+);
+const ProductDetailPage = React.lazy(() =>
+  import("./pages/ProductDetailPage").then((m) => ({ default: m.ProductDetailPage }))
+);
+const ContactPage = React.lazy(() =>
+  import("./pages/ContactPage").then((m) => ({ default: m.ContactPage }))
+);
+const AboutPage = React.lazy(() =>
+  import("./pages/AboutPage").then((m) => ({ default: m.AboutPage }))
+);
+const UserAuthPage = React.lazy(() =>
+  import("./pages/UserAuthPage").then((m) => ({ default: m.UserAuthPage }))
+);
+const UserResetPasswordPage = React.lazy(() =>
+  import("./pages/UserResetPasswordPage").then((m) => ({ default: m.UserResetPasswordPage }))
+);
+const UserAccountPage = React.lazy(() =>
+  import("./pages/UserAccountPage").then((m) => ({ default: m.UserAccountPage }))
+);
+const CheckoutPage = React.lazy(() =>
+  import("./pages/CheckoutPage").then((m) => ({ default: m.CheckoutPage }))
+);
+const PrivacyPolicyPage = React.lazy(() =>
+  import("./pages/PrivacyPolicyPage").then((m) => ({ default: m.PrivacyPolicyPage }))
+);
+const TermsPage = React.lazy(() =>
+  import("./pages/TermsPage").then((m) => ({ default: m.TermsPage }))
+);
+const LgpdRightsPage = React.lazy(() =>
+  import("./pages/LgpdRightsPage").then((m) => ({ default: m.LgpdRightsPage }))
+);
+const BrandPage = React.lazy(() =>
+  import("./pages/BrandPage").then((m) => ({ default: m.BrandPage }))
+);
+const AffiliatePage = React.lazy(() =>
+  import("./pages/AffiliatePage").then((m) => ({ default: m.AffiliatePage }))
+);
+const CouponsPage = React.lazy(() =>
+  import("./pages/CouponsPage").then((m) => ({ default: m.CouponsPage }))
+);
+const WishlistPage = React.lazy(() =>
+  import("./pages/WishlistPage").then((m) => ({ default: m.WishlistPage }))
+);
+const TrackingPage = React.lazy(() =>
+  import("./pages/TrackingPage").then((m) => ({ default: m.TrackingPage }))
+);
+const FaqPage = React.lazy(() =>
+  import("./pages/FaqPage").then((m) => ({ default: m.FaqPage }))
+);
+const DocsPage = React.lazy(() =>
+  import("./pages/DocsPage").then((m) => ({ default: m.DocsPage }))
+);
+const NotFoundPage = React.lazy(() =>
+  import("./pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage }))
+);
+
+// ── Admin routes — lazy loaded (customers never download admin code) ─────────
 const AdminPage = React.lazy(() =>
   import("./pages/admin/AdminPage").then((m) => ({ default: m.AdminPage }))
 );
@@ -150,10 +192,12 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin",
+    errorElement: React.createElement(RouteErrorFallback),
     Component: AdminPage,
   },
   {
     path: "/admin/reset-password",
+    errorElement: React.createElement(RouteErrorFallback),
     Component: AdminResetPasswordPage,
   },
 ]);

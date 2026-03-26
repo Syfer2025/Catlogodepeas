@@ -493,6 +493,81 @@ function _clearFailedLogin(email: string): void {
   _failedLoginMap.delete(email.toLowerCase().trim());
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// CPF Algorithmic Validation — validates check digits per Receita Federal algorithm
+// ═══════════════════════════════════════════════════════════════════════
+function _isValidCPF(cpf: string): boolean {
+  var digits = (cpf || "").replace(/\D/g, "");
+  if (digits.length !== 11) return false;
+  // Reject known invalid sequences (all same digit)
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+  // Validate first check digit
+  var sum1 = 0;
+  for (var i = 0; i < 9; i++) sum1 += parseInt(digits[i]) * (10 - i);
+  var d1 = 11 - (sum1 % 11);
+  if (d1 >= 10) d1 = 0;
+  if (parseInt(digits[9]) !== d1) return false;
+  // Validate second check digit
+  var sum2 = 0;
+  for (var j = 0; j < 10; j++) sum2 += parseInt(digits[j]) * (11 - j);
+  var d2 = 11 - (sum2 % 11);
+  if (d2 >= 10) d2 = 0;
+  if (parseInt(digits[10]) !== d2) return false;
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Stock Validation — checks KV cached stock for all items in a payment request
+// Returns { ok, outOfStock[] } — fails fast on first out-of-stock item
+// ═══════════════════════════════════════════════════════════════════════
+async function _validateStock(items: any[]): Promise<{ ok: boolean; outOfStock: string[] }> {
+  if (!items || items.length === 0) return { ok: true, outOfStock: [] };
+  var outOfStock: string[] = [];
+  for (var si = 0; si < items.length; si++) {
+    var sku = items[si].sku || items[si].item_id || items[si].codProduto || "";
+    var qty = Number(items[si].quantity || items[si].qtd || items[si].quantidade || 1);
+    if (!sku) continue;
+    try {
+      var balRaw = await kv.get("sige_balance_" + sku);
+      if (balRaw !== null && balRaw !== undefined) {
+        var bal = typeof balRaw === "string" ? JSON.parse(balRaw) : balRaw;
+        var available = Number(bal.available ?? bal.saldoDisponivel ?? bal) || 0;
+        if (available < qty) {
+          outOfStock.push(sku + " (disponivel: " + available + ", pedido: " + qty + ")");
+        }
+      }
+      // If no balance in KV cache, we allow it (better to sell than to block on stale cache)
+    } catch (stockErr) {
+      console.warn("[StockValidation] Error checking " + sku + ": " + stockErr);
+    }
+  }
+  return { ok: outOfStock.length === 0, outOfStock };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Shipping Validation — ensures shipping option is present and valid
+// ═══════════════════════════════════════════════════════════════════════
+function _validateShipping(body: any): { ok: boolean; error: string } {
+  var shipping = body.shippingOption || body.shipping_option || null;
+  // If shipping_cost is sent directly (MercadoPago), that's also valid
+  if (body.shipping_cost !== undefined && Number(body.shipping_cost) >= 0) {
+    return { ok: true, error: "" };
+  }
+  if (!shipping) {
+    return { ok: false, error: "Opcao de frete obrigatoria. Selecione uma forma de envio." };
+  }
+  // Must have a carrier name or id
+  if (!shipping.carrierName && !shipping.carrierId && !shipping.carrier_name) {
+    return { ok: false, error: "Transportadora do frete nao identificada." };
+  }
+  // Must have a price (0 is valid for free shipping)
+  var price = Number(shipping.price);
+  if (isNaN(price) || price < 0) {
+    return { ok: false, error: "Valor do frete invalido." };
+  }
+  return { ok: true, error: "" };
+}
+
 function _checkHoneypot(body: any): boolean {
   if (body.website && String(body.website).length > 0) return true;
   if (body.company_url && String(body.company_url).length > 0) return true;
@@ -701,6 +776,57 @@ app.use("*", async function (c: any, next: any) {
     }
   }
   return next();
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Maintenance Mode Middleware — blocks ALL non-admin, non-GET mutations
+// when maintenance mode is enabled in KV settings.
+// Webhooks (PagHiper/MercadoPago notifications) are always allowed.
+// ═══════════════════════════════════════════════════════════════════════
+var _maintenanceCache: { value: boolean; ts: number } = { value: false, ts: 0 };
+var MAINTENANCE_CACHE_TTL = 30000; // 30s — re-check KV every 30s
+
+async function _isMaintenanceMode(): Promise<boolean> {
+  var now = Date.now();
+  if (now - _maintenanceCache.ts < MAINTENANCE_CACHE_TTL) return _maintenanceCache.value;
+  try {
+    var settingsRaw = await kv.get("settings");
+    var settings = settingsRaw ? (typeof settingsRaw === "string" ? JSON.parse(settingsRaw) : settingsRaw) : {};
+    _maintenanceCache = { value: !!settings.maintenanceMode, ts: now };
+    return _maintenanceCache.value;
+  } catch {
+    return _maintenanceCache.value;
+  }
+}
+
+// Paths that are always allowed even during maintenance
+var MAINTENANCE_EXEMPT_PATHS = [
+  "/paghiper/notification",       // Payment webhooks must always work
+  "/mercadopago/webhook",         // Payment webhooks must always work
+  "/settings",                    // Admin needs to toggle maintenance off
+  "/admin",                       // Admin panel must remain functional
+];
+
+app.use("*", async function (c: any, next: any) {
+  if (c.req.method === "OPTIONS" || c.req.method === "GET" || c.req.method === "HEAD") return next();
+
+  var path = c.req.path;
+  // Allow exempt paths (webhooks, admin)
+  for (var mei = 0; mei < MAINTENANCE_EXEMPT_PATHS.length; mei++) {
+    if (path.includes(MAINTENANCE_EXEMPT_PATHS[mei])) return next();
+  }
+
+  var inMaintenance = await _isMaintenanceMode();
+  if (!inMaintenance) return next();
+
+  // During maintenance, only admins can perform mutations
+  try {
+    var maintAdminCheck = await isAdminUser(c.req.raw);
+    if (maintAdminCheck.isAdmin) return next();
+  } catch {}
+
+  console.warn("[Maintenance] BLOCKED mutation: " + c.req.method + " " + path);
+  return c.json({ error: "Loja em manutencao. Tente novamente mais tarde." }, 503);
 });
 
 // ── Rate limit auth routes (stricter) ──
@@ -13176,6 +13302,28 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
       return c.json({ error: "Campos obrigatórios: order_id, payer_email, payer_name, payer_cpf_cnpj, items[]" }, 400);
     }
 
+    // SECURITY: Validate shipping option server-side
+    var pixShipCheck = _validateShipping(body);
+    if (!pixShipCheck.ok) return c.json({ error: pixShipCheck.error }, 400);
+
+    // SECURITY: Validate stock server-side
+    var pixStockCheck = await _validateStock(items);
+    if (!pixStockCheck.ok) {
+      console.warn("[PagHiper-PIX] STOCK BLOCKED for order " + order_id + ": " + pixStockCheck.outOfStock.join(", "));
+      return c.json({ error: "Itens sem estoque disponivel: " + pixStockCheck.outOfStock.join(", ") }, 400);
+    }
+
+    // SECURITY: Validate CPF algorithmically
+    var pixCpfDigits = (payer_cpf_cnpj || "").replace(/\D/g, "");
+    if (pixCpfDigits.length === 11 && !_isValidCPF(pixCpfDigits)) {
+      return c.json({ error: "CPF invalido." }, 400);
+    }
+
+    // SECURITY: Validate payer_name minimum length
+    if (!payer_name || payer_name.trim().length < 5) {
+      return c.json({ error: "Nome do pagador deve ter pelo menos 5 caracteres." }, 400);
+    }
+
     // SECURITY: Validate prices server-side (allow up to 55% discount for PIX + coupons)
     try {
       var pixPriceCheck = await _validatePaymentPrices(items, 55);
@@ -13191,6 +13339,41 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
       console.error("[PagHiper-PIX] Price validation error (non-blocking): " + pvErr);
     }
 
+    // SECURITY: Validate discount_cents against actual coupon value
+    var validatedDiscountCents = 0;
+    if (discount_cents && discount_cents > 0) {
+      try {
+        var discountCouponCode = body.couponCode;
+        if (discountCouponCode) {
+          var couponRaw = await kv.get("coupon:" + discountCouponCode.toLowerCase());
+          if (couponRaw) {
+            var couponData = typeof couponRaw === "string" ? JSON.parse(couponRaw) : couponRaw;
+            if (couponData.active !== false) {
+              var itemsTotalCents = items.reduce((sum: number, it: any) => sum + (Number(it.price_cents) || 0) * (Number(it.quantity) || 1), 0);
+              var maxDiscountCents = 0;
+              if (couponData.type === "percent") {
+                maxDiscountCents = Math.round(itemsTotalCents * (Number(couponData.value) || 0) / 100);
+              } else {
+                maxDiscountCents = Math.round((Number(couponData.value) || 0) * 100);
+              }
+              if (couponData.maxDiscount) {
+                maxDiscountCents = Math.min(maxDiscountCents, Math.round(Number(couponData.maxDiscount) * 100));
+              }
+              // Allow up to 5% tolerance for rounding differences
+              validatedDiscountCents = Math.min(discount_cents, Math.round(maxDiscountCents * 1.05));
+            }
+          }
+        }
+        if (validatedDiscountCents <= 0 && discount_cents > 0) {
+          console.warn("[PagHiper-PIX] DISCOUNT TAMPERING BLOCKED for order " + order_id + " — client sent " + discount_cents + " cents but no valid coupon found");
+        }
+      } catch (dcErr) {
+        console.error("[PagHiper-PIX] Discount validation error: " + dcErr);
+        // On error, reject the discount to be safe
+        validatedDiscountCents = 0;
+      }
+    }
+
     const payload: any = {
       apiKey: creds.apiKey,
       order_id,
@@ -13201,7 +13384,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
       // SECURITY: Hardcode notification_url server-side to prevent webhook hijacking
       notification_url: (Deno.env.get("SUPABASE_URL") || "") + "/functions/v1/make-server-b7b07654/paghiper/notification",
       days_due_date: days_due_date || "1",
-      discount_cents: discount_cents && discount_cents > 0 ? String(discount_cents) : undefined,
+      discount_cents: validatedDiscountCents > 0 ? String(validatedDiscountCents) : undefined,
       items: items.map((item: any, i: number) => ({
         description: item.description || "Item " + (i + 1),
         quantity: String(item.quantity || 1),
@@ -13321,11 +13504,13 @@ app.post(BASE + "/paghiper/pix/status", async (c) => {
   }
 });
 
-// POST /paghiper/pix/cancel — cancel PIX charge (admin)
+// POST /paghiper/pix/cancel — cancel PIX charge (admin only)
 app.post(BASE + "/paghiper/pix/cancel", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado." }, 401);
+    const isAdmin = await isAdminUser(c.req.raw);
+    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
@@ -13419,6 +13604,28 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
       return c.json({ error: "Campos obrigatórios: order_id, payer_email, payer_name, payer_cpf_cnpj, items[]" }, 400);
     }
 
+    // SECURITY: Validate shipping option server-side
+    var boletoShipCheck = _validateShipping(body);
+    if (!boletoShipCheck.ok) return c.json({ error: boletoShipCheck.error }, 400);
+
+    // SECURITY: Validate stock server-side
+    var boletoStockCheck = await _validateStock(items);
+    if (!boletoStockCheck.ok) {
+      console.warn("[PagHiper-Boleto] STOCK BLOCKED for order " + order_id + ": " + boletoStockCheck.outOfStock.join(", "));
+      return c.json({ error: "Itens sem estoque disponivel: " + boletoStockCheck.outOfStock.join(", ") }, 400);
+    }
+
+    // SECURITY: Validate CPF algorithmically
+    var boletoCpfDigits = (payer_cpf_cnpj || "").replace(/\D/g, "");
+    if (boletoCpfDigits.length === 11 && !_isValidCPF(boletoCpfDigits)) {
+      return c.json({ error: "CPF invalido." }, 400);
+    }
+
+    // SECURITY: Validate payer_name minimum length
+    if (!payer_name || payer_name.trim().length < 5) {
+      return c.json({ error: "Nome do pagador deve ter pelo menos 5 caracteres." }, 400);
+    }
+
     // SECURITY: Validate prices server-side (allow up to 45% discount for coupons — no PIX discount on boleto)
     try {
       var boletoPriceCheck = await _validatePaymentPrices(items, 45);
@@ -13432,6 +13639,39 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
       }
     } catch (pvErr2) {
       console.error("[PagHiper-Boleto] Price validation error (non-blocking): " + pvErr2);
+    }
+
+    // SECURITY: Validate discount_cents against actual coupon value
+    var boletoValidatedDiscount = 0;
+    if (discount_cents && discount_cents > 0) {
+      try {
+        var boletoCouponCode = body.couponCode;
+        if (boletoCouponCode) {
+          var boletoCouponRaw = await kv.get("coupon:" + boletoCouponCode.toLowerCase());
+          if (boletoCouponRaw) {
+            var boletoCouponData = typeof boletoCouponRaw === "string" ? JSON.parse(boletoCouponRaw) : boletoCouponRaw;
+            if (boletoCouponData.active !== false) {
+              var boletoItemsTotalCents = items.reduce((sum: number, it: any) => sum + (Number(it.price_cents) || 0) * (Number(it.quantity) || 1), 0);
+              var boletoMaxDiscount = 0;
+              if (boletoCouponData.type === "percent") {
+                boletoMaxDiscount = Math.round(boletoItemsTotalCents * (Number(boletoCouponData.value) || 0) / 100);
+              } else {
+                boletoMaxDiscount = Math.round((Number(boletoCouponData.value) || 0) * 100);
+              }
+              if (boletoCouponData.maxDiscount) {
+                boletoMaxDiscount = Math.min(boletoMaxDiscount, Math.round(Number(boletoCouponData.maxDiscount) * 100));
+              }
+              boletoValidatedDiscount = Math.min(discount_cents, Math.round(boletoMaxDiscount * 1.05));
+            }
+          }
+        }
+        if (boletoValidatedDiscount <= 0 && discount_cents > 0) {
+          console.warn("[PagHiper-Boleto] DISCOUNT TAMPERING BLOCKED for order " + order_id);
+        }
+      } catch (dcErr2) {
+        console.error("[PagHiper-Boleto] Discount validation error: " + dcErr2);
+        boletoValidatedDiscount = 0;
+      }
     }
 
     const payload: any = {
@@ -13454,7 +13694,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
       type_bank_slip: type_bank_slip || "boletoA4",
       fixed_description: fixed_description !== undefined ? String(fixed_description) : undefined,
       seller_description: seller_description || undefined,
-      discount_cents: discount_cents && discount_cents > 0 ? String(discount_cents) : undefined,
+      discount_cents: boletoValidatedDiscount > 0 ? String(boletoValidatedDiscount) : undefined,
       items: items.map((item: any, i: number) => ({
         description: item.description || "Item " + (i + 1),
         quantity: String(item.quantity || 1),
@@ -13576,11 +13816,13 @@ app.post(BASE + "/paghiper/boleto/status", async (c) => {
   }
 });
 
-// POST /paghiper/boleto/cancel — cancel boleto (admin)
+// POST /paghiper/boleto/cancel — cancel boleto (admin only)
 app.post(BASE + "/paghiper/boleto/cancel", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado." }, 401);
+    const isAdmin = await isAdminUser(c.req.raw);
+    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
@@ -14200,6 +14442,20 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       return c.json({ error: "items deve ser um array com pelo menos 1 item." }, 400);
     }
 
+    // SECURITY: Validate shipping option server-side
+    var csShipCheck = _validateShipping(body);
+    if (!csShipCheck.ok) return c.json({ error: csShipCheck.error }, 400);
+
+    // SECURITY: Validate stock server-side
+    var csItemsForStock = items.map(function(it: any) {
+      return { sku: it.sku || it.codProduto || "", quantity: Number(it.qtd) || 1 };
+    });
+    var csStockCheck = await _validateStock(csItemsForStock);
+    if (!csStockCheck.ok) {
+      console.warn("[SIGE create-sale] STOCK BLOCKED: " + csStockCheck.outOfStock.join(", "));
+      return c.json({ error: "Itens sem estoque disponivel: " + csStockCheck.outOfStock.join(", ") }, 400);
+    }
+
     // SECURITY: Validate codCliente belongs to the authenticated user (prevent IDOR)
     try {
       var mapRaw = await kv.get("sige_customer_map:" + userId);
@@ -14668,6 +14924,68 @@ app.post(BASE + "/sige/create-sale", async (c) => {
       }
     }
 
+    // SECURITY: Server-side stock validation — block order if insufficient stock
+    // This runs inside the withMutex lock, preventing race conditions between concurrent orders
+    try {
+      var stockIssues: string[] = [];
+      for (var si2 = 0; si2 < items.length; si2++) {
+        var stockSku = String(items[si2].codProduto || items[si2].sku || "");
+        var stockQty = Number(items[si2].quantidade || items[si2].qtdeUnd || 1);
+        if (!stockSku) continue;
+        try {
+          var balanceResult = await sigeAuthFetch("GET", "/product/" + encodeURIComponent(stockSku) + "/balance");
+          if (balanceResult.ok && balanceResult.data) {
+            var balData = balanceResult.data?.dados || balanceResult.data?.data || balanceResult.data;
+            var balArr = Array.isArray(balData) ? balData : (balData ? [balData] : []);
+            var totalAvail = 0;
+            for (var bi = 0; bi < balArr.length; bi++) {
+              totalAvail += Number(balArr[bi].disponivel ?? balArr[bi].quantidade ?? 0);
+            }
+            if (totalAvail <= 0) {
+              stockIssues.push(stockSku + " (sem estoque)");
+            } else if (stockQty > totalAvail) {
+              stockIssues.push(stockSku + " (pedido: " + stockQty + ", disponivel: " + totalAvail + ")");
+            }
+          }
+        } catch (balErr) {
+          console.warn("[create-sale] Balance check failed for " + stockSku + " (non-fatal): " + balErr);
+        }
+      }
+      if (stockIssues.length > 0) {
+        console.warn("[create-sale] STOCK INSUFFICIENT for user " + userId + ": " + stockIssues.join(", "));
+        return c.json({ error: "Estoque insuficiente para: " + stockIssues.join(", ") + ". Atualize a pagina e tente novamente." }, 409);
+      }
+    } catch (stockCheckErr) {
+      console.error("[create-sale] Stock validation error: " + stockCheckErr);
+      return c.json({ error: "Erro ao verificar estoque. Tente novamente." }, 503);
+    }
+
+    // SECURITY: Validate prices against server catalog before sending to SIGE
+    try {
+      var priceTamperBlocked = false;
+      for (var pi = 0; pi < items.length; pi++) {
+        var pSku = String(items[pi].codProduto || items[pi].sku || "");
+        var clientPrice = Number(items[pi].valorUnitario || items[pi].preco || 0);
+        if (!pSku || clientPrice <= 0) continue;
+        var serverPrice = await resolveItemPrice(pSku);
+        if (serverPrice && serverPrice > 0) {
+          // Allow up to 55% discount (PIX + coupon combined max)
+          var minAllowed = serverPrice * 0.45;
+          if (clientPrice < minAllowed) {
+            console.warn("[create-sale] PRICE TAMPERING for " + pSku + ": client=" + clientPrice + " server=" + serverPrice + " min=" + minAllowed.toFixed(2));
+            priceTamperBlocked = true;
+          }
+          // Override client price with server price for SIGE (use catalog price, not client-supplied)
+          items[pi].valorUnitario = serverPrice;
+        }
+      }
+      if (priceTamperBlocked) {
+        return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
+      }
+    } catch (priceValErr) {
+      console.error("[create-sale] Price validation error (proceeding with client prices): " + priceValErr);
+    }
+
     // Build sigeItems with REQUIRED valorUnitario always present
     const sigeItems = await Promise.all(items.map(async (item: any, idx: number) => {
       const resolved = resolvedRefs[idx];
@@ -14932,16 +15250,77 @@ app.post(BASE + "/user/save-order", async (c) => {
 
     if (!localOrderId) return c.json({ error: "localOrderId obrigatório." }, 400);
 
+    // SECURITY: Validate shipping option server-side
+    var soShipCheck = _validateShipping(body);
+    if (!soShipCheck.ok) return c.json({ error: soShipCheck.error }, 400);
+
+    // SECURITY: Validate stock server-side
+    if (Array.isArray(items) && items.length > 0) {
+      var soItemsForStock = items.map(function(it: any) {
+        return { sku: it.sku || it.codProduto || "", quantity: Number(it.quantidade) || 1 };
+      });
+      var soStockCheck = await _validateStock(soItemsForStock);
+      if (!soStockCheck.ok) {
+        console.warn("[save-order] STOCK BLOCKED for " + localOrderId + ": " + soStockCheck.outOfStock.join(", "));
+        return c.json({ error: "Itens sem estoque disponivel: " + soStockCheck.outOfStock.join(", ") }, 400);
+      }
+    }
+
     // Payment status: all payments start as awaiting_payment (MP webhook confirms later)
     var initialStatus = "awaiting_payment";
 
-    // EXCEPTION: Credit card payments processed via Checkout Transparente are
-    // verified server-side BEFORE save-order is called.  When the frontend sends
-    // initialStatus="paid" together with a valid mpPaymentId, we trust it because
-    // the card was already charged in /mercadopago/process-card-payment.
+    // EXCEPTION: Credit card payments — verify mpPaymentId against MercadoPago API
+    // instead of blindly trusting the client's initialStatus="paid" claim
     if (body.initialStatus === "paid" && (paymentMethod === "cartao_credito" || paymentMethod === "credit_card") && body.mpPaymentId) {
-      initialStatus = "paid";
-      console.log("[save-order] Credit card payment approved — setting initialStatus=paid, mpPaymentId=" + body.mpPaymentId);
+      try {
+        var mpCreds = await getMPCredentials();
+        if (mpCreds) {
+          var mpVerify = await mpApiFetch("/v1/payments/" + String(body.mpPaymentId), mpCreds.accessToken, { method: "GET" });
+          if (mpVerify.ok && mpVerify.json) {
+            var mpExtRef = mpVerify.json.external_reference || "";
+            var mpRealStatus = mpVerify.json.status;
+            // Verify external_reference matches this order and status is approved
+            if (mpRealStatus === "approved" && (mpExtRef === localOrderId || mpExtRef === body.localOrderId)) {
+              initialStatus = "paid";
+              console.log("[save-order] MercadoPago payment VERIFIED approved — mpPaymentId=" + body.mpPaymentId);
+            } else {
+              console.warn("[save-order] MercadoPago payment NOT approved — status=" + mpRealStatus + " extRef=" + mpExtRef + " expected=" + localOrderId);
+              // Do NOT mark as paid — leave as awaiting_payment
+            }
+          } else {
+            console.warn("[save-order] MercadoPago payment verify FAILED — HTTP " + (mpVerify.status || "?") + " mpPaymentId=" + body.mpPaymentId);
+          }
+        }
+      } catch (mpVerErr) {
+        console.error("[save-order] MercadoPago payment verify error (non-fatal): " + mpVerErr);
+        // On error, do NOT trust client — leave as awaiting_payment
+      }
+    }
+
+    // SECURITY: Recalculate total server-side instead of trusting client value
+    var serverTotal = 0;
+    if (Array.isArray(items)) {
+      for (var si = 0; si < items.length; si++) {
+        var itemPrice = Number(items[si].valorUnitario) || Number(items[si].precoUnitario) || 0;
+        var itemQty = Number(items[si].quantidade) || 1;
+        serverTotal += itemPrice * itemQty;
+        // Include warranty price if present
+        if (items[si].warranty && items[si].warranty.price) {
+          serverTotal += Number(items[si].warranty.price) || 0;
+        }
+      }
+    }
+    if (shippingOption && shippingOption.price) {
+      serverTotal += Number(shippingOption.price) || 0;
+    }
+    // Apply coupon discount if present
+    if (body.coupon && body.coupon.discountAmount) {
+      serverTotal = Math.max(0, serverTotal - (Number(body.coupon.discountAmount) || 0));
+    }
+    // Use server-calculated total; log if client sent a different value
+    var clientTotal = Number(total) || 0;
+    if (Math.abs(serverTotal - clientTotal) > 1) {
+      console.warn("[save-order] Total mismatch for " + localOrderId + ": client=" + clientTotal + " server=" + serverTotal.toFixed(2));
     }
 
     const orderRecord: any = {
@@ -14952,7 +15331,7 @@ app.post(BASE + "/user/save-order", async (c) => {
       status: initialStatus,
       paymentMethod: paymentMethod || "pix",
       transactionId: transactionId || null,
-      total: Number(total) || 0,
+      total: Math.round(serverTotal * 100) / 100,
       itemCount: Array.isArray(items) ? items.length : 0,
       observacao: observacao || null,
       shippingAddress: shippingAddress ? {
@@ -17281,6 +17660,20 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
       return c.json({ error: "Items são obrigatórios." }, 400);
     }
 
+    // SECURITY: Validate shipping option server-side
+    var mpShipCheck = _validateShipping(body);
+    if (!mpShipCheck.ok) return c.json({ error: mpShipCheck.error }, 400);
+
+    // SECURITY: Validate stock server-side
+    var mpItemsForStock = items.map(function(it: any) {
+      return { sku: it.item_id || it.id || "", quantity: it.quantity || 1 };
+    });
+    var mpStockCheck = await _validateStock(mpItemsForStock);
+    if (!mpStockCheck.ok) {
+      console.warn("[MercadoPago] STOCK BLOCKED: " + mpStockCheck.outOfStock.join(", "));
+      return c.json({ error: "Itens sem estoque disponivel: " + mpStockCheck.outOfStock.join(", ") }, 400);
+    }
+
     // SECURITY: Validate prices server-side (allow up to 45% discount for coupons)
     try {
       var mpItemsForValidation = items.map(function(it: any) {
@@ -17437,6 +17830,30 @@ app.post(BASE + "/mercadopago/process-card-payment", async (c) => {
     transaction_amount = Math.round(parseFloat(transaction_amount) * 100) / 100;
     if (!transaction_amount || isNaN(transaction_amount) || transaction_amount <= 0) {
       return c.json({ error: "Valor do pagamento invalido: " + body.transaction_amount, success: false }, 400);
+    }
+
+    // SECURITY: Validate shipping option server-side
+    var ccShipCheck = _validateShipping(body);
+    if (!ccShipCheck.ok) return c.json({ error: ccShipCheck.error, success: false }, 400);
+
+    // SECURITY: Validate stock server-side
+    if (body.items && Array.isArray(body.items)) {
+      var ccItemsForStock = body.items.map(function(it: any) {
+        return { sku: it.sku || it.item_id || "", quantity: it.quantity || 1 };
+      });
+      var ccStockCheck = await _validateStock(ccItemsForStock);
+      if (!ccStockCheck.ok) {
+        console.warn("[MercadoPago Card] STOCK BLOCKED for order " + order_id + ": " + ccStockCheck.outOfStock.join(", "));
+        return c.json({ error: "Itens sem estoque disponivel: " + ccStockCheck.outOfStock.join(", "), success: false }, 400);
+      }
+    }
+
+    // SECURITY: Validate CPF algorithmically
+    if (payer_cpf) {
+      var ccCpfDigits = payer_cpf.replace(/\D/g, "");
+      if (ccCpfDigits.length === 11 && !_isValidCPF(ccCpfDigits)) {
+        return c.json({ error: "CPF invalido.", success: false }, 400);
+      }
     }
 
     // SECURITY: Validate prices server-side
@@ -17867,11 +18284,13 @@ app.post(BASE + "/mercadopago/webhook", async (c) => {
   }
 });
 
-// GET /mercadopago/transactions — list local MP transactions (admin)
+// GET /mercadopago/transactions — list local MP transactions (admin only)
 app.get(BASE + "/mercadopago/transactions", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado" }, 401);
+    const isAdmin = await isAdminUser(c.req.raw);
+    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     var txRaws = await kv.getByPrefix("mp_tx:");
     var payRaws = await kv.getByPrefix("mp_payment:");

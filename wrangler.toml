@@ -1,0 +1,19 @@
+# ═══════════════════════════════════════════════════════════════════
+# Cloudflare Pages — Wrangler Configuration
+# ═══════════════════════════════════════════════════════════════════
+# Used by `wrangler pages dev` for local testing and by
+# `wrangler pages deploy` for production bindings.
+
+name = "catalogo-pecas"
+compatibility_date = "2024-12-01"
+
+# ── KV Namespace (edge cache for static API data) ─────────────────
+[[kv_namespaces]]
+binding = "CACHE"
+id = "f58c66dab8e442e18e6edf5f2aff6dd8"
+
+# ── R2 Bucket (image storage — enable R2 in dashboard first) ──────
+# Uncomment after enabling R2 in Cloudflare Dashboard:
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "catalogo-pecas-images"
