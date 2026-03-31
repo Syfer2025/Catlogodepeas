@@ -28,6 +28,7 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
   var [products, setProducts] = useState<ProdutoItem[]>([]);
   var [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
   var [priceMap, setPriceMap] = useState<Record<string, ProductPrice>>({});
+  var [sellableSet, setSellableSet] = useState<Set<string> | null>(null);
   var scrollRef = useRef<HTMLDivElement>(null);
 
   var recentItems = getItems(excludeSku).slice(0, maxItems);
@@ -76,10 +77,26 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
       })
       .catch(function (e) { if (e && e.name !== "AbortError") console.error("[RecentlyViewed] Bulk balance error:", e); });
 
+    // Fetch product meta (for sellable status)
+    api.getProductMetaBulk(skus)
+      .then(function (res) {
+        if (ac.signal.aborted) return;
+        var raw = res || {};
+        var set = new Set<string>();
+        for (var mk in raw) {
+          if (raw[mk].sellable === true) set.add(mk);
+        }
+        setSellableSet(set);
+      })
+      .catch(function (e) { if (e && e.name !== "AbortError") console.error("[RecentlyViewed] Bulk meta error:", e); });
+
     return function () { ac.abort(); };
   }, [recentItems.length, excludeSku]);
 
-  if (products.length === 0) return null;
+  // Filter out non-sellable products
+  var displayProducts = sellableSet ? products.filter(function (p) { return sellableSet.has(p.sku); }) : products;
+
+  if (displayProducts.length === 0) return null;
 
   var scroll = function (dir: "left" | "right") {
     if (!scrollRef.current) return;
@@ -153,7 +170,7 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
           className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 hide-scrollbar snap-x snap-mandatory"
           style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {products.map(function (product) {
+          {displayProducts.map(function (product) {
             return (
               <div
                 key={product.sku}

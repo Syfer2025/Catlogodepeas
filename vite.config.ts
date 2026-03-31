@@ -10,6 +10,19 @@ export default defineConfig({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    // Remove restrictive CSP in dev mode so Vite HMR websocket works
+    {
+      name: 'dev-remove-csp',
+      transformIndexHtml(html, ctx) {
+        if (ctx.server) {
+          return html.replace(
+            /<meta http-equiv="Content-Security-Policy"[^>]*>/,
+            '<!-- CSP disabled in dev mode for HMR -->'
+          );
+        }
+        return html;
+      },
+    },
     // Bundle analysis — generates stats.html after `vite build`
     // Open stats.html in browser to see chunk sizes and dependencies
     visualizer({

@@ -137,6 +137,7 @@ export function ProductDetailPage() {
   // PERF: Preloaded price + stock for the main product — fetched in initial parallel load
   const [mainPrice, setMainPrice] = useState<ProductPrice | null>(null);
   const [mainBalance, setMainBalance] = useState<ProductBalance | null>(null);
+  const [sellable, setSellable] = useState<boolean | undefined>(undefined);
 
   // Review summary for JSON-LD AggregateRating
   var [reviewSummary, setReviewSummary] = useState<{ averageRating: number; totalReviews: number } | null>(null);
@@ -249,8 +250,8 @@ export function ProductDetailPage() {
         var balanceResult = initData.balance as ProductBalance | null;
         var reviewSummaryResult = initData.reviewSummary || null;
 
-        // Visibility check
-        if (!skuResult.data || skuResult.data.length === 0 || metaResult.visible === false) {
+        // Visibility check (hidden or not enabled for sale)
+        if (!skuResult.data || skuResult.data.length === 0 || metaResult.visible === false || metaResult.sellable !== true) {
           setNotFound(true);
           setLoading(false);
           setImagesLoading(false);
@@ -275,6 +276,7 @@ export function ProductDetailPage() {
         setMainPrice(priceResult);
         setMainBalance(balanceResult);
         setReviewSummary(reviewSummaryResult);
+        setSellable(metaResult.sellable === true ? true : false);
 
         // Seed module caches so PriceBadge/StockBar don't re-fetch
         if (priceResult) {
@@ -333,7 +335,8 @@ export function ProductDetailPage() {
           // Visibility check — product must exist and not be hidden
           if (
             !fbProduct || !fbProduct.data || fbProduct.data.length === 0 ||
-            (fbMeta && fbMeta.visible === false)
+            (fbMeta && fbMeta.visible === false) ||
+            (fbMeta && fbMeta.sellable !== true)
           ) {
             setNotFound(true);
             setLoading(false);
@@ -358,6 +361,7 @@ export function ProductDetailPage() {
           setAttrsLoading(false);
           setMainPrice(fbPrice);
           setMainBalance(fbBalance);
+          setSellable(fbMeta && fbMeta.sellable === true ? true : false);
 
           // Seed module caches so PriceBadge/StockBar don't re-fetch
           if (fbPrice) {
@@ -1183,6 +1187,7 @@ export function ProductDetailPage() {
                   preloadedPrice={mainPrice && mainPrice.found ? mainPrice.price : undefined}
                   outOfStock={mainBalance ? (mainBalance.found && (mainBalance.disponivel ?? mainBalance.quantidade ?? 0) <= 0) : false}
                   availableQty={mainBalance && mainBalance.found ? (mainBalance.disponivel ?? mainBalance.quantidade ?? null) : null}
+                  sellable={sellable}
                   onStockUpdate={function (available, isOos) {
                     if (available !== null) {
                       setMainBalance(function (prev) {

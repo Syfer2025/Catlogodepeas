@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ProductCard } from "./ProductCard";
 import type { ProdutoItem } from "./ProductCard";
-import type { ProductBalance, ProductPrice } from "../services/api";
+import type { ProductBalance, ProductPrice, ProductMeta } from "../services/api";
 import { ProductCardSkeleton } from "./ProductCardSkeleton";
 
 interface VirtualProductGridProps {
@@ -16,6 +16,8 @@ interface VirtualProductGridProps {
   priceMap: Record<string, ProductPrice>;
   /** Review summaries map */
   reviewMap?: Record<string, { averageRating: number; totalReviews: number }>;
+  /** Product meta map (for sellable status) */
+  metaMap?: Record<string, ProductMeta>;
   /**
    * Grid columns CSS class.
    * Default: "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
@@ -47,6 +49,7 @@ export function VirtualProductGrid({
   balanceMap,
   priceMap,
   reviewMap,
+  metaMap,
   gridClass,
 }: VirtualProductGridProps) {
   var cols = gridClass || "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4";
@@ -63,6 +66,7 @@ export function VirtualProductGrid({
               balance={balanceMap[produto.sku]}
               preloadedPrice={priceMap[produto.sku]}
               reviewSummary={reviewMap ? reviewMap[produto.sku] || null : null}
+              sellable={metaMap && metaMap[produto.sku] ? metaMap[produto.sku].sellable : undefined}
             />
           );
         })}
@@ -80,6 +84,7 @@ export function VirtualProductGrid({
             balance={balanceMap[produto.sku]}
             priceData={priceMap[produto.sku]}
             reviewSummary={reviewMap ? reviewMap[produto.sku] || null : null}
+            sellable={metaMap && metaMap[produto.sku] ? metaMap[produto.sku].sellable : undefined}
           />
         );
       })}
@@ -98,11 +103,13 @@ function VirtualCard({
   balance,
   priceData,
   reviewSummary,
+  sellable,
 }: {
   product: ProdutoItem;
   balance?: ProductBalance;
   priceData?: ProductPrice;
   reviewSummary?: { averageRating: number; totalReviews: number } | null;
+  sellable?: boolean;
 }) {
   var ref = useRef<HTMLDivElement>(null);
   var [isNear, setIsNear] = useState(false);
@@ -157,6 +164,7 @@ function VirtualCard({
           balance={balance}
           preloadedPrice={priceData}
           reviewSummary={reviewSummary}
+          sellable={sellable}
         />
       ) : (
         <ProductCardSkeleton />

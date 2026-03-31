@@ -31,9 +31,11 @@ interface AddToCartButtonProps {
   onStockUpdate?: (available: number | null, outOfStock: boolean) => void;
   /** Extended warranty selection from parent */
   warranty?: { planId: string; name: string; price: number; durationMonths: number } | null;
+  /** false = product lacks shipping dimensions, cannot be sold */
+  sellable?: boolean;
 }
 
-export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, preloadedPrice, outOfStock, availableQty, onStockUpdate, warranty }: AddToCartButtonProps) {
+export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, preloadedPrice, outOfStock, availableQty, onStockUpdate, warranty, sellable }: AddToCartButtonProps) {
   const { catalogMode } = useCatalogMode();
   const { addItem, items } = useCart();
   const { trackEvent } = useGA4();
@@ -201,6 +203,17 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
     if (catalogMode) {
       return null;
     }
+    if (sellable !== undefined && sellable !== true) {
+      return (
+        <span
+          className="flex items-center gap-1.5 bg-amber-100 text-amber-600 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-default"
+          title="Produto nao habilitado para venda"
+        >
+          <Ban className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Indisponivel</span>
+        </span>
+      );
+    }
     if (liveOutOfStock) {
       return (
         <span
@@ -249,6 +262,25 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
         style={{ fontSize: "0.9rem", fontWeight: 600 }}>
         <ShoppingCart className="w-5 h-5" />
         Entre em contato para comprar
+      </div>
+    );
+  }
+
+  // Non-sellable — product not enabled for sale by admin
+  if (sellable !== undefined && sellable !== true) {
+    return (
+      <div className="space-y-2">
+        <button
+          disabled
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-100 text-amber-600 cursor-not-allowed shadow-none"
+          style={{ fontSize: "0.95rem", fontWeight: 700 }}
+        >
+          <Ban className="w-5 h-5" />
+          Produto Indisponivel
+        </button>
+        <p className="text-amber-500 text-center" style={{ fontSize: "0.78rem" }}>
+          Este produto esta temporariamente indisponivel para venda.
+        </p>
       </div>
     );
   }

@@ -15,7 +15,7 @@ import { seedPriceCache } from "../components/PriceBadge";
 import { seedStockCache } from "../components/StockBar";
 import { seedReviewStarsCache } from "../components/ReviewStars";
 import * as api from "../services/api";
-import type { ProductBalance, ProductPrice } from "../services/api";
+import type { ProductBalance, ProductPrice, ProductMeta } from "../services/api";
 import { ProductImage } from "../components/ProductImage";
 import { useGA4 } from "../components/GA4Provider";
 import { useMarketing } from "../components/MarketingPixels";
@@ -63,6 +63,8 @@ export function CatalogPage() {
   const [priceMap, setPriceMap] = useState<Record<string, ProductPrice>>({});
   // Review summaries (loaded in bulk after products)
   const [reviewMap, setReviewMap] = useState<Record<string, { averageRating: number; totalReviews: number }>>({});
+  // Product meta (for sellable status)
+  const [metaMap, setMetaMap] = useState<Record<string, ProductMeta>>({});
 
   // ── Sort & filter state ──
   const [sortMode, setSortMode] = useState<string>("nome-asc");
@@ -92,6 +94,7 @@ export function CatalogPage() {
     setError(null);
     setBalanceMap({}); // Clear balance data for new page/filter
     setPriceMap({}); // Clear price data for new page/filter
+    setMetaMap({}); // Clear meta data for new page/filter
     try {
       const result = await api.getCatalog(page, ITEMS_PER_PAGE, searchQuery, categoriaSlug, serverSortParam);
       setProdutos(result.data);
@@ -189,6 +192,24 @@ export function CatalogPage() {
       })
       .catch((e) => { if (e && e.name !== "AbortError") console.error("[CatalogPage] Bulk review summaries error:", e); });
 
+    // Fetch product meta in parallel (for sellable status)
+    api.getProductMetaBulk(skus)
+      .then((res) => {
+        if (ac.signal.aborted) return;
+        // Normalize: sellable undefined → false (default disabled)
+        var normalized: Record<string, ProductMeta> = {};
+        var raw = res || {};
+        for (var mk in raw) {
+          normalized[mk] = { ...raw[mk], sellable: raw[mk].sellable === true ? true : false };
+        }
+        // Also add entries for SKUs not in meta (default disabled)
+        for (var si = 0; si < skus.length; si++) {
+          if (!normalized[skus[si]]) normalized[skus[si]] = { sellable: false };
+        }
+        setMetaMap(normalized);
+      })
+      .catch((e) => { if (e && e.name !== "AbortError") console.error("[CatalogPage] Bulk meta error:", e); });
+
     return function () { ac.abort(); };
   }, [produtos]);
 
@@ -196,6 +217,14 @@ export function CatalogPage() {
   // Server handles all sort modes globally across pages
   const sortedProdutos = useMemo(() => {
     var list = [...produtos];
+
+    // Filter out non-sellable products (only after meta has loaded)
+    if (Object.keys(metaMap).length > 0) {
+      list = list.filter(function (p) {
+        var meta = metaMap[p.sku];
+        return meta && meta.sellable === true;
+      });
+    }
 
     // Stock filter (client-side — filters within the page returned by server)
     if (stockFilter !== "all" && Object.keys(balanceMap).length > 0) {
@@ -208,7 +237,7 @@ export function CatalogPage() {
     }
 
     return list;
-  }, [produtos, stockFilter, balanceMap]);
+  }, [produtos, stockFilter, balanceMap, metaMap]);
 
   const clearSearch = () => {
     const newParams = new URLSearchParams(searchParams);
@@ -601,6 +630,7 @@ export function CatalogPage() {
                   balanceMap={balanceMap}
                   priceMap={priceMap}
                   reviewMap={reviewMap}
+                  metaMap={metaMap}
                   gridClass="grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
                 />
               ) : (
@@ -653,7 +683,7 @@ export function CatalogPage() {
                       Estoque
                     </span>
                   </div>
-                  {produtos.map((produto, idx) => (
+                  {sortedProdutos.map((produto, idx) => (
                     <Link
                       key={produto.sku}
                       to={`/produto/${encodeURIComponent(produto.sku)}`}

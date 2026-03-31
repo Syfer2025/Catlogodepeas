@@ -2256,6 +2256,8 @@ export const triggerSigeSync = (
 export interface ProductMeta {
   sku?: string;
   visible?: boolean;
+  /** false = produto sem medidas/peso, bloqueado para venda (não calcula frete) */
+  sellable?: boolean;
   description?: string;
   category?: string;
   brand?: string;
@@ -3360,7 +3362,7 @@ export const getPhysicalBulkList = (accessToken: string) =>
   });
 
 export const getMetaAllCompact = (accessToken: string) =>
-  request<{ items: Array<{ sku: string; category: string; brand: string }> }>("/produtos/meta/all-compact", {
+  request<{ items: Array<{ sku: string; category: string; brand: string; visible?: boolean; sellable?: boolean }> }>("/produtos/meta/all-compact", {
     headers: { "X-User-Token": accessToken },
   });
 

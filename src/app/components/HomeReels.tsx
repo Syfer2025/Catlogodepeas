@@ -44,19 +44,13 @@ export function HomeReels() {
   var [viewerIndex, setViewerIndex] = useState(0);
   var scrollRef = useRef<HTMLDivElement>(null);
   var [priceMap, setPriceMap] = useState<Record<string, ReelPriceData>>({});
+  var [sellableSet, setSellableSet] = useState<Set<string> | null>(null);
 
   useEffect(function () {
     api.getReels().then(function (res) {
       var allReels = res.reels || [];
-      // ══ BULLETPROOF FILTER: only show PRODUCT reels — 4 layers of protection ══
-      // Layer 1: Exclude reels with influencerId set
-      // Layer 2: Exclude reels with no products linked (no products array AND no productSku)
-      // Layer 3: Backend already filters, but frontend double-checks
-      // Layer 4: Title heuristic — skip reels with hashtag-heavy titles (social content)
       var r = allReels.filter(function (reel) {
-        // Layer 1: influencer flag
         if ((reel as any).influencerId) return false;
-        // Layer 2: must have at least one product linked
         var prods = api.getReelProducts(reel);
         if (prods.length === 0 && !(reel as any).productSku) return false;
         return true;
@@ -64,6 +58,21 @@ export function HomeReels() {
       setReels(r);
       if (r.length > 0) {
         _loadPrices(r);
+        // Fetch sellable status for all reel products
+        var skuSet: Record<string, boolean> = {};
+        for (var i = 0; i < r.length; i++) {
+          var prods = api.getReelProducts(r[i]);
+          for (var j = 0; j < prods.length; j++) skuSet[prods[j].sku] = true;
+        }
+        var allSkus = Object.keys(skuSet);
+        if (allSkus.length > 0) {
+          api.getProductMetaBulk(allSkus).then(function (metaRes) {
+            var raw = metaRes || {};
+            var set = new Set<string>();
+            for (var mk in raw) { if (raw[mk].sellable === true) set.add(mk); }
+            setSellableSet(set);
+          }).catch(function () {});
+        }
       }
     }).catch(function () {}).finally(function () { setLoaded(true); });
   }, []);
@@ -183,14 +192,18 @@ export function HomeReels() {
         >
           {reels.map(function (reel, idx) {
             var prods = api.getReelProducts(reel);
-            var firstSku = prods.length > 0 ? prods[0].sku : "";
+            // Filter to only sellable products
+            var sellableProds = sellableSet ? prods.filter(function (p) { return sellableSet.has(p.sku); }) : prods;
+            var firstSku = sellableProds.length > 0 ? sellableProds[0].sku : "";
+            // Hide reel if no sellable products
+            if (sellableSet && sellableProds.length === 0) return null;
             return (
               <ReelThumbnail
                 key={reel.id}
                 reel={reel}
-                products={prods}
+                products={sellableProds}
                 priceData={firstSku ? (priceMap[firstSku] || null) : null}
-                productCount={prods.length}
+                productCount={sellableProds.length}
                 onClick={function () { openViewer(idx); }}
               />
             );
@@ -198,13 +211,29 @@ export function HomeReels() {
         </div>
       </div>
 
-      {/* Fullscreen Viewer */}
+      {/* Fullscreen Viewer — only pass reels that have sellable products */}
       {viewerOpen && (
         <ReelsViewer
-          reels={reels}
+          reels={sellableSet ? reels.filter(function (reel) {
+            var prods = api.getReelProducts(reel);
+            return prods.some(function (p) { return sellableSet.has(p.sku); });
+          }) : reels}
           priceMap={priceMap}
-          initialIndex={viewerIndex}
+          initialIndex={function () {
+            // Map the original reels index to the filtered list index
+            if (!sellableSet) return viewerIndex;
+            var clickedReel = reels[viewerIndex];
+            var filtered = reels.filter(function (reel) {
+              var prods = api.getReelProducts(reel);
+              return prods.some(function (p) { return sellableSet.has(p.sku); });
+            });
+            for (var fi = 0; fi < filtered.length; fi++) {
+              if (filtered[fi].id === clickedReel.id) return fi;
+            }
+            return 0;
+          }()}
           onClose={function () { setViewerOpen(false); }}
+          sellableSet={sellableSet}
         />
       )}
     </section>
@@ -362,11 +391,12 @@ function ReelThumbnail({ reel, products, priceData, productCount, onClick }: {
 }
 
 /** Fullscreen TikTok-style video viewer with swipe navigation */
-function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
+function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
   reels: ReelItem[];
   priceMap: Record<string, ReelPriceData>;
   initialIndex: number;
   onClose: () => void;
+  sellableSet: Set<string> | null;
 }) {
   var [currentIndex, setCurrentIndex] = useState(initialIndex);
   var [muted, setMuted] = useState(true);
@@ -376,7 +406,9 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose }: {
   var { addItem, openDrawer } = useCart();
 
   var current = reels[currentIndex];
-  var currentProducts = current ? api.getReelProducts(current) : [];
+  var allProducts = current ? api.getReelProducts(current) : [];
+  // Filter to only sellable products
+  var currentProducts = sellableSet ? allProducts.filter(function (p) { return sellableSet.has(p.sku); }) : allProducts;
 
   // Lock body scroll — robust technique that works on iOS Safari too
   useEffect(function () {

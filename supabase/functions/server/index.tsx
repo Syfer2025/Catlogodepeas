@@ -4462,9 +4462,9 @@ app.get(BASE + "/produtos/meta/all-compact", async (c) => {
     var adminCheck = await isAdminUser(c.req.raw);
     if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
     var allMetas = await getAllProductMetas();
-    var result: Array<{ sku: string; category: string; brand: string }> = [];
+    var result: Array<{ sku: string; category: string; brand: string; visible?: boolean; sellable?: boolean }> = [];
     allMetas.forEach(function (meta: any, sku: string) {
-      result.push({ sku: sku, category: meta.category || "", brand: meta.brand || "" });
+      result.push({ sku: sku, category: meta.category || "", brand: meta.brand || "", visible: meta.visible, sellable: meta.sellable });
     });
     return c.json({ items: result });
   } catch (e: any) {

@@ -82,12 +82,14 @@ const AdminInfluencers = lazy(() => import("./AdminInfluencers").then((m) => ({ 
 const AdminInfrastructure = lazy(() => import("./AdminInfrastructure").then((m) => ({ default: m.AdminInfrastructure })));
 const AdminFaq = lazy(() => import("./AdminFaq").then((m) => ({ default: m.AdminFaq })));
 const AdminDimensions = lazy(() => import("./AdminDimensions").then((m) => ({ default: m.AdminDimensions })));
+const AdminSalesControl = lazy(() => import("./AdminSalesControl").then((m) => ({ default: m.AdminSalesControl })));
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions";
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions" | "sales-control";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "orders", label: "Pedidos", icon: ShoppingCart },
+  { id: "sales-control", label: "Gestao de Vendas", icon: ShoppingCart },
   { id: "products", label: "Produtos", icon: Package },
   { id: "categories", label: "Categorias", icon: Layers },
   { id: "attributes", label: "Atributos", icon: Tag },
@@ -149,7 +151,7 @@ function saveCollapsedSections(state: Record<string, boolean>): void {
 
 const navSections: NavSection[] = [
   { label: "Geral", icon: LayoutDashboard, items: ["dashboard"], collapsible: false },
-  { label: "Vendas", icon: ShoppingCart, items: ["orders", "coupons", "warranty"], collapsible: true },
+  { label: "Vendas", icon: ShoppingCart, items: ["orders", "sales-control", "coupons", "warranty"], collapsible: true },
   { label: "Catalogo", icon: Package, items: ["products", "categories", "attributes", "brands"], collapsible: true },
   { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
   { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
@@ -618,6 +620,8 @@ export function AdminPage() {
         return <AdminFaq />;
       case "dimensions":
         return <AdminDimensions />;
+      case "sales-control":
+        return <AdminSalesControl />;
     }
   };
 

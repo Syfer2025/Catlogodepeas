@@ -48,11 +48,14 @@ interface ProductCardProps {
   preloadedPrice?: ProductPrice | null;
   /** Pass preloaded review summary to avoid individual API calls */
   reviewSummary?: { averageRating: number; totalReviews: number } | null;
+  /** false = product lacks shipping dimensions, cannot be sold */
+  sellable?: boolean;
 }
 
-export function ProductCardInner({ product, balance, preloadedPrice, reviewSummary }: ProductCardProps) {
+export function ProductCardInner({ product, balance, preloadedPrice, reviewSummary, sellable }: ProductCardProps) {
   const inStock = balance ? (balance.disponivel ?? balance.quantidade ?? 0) > 0 : true;
   const showOutOfStock = balance !== undefined && balance !== null && balance.found && !inStock;
+  const showNotSellable = sellable !== undefined && sellable !== true && !showOutOfStock;
   const { trackEvent } = useGA4();
 
   return (
@@ -145,7 +148,7 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
           <span
             className={
               "w-full flex items-center justify-center gap-1.5 sm:gap-2 py-1.5 sm:py-2.5 rounded-lg " +
-              (showOutOfStock
+              (showOutOfStock || showNotSellable
                 ? "bg-gray-100 text-gray-400 cursor-default"
                 : "bg-red-600 text-white group-hover:bg-red-700")
             }
@@ -153,13 +156,13 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
               fontSize: "clamp(0.68rem, 2.2vw, 0.82rem)",
               fontWeight: 600,
               transition: "background-color 0.3s ease, box-shadow 0.3s ease",
-              boxShadow: showOutOfStock ? "none" : undefined,
+              boxShadow: showOutOfStock || showNotSellable ? "none" : undefined,
             }}
-            onMouseEnter={(e) => { if (!showOutOfStock) e.currentTarget.style.boxShadow = "0 4px 12px rgba(220,38,38,0.35)"; }}
+            onMouseEnter={(e) => { if (!showOutOfStock && !showNotSellable) e.currentTarget.style.boxShadow = "0 4px 12px rgba(220,38,38,0.35)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "none"; }}
           >
             <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            {showOutOfStock ? "Indisponível" : "Comprar"}
+            {showOutOfStock ? "Indisponível" : showNotSellable ? "Indisponível" : "Comprar"}
           </span>
         </div>
       </div>

@@ -30,7 +30,7 @@ import type { ProdutoItem } from "../components/ProductCard";
 import { ArrowRight, ChevronRight, ChevronLeft, Package, MessageCircle, Sparkles, Search } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "../services/api";
-import type { BannerItem, ProductBalance, ProductPrice, HomepageCategoryCard, MidBanner } from "../services/api";
+import type { BannerItem, ProductBalance, ProductPrice, ProductMeta, HomepageCategoryCard, MidBanner } from "../services/api";
 // Lazy-load below-fold sections for better initial load performance
 import { SuperPromoSection } from "../components/SuperPromoSection";
 import { seedPriceCache } from "../components/PriceBadge";
@@ -405,6 +405,7 @@ export function HomePage() {
   const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance>>({});
   const [priceMap, setPriceMap] = useState<Record<string, ProductPrice>>({});
   const [reviewMap, setReviewMap] = useState<Record<string, { averageRating: number; totalReviews: number }>>({});
+  const [metaMap, setMetaMap] = useState<Record<string, ProductMeta>>({});
   // Benefits strip is ATF — do NOT use scroll reveal (causes CLS 0.184)
   // NOTE: productsReveal and ctaReveal use OPACITY-ONLY animation.
   // translate-y was removed because it caused CLS 0.410 in Lighthouse.
@@ -525,6 +526,22 @@ export function HomePage() {
       })
       .catch((e) => { if (e && e.name !== "AbortError") console.error("[HomePage] Review batch error:", e); });
 
+    // Fetch product meta (for sellable status)
+    api.getProductMetaBulk(skus)
+      .then((res) => {
+        if (ac.signal.aborted) return;
+        var normalized: Record<string, ProductMeta> = {};
+        var raw = res || {};
+        for (var mk in raw) {
+          normalized[mk] = { ...raw[mk], sellable: raw[mk].sellable === true ? true : false };
+        }
+        for (var si = 0; si < skus.length; si++) {
+          if (!normalized[skus[si]]) normalized[skus[si]] = { sellable: false };
+        }
+        setMetaMap(normalized);
+      })
+      .catch((e) => { if (e && e.name !== "AbortError") console.error("[HomePage] Bulk meta error:", e); });
+
     return function () { ac.abort(); };
   }, [produtos, initLoading]);
 
@@ -554,17 +571,25 @@ export function HomePage() {
         </div>
       );
     }
+    // Filter out non-sellable products (only after meta has loaded)
+    var hasMetaData = Object.keys(metaMap).length > 0;
+    var sellableFiltered = hasMetaData
+      ? produtos.filter(function (p) {
+          var meta = metaMap[p.sku];
+          return meta && meta.sellable === true;
+        })
+      : produtos;
     // Filter out products that are out of stock (<=0) or low stock (<=3) from homepage.
     // Only filter once balance data has loaded; before that, show all products.
     var hasBalanceData = Object.keys(balanceMap).length > 0;
     var filteredProdutos = hasBalanceData
-      ? produtos.filter(function (p) {
+      ? sellableFiltered.filter(function (p) {
           var bal = balanceMap[p.sku];
           if (!bal || !bal.found) return true; // No balance info — keep visible
           var qty = bal.disponivel ?? bal.quantidade ?? 0;
           return qty > 3; // Hide esgotados (<=0) and quase esgotando (<=3)
         })
-      : produtos;
+      : sellableFiltered;
     // Cap at 10 products for the homepage grid
     var displayProdutos = filteredProdutos.slice(0, 10);
     if (hasBalanceData && displayProdutos.length === 0) {
@@ -595,7 +620,7 @@ export function HomePage() {
         })}
       </div>
     );
-  }, [loading, produtos, balanceMap, priceMap, reviewMap]);
+  }, [loading, produtos, balanceMap, priceMap, reviewMap, metaMap]);
 
   // ── Memoized mid-banners (position 1 — slots 3 & 4) ──
   const midBannersTop = useMemo(function () {

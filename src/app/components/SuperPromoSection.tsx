@@ -277,6 +277,7 @@ export function SuperPromoSection() {
   const scrollDirRef = useRef<1 | -1>(1);
   const [priceMap, setPriceMap] = useState<Record<string, number | null>>({});
   const [balanceMap, setBalanceMap] = useState<Record<string, ProductBalance | null>>({});
+  const [sellableSet, setSellableSet] = useState<Set<string> | null>(null);
   const { trackEvent } = useGA4();
   const viewPromoFiredRef = useRef(false);
 
@@ -445,6 +446,19 @@ export function SuperPromoSection() {
         })
         .catch((e) => { if (e && e.name !== "AbortError") console.error("[SuperPromo] Bulk balance error:", e); });
 
+      // Fetch product meta (for sellable status)
+      api.getProductMetaBulk(skus)
+        .then((res) => {
+          if (ac.signal.aborted) return;
+          var raw = res || {};
+          var set = new Set<string>();
+          for (var mk in raw) {
+            if (raw[mk].sellable === true) set.add(mk);
+          }
+          setSellableSet(set);
+        })
+        .catch((e) => { if (e && e.name !== "AbortError") console.error("[SuperPromo] Bulk meta error:", e); });
+
       // Seed ReviewStars cache for promo products
       api.getReviewSummariesBatch(skus, { signal: ac.signal })
         .then((res) => {
@@ -465,7 +479,7 @@ export function SuperPromoSection() {
     return () => { ac.abort(); clearTimeout(timer); };
   }, [promo]);
 
-  const totalProducts = promo?.products?.length || 0;
+  const totalProducts = promo?.products ? promo.products.filter((p) => !sellableSet || sellableSet.has(p.sku)).length : 0;
   const hasOverflow = totalProducts > VISIBLE_DESKTOP;
 
   const checkScroll = useCallback(() => {
@@ -614,7 +628,7 @@ export function SuperPromoSection() {
               margin: "0 -4px -24px -4px",
             }}
           >
-            {promo.products.map((p) => (
+            {promo.products.filter((p) => !sellableSet || sellableSet.has(p.sku)).map((p) => (
               <div
                 key={p.sku}
                 className="flex-shrink-0"
