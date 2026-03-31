@@ -250,8 +250,8 @@ export function ProductDetailPage() {
         var balanceResult = initData.balance as ProductBalance | null;
         var reviewSummaryResult = initData.reviewSummary || null;
 
-        // Visibility check (hidden or not enabled for sale)
-        if (!skuResult.data || skuResult.data.length === 0 || metaResult.visible === false || metaResult.sellable !== true) {
+        // Visibility check (hidden by admin)
+        if (!skuResult.data || skuResult.data.length === 0 || metaResult.visible === false) {
           setNotFound(true);
           setLoading(false);
           setImagesLoading(false);
@@ -335,8 +335,7 @@ export function ProductDetailPage() {
           // Visibility check — product must exist and not be hidden
           if (
             !fbProduct || !fbProduct.data || fbProduct.data.length === 0 ||
-            (fbMeta && fbMeta.visible === false) ||
-            (fbMeta && fbMeta.sellable !== true)
+            (fbMeta && fbMeta.visible === false)
           ) {
             setNotFound(true);
             setLoading(false);
@@ -1015,8 +1014,17 @@ export function ProductDetailPage() {
               {/* Divider */}
               <div className="h-px bg-gray-100 mb-4" />
 
-              {/* Super Promo Price Override */}
-              {isInPromo && promoProduct ? (
+              {/* Price section — hidden when product is not sellable */}
+              {sellable === false ? (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-amber-600" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                    Produto indisponível para venda no momento.
+                  </p>
+                  <p className="text-amber-500 mt-1" style={{ fontSize: "0.78rem" }}>
+                    Este produto está em nosso catálogo mas não pode ser adquirido online.
+                  </p>
+                </div>
+              ) : isInPromo && promoProduct ? (
                 <div className="mb-4">
                   <div
                     className="rounded-xl border-2 border-red-200 p-4"

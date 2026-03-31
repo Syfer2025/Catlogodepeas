@@ -192,18 +192,16 @@ export function HomeReels() {
         >
           {reels.map(function (reel, idx) {
             var prods = api.getReelProducts(reel);
-            // Filter to only sellable products
-            var sellableProds = sellableSet ? prods.filter(function (p) { return sellableSet.has(p.sku); }) : prods;
-            var firstSku = sellableProds.length > 0 ? sellableProds[0].sku : "";
-            // Hide reel if no sellable products
-            if (sellableSet && sellableProds.length === 0) return null;
+            var firstSku = prods.length > 0 ? prods[0].sku : "";
+            // Only show price on thumbnail if product is sellable
+            var firstSellable = sellableSet ? sellableSet.has(firstSku) : true;
             return (
               <ReelThumbnail
                 key={reel.id}
                 reel={reel}
-                products={sellableProds}
-                priceData={firstSku ? (priceMap[firstSku] || null) : null}
-                productCount={sellableProds.length}
+                products={prods}
+                priceData={firstSku && firstSellable ? (priceMap[firstSku] || null) : null}
+                productCount={prods.length}
                 onClick={function () { openViewer(idx); }}
               />
             );
@@ -211,27 +209,12 @@ export function HomeReels() {
         </div>
       </div>
 
-      {/* Fullscreen Viewer — only pass reels that have sellable products */}
+      {/* Fullscreen Viewer */}
       {viewerOpen && (
         <ReelsViewer
-          reels={sellableSet ? reels.filter(function (reel) {
-            var prods = api.getReelProducts(reel);
-            return prods.some(function (p) { return sellableSet.has(p.sku); });
-          }) : reels}
+          reels={reels}
           priceMap={priceMap}
-          initialIndex={function () {
-            // Map the original reels index to the filtered list index
-            if (!sellableSet) return viewerIndex;
-            var clickedReel = reels[viewerIndex];
-            var filtered = reels.filter(function (reel) {
-              var prods = api.getReelProducts(reel);
-              return prods.some(function (p) { return sellableSet.has(p.sku); });
-            });
-            for (var fi = 0; fi < filtered.length; fi++) {
-              if (filtered[fi].id === clickedReel.id) return fi;
-            }
-            return 0;
-          }()}
+          initialIndex={viewerIndex}
           onClose={function () { setViewerOpen(false); }}
           sellableSet={sellableSet}
         />
@@ -406,9 +389,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
   var { addItem, openDrawer } = useCart();
 
   var current = reels[currentIndex];
-  var allProducts = current ? api.getReelProducts(current) : [];
-  // Filter to only sellable products
-  var currentProducts = sellableSet ? allProducts.filter(function (p) { return sellableSet.has(p.sku); }) : allProducts;
+  var currentProducts = current ? api.getReelProducts(current) : [];
 
   // Lock body scroll — robust technique that works on iOS Safari too
   useEffect(function () {
@@ -492,7 +473,12 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
     if (videoRef.current) videoRef.current.muted = !videoRef.current.muted;
   }
 
+  function isSellable(sku: string) {
+    return !sellableSet || sellableSet.has(sku);
+  }
+
   function handleAddToCart(prod: ReelProduct) {
+    if (!isSellable(prod.sku)) return;
     var priceData = priceMap[prod.sku] || null;
     var price = priceData?.price || null;
     addItem({
@@ -508,6 +494,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
     var added = 0;
     for (var i = 0; i < currentProducts.length; i++) {
       var prod = currentProducts[i];
+      if (!isSellable(prod.sku)) continue;
       var pd = priceMap[prod.sku] || null;
       var price = pd?.price || null;
       if (price) {
@@ -533,11 +520,12 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
 
   var [addedAll, setAddedAll] = useState(0);
 
-  // Compute total price for "Add All" button
+  // Compute total price for "Add All" button (only sellable products)
+  var sellableProducts = currentProducts.filter(function (p) { return isSellable(p.sku); });
   var allTotal = 0;
-  var allHavePrice = currentProducts.length > 0;
-  for (var _ti = 0; _ti < currentProducts.length; _ti++) {
-    var _pd = priceMap[currentProducts[_ti].sku];
+  var allHavePrice = sellableProducts.length > 0;
+  for (var _ti = 0; _ti < sellableProducts.length; _ti++) {
+    var _pd = priceMap[sellableProducts[_ti].sku];
     if (_pd && _pd.price) {
       allTotal += _pd.price;
     } else {
@@ -745,7 +733,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
             <span className="text-white text-center" style={{ fontSize: "0.6rem", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>Ver</span>
           </Link>
         )}
-        {currentProducts.length === 1 && priceMap[currentProducts[0].sku]?.price && (
+        {currentProducts.length === 1 && priceMap[currentProducts[0].sku]?.price && isSellable(currentProducts[0].sku) && (
           <button
             onClick={function () { handleAddToCart(currentProducts[0]); }}
             className="flex flex-col items-center gap-1"
@@ -821,7 +809,8 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
               style={currentProducts.length > 1 ? { touchAction: "pan-x" } : undefined}
             >
               {currentProducts.map(function (prod) {
-                var pd = priceMap[prod.sku] || null;
+                var prodSellable = isSellable(prod.sku);
+                var pd = prodSellable ? (priceMap[prod.sku] || null) : null;
                 var displayPrice = pd?.price;
                 var originalPrice = pd?.originalPrice;
                 var isPromo = pd?.isPromo || false;
@@ -845,7 +834,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
                       <p className="text-gray-800 truncate" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
                         {prod.title || prod.sku}
                       </p>
-                      {displayPrice ? (
+                      {prodSellable && displayPrice ? (
                         <div className="mt-0.5">
                           {isPromo && originalPrice ? (
                             <div className="flex items-center gap-2">
@@ -863,13 +852,15 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
                             {formatPrice(displayPrice)}
                           </p>
                         </div>
+                      ) : !prodSellable ? (
+                        <p className="text-amber-500 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Indisponível para venda</p>
                       ) : (
                         <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.78rem" }}>Consulte o preco</p>
                       )}
                     </div>
                     <div className="flex flex-col gap-1 shrink-0">
                       <ChevronRight className="w-5 h-5 text-gray-400" />
-                      {displayPrice && (
+                      {prodSellable && displayPrice && (
                         <button
                           onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleAddToCart(prod); }}
                           className="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white hover:bg-red-700 transition-colors shadow"
@@ -899,8 +890,8 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
             </div>
           )}
 
-          {/* "Add All" combo button for multi-product reels */}
-          {currentProducts.length > 1 && allHavePrice && (
+          {/* "Add All" combo button for multi-product reels (only sellable) */}
+          {sellableProducts.length > 1 && allHavePrice && (
             <button
               onClick={function (e) { e.stopPropagation(); handleAddAllToCart(); }}
               className={"flex items-center justify-center gap-2 w-full mt-2.5 py-2.5 rounded-xl shadow-lg transition-all " + (addedAll > 0 ? "bg-green-500 hover:bg-green-600" : "bg-red-600 hover:bg-red-700")}
@@ -916,7 +907,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
                 <>
                   <ShoppingBag className="w-4 h-4 text-white" />
                   <span className="text-white" style={{ fontSize: "0.82rem", fontWeight: 700 }}>
-                    Adicionar Todos ({currentProducts.length}) — {formatPrice(allTotal)}
+                    Adicionar Todos ({sellableProducts.length}) — {formatPrice(allTotal)}
                   </span>
                 </>
               )}

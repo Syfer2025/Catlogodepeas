@@ -571,19 +571,11 @@ export function HomePage() {
         </div>
       );
     }
-    // Filter out non-sellable products (only after meta has loaded)
-    var hasMetaData = Object.keys(metaMap).length > 0;
-    var sellableFiltered = hasMetaData
-      ? produtos.filter(function (p) {
-          var meta = metaMap[p.sku];
-          return meta && meta.sellable === true;
-        })
-      : produtos;
     // Filter out products that are out of stock (<=0) or low stock (<=3) from homepage.
     // Only filter once balance data has loaded; before that, show all products.
     var hasBalanceData = Object.keys(balanceMap).length > 0;
     var filteredProdutos = hasBalanceData
-      ? sellableFiltered.filter(function (p) {
+      ? produtos.filter(function (p) {
           var bal = balanceMap[p.sku];
           if (!bal || !bal.found) return true; // No balance info — keep visible
           var qty = bal.disponivel ?? bal.quantidade ?? 0;

@@ -218,14 +218,6 @@ export function CatalogPage() {
   const sortedProdutos = useMemo(() => {
     var list = [...produtos];
 
-    // Filter out non-sellable products (only after meta has loaded)
-    if (Object.keys(metaMap).length > 0) {
-      list = list.filter(function (p) {
-        var meta = metaMap[p.sku];
-        return meta && meta.sellable === true;
-      });
-    }
-
     // Stock filter (client-side — filters within the page returned by server)
     if (stockFilter !== "all" && Object.keys(balanceMap).length > 0) {
       list = list.filter(function (p) {

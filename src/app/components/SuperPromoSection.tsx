@@ -479,7 +479,7 @@ export function SuperPromoSection() {
     return () => { ac.abort(); clearTimeout(timer); };
   }, [promo]);
 
-  const totalProducts = promo?.products ? promo.products.filter((p) => !sellableSet || sellableSet.has(p.sku)).length : 0;
+  const totalProducts = promo?.products ? promo.products.length : 0;
   const hasOverflow = totalProducts > VISIBLE_DESKTOP;
 
   const checkScroll = useCallback(() => {
@@ -628,7 +628,7 @@ export function SuperPromoSection() {
               margin: "0 -4px -24px -4px",
             }}
           >
-            {promo.products.filter((p) => !sellableSet || sellableSet.has(p.sku)).map((p) => (
+            {promo.products.map((p) => (
               <div
                 key={p.sku}
                 className="flex-shrink-0"

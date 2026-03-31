@@ -117,9 +117,13 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
           <ReviewStars sku={product.sku} preloaded={reviewSummary} />
         </div>
 
-        {/* Price section */}
+        {/* Price section — hide for non-sellable products */}
         <div className="mb-1.5 sm:mb-3">
-          <PriceBadge sku={product.sku} variant="compact" preloaded={preloadedPrice} />
+          {showNotSellable ? (
+            <span className="text-amber-500" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Indisponível p/ venda</span>
+          ) : (
+            <PriceBadge sku={product.sku} variant="compact" preloaded={preloadedPrice} />
+          )}
         </div>
 
         {/* Stock bar */}

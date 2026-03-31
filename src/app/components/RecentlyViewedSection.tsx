@@ -93,10 +93,7 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
     return function () { ac.abort(); };
   }, [recentItems.length, excludeSku]);
 
-  // Filter out non-sellable products
-  var displayProducts = sellableSet ? products.filter(function (p) { return sellableSet.has(p.sku); }) : products;
-
-  if (displayProducts.length === 0) return null;
+  if (products.length === 0) return null;
 
   var scroll = function (dir: "left" | "right") {
     if (!scrollRef.current) return;
@@ -170,7 +167,7 @@ export function RecentlyViewedSection({ excludeSku, maxItems = 10, darkMode = fa
           className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 hide-scrollbar snap-x snap-mandatory"
           style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {displayProducts.map(function (product) {
+          {products.map(function (product) {
             return (
               <div
                 key={product.sku}
