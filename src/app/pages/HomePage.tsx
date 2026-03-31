@@ -581,7 +581,7 @@ export function HomePage() {
           var qty = bal.disponivel ?? bal.quantidade ?? 0;
           return qty > 3; // Hide esgotados (<=0) and quase esgotando (<=3)
         })
-      : sellableFiltered;
+      : produtos;
     // Cap at 10 products for the homepage grid
     var displayProdutos = filteredProdutos.slice(0, 10);
     if (hasBalanceData && displayProdutos.length === 0) {
