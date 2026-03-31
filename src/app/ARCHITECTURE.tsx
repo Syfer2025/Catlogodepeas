@@ -245,7 +245,7 @@
  *
  * Prefixo base: /make-server-b7b07654
  * Todas as rotas usam Authorization: Bearer <anon_key> (Supabase Gateway).
- * Rotas protegidas usam _ut=<user_jwt> como query param para auth de usuario.
+ * Rotas protegidas passam o JWT do usuario via header X-User-Token (nunca via URL).
  *
  * ── SAUDE / DIAGNOSTICO ──
  * GET  /health                    → Health check simples (warmup do edge function)
@@ -697,7 +697,7 @@
  *   com Supabase client dedicado (non-persisting) para nao contaminar
  *   sessao do cliente em outras abas
  * - Cliente: Supabase client padrao com persistSession
- * - Token passado via ?_ut= query param (evita CORS preflight)
+ * - Token do usuario passado via header X-User-Token (nunca em URL para evitar vazamento)
  *
  * AUTORIZACAO ADMIN:
  * - Master admin hardcoded (email fixo)

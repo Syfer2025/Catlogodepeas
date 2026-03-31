@@ -1684,6 +1684,14 @@ export function getSettingsFresh(): Promise<SiteSettings> {
   return getSettings();
 }
 
+/** Validate a maintenance bypass token server-side. Never exposes the token in the client bundle. */
+export function validatePreviewToken(token: string): Promise<{ valid: boolean; cookie?: string }> {
+  return request<{ valid: boolean; cookie?: string }>("/validate-preview", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  }).catch(function () { return { valid: false }; });
+}
+
 export const updateSettings = (settings: SiteSettings, accessToken?: string) => {
   var opts: any = { method: "PUT", body: JSON.stringify(settings) };
   if (accessToken) opts.headers = { "X-User-Token": accessToken };

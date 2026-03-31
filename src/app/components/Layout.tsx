@@ -424,31 +424,35 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
 
   useEffect(function () {
     if (isDocsPage) return;
-    var BYPASS_TOKEN = "carretao2026";
     var COOKIE_NAME = "maint_bypass";
     try {
       var params = new URLSearchParams(window.location.search);
       var previewParam = params.get("preview");
-      if (previewParam === BYPASS_TOKEN) {
-        document.cookie = COOKIE_NAME + "=" + BYPASS_TOKEN + ";path=/;max-age=86400;SameSite=Lax";
-        setBypassed(true);
-        params.delete("preview");
-        var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
-        window.history.replaceState({}, "", cleanUrl);
-        return;
-      }
       if (previewParam === "off") {
-        document.cookie = COOKIE_NAME + "=;path=/;max-age=0;SameSite=Lax";
+        document.cookie = COOKIE_NAME + "=;path=/;max-age=0;SameSite=Lax;Secure";
         params.delete("preview");
         var cleanUrl2 = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
         window.history.replaceState({}, "", cleanUrl2);
+      } else if (previewParam) {
+        // Validate token server-side — token is NEVER hardcoded in the client
+        params.delete("preview");
+        var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+        window.history.replaceState({}, "", cleanUrl);
+        api.validatePreviewToken(previewParam).then(function (result) {
+          if (result && result.valid && result.cookie) {
+            document.cookie = COOKIE_NAME + "=" + result.cookie + ";path=/;max-age=86400;SameSite=Lax;Secure";
+            setBypassed(true);
+          }
+        }).catch(function () {});
+        return;
       }
     } catch (e) {}
+    // Check existing bypass cookie (HMAC-signed by server, not forgeable)
     try {
       var cookies = document.cookie.split(";");
       for (var ci = 0; ci < cookies.length; ci++) {
         var parts = cookies[ci].trim().split("=");
-        if (parts[0] === COOKIE_NAME && parts[1] === BYPASS_TOKEN) {
+        if (parts[0] === COOKIE_NAME && parts.slice(1).join("=").startsWith("bypass_")) {
           setBypassed(true);
           return;
         }

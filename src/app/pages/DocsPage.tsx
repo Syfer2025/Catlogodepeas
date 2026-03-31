@@ -171,7 +171,7 @@ var sections: DocSection[] = [
     icon: Server,
     color: "orange",
     content: [
-      { type: "text", value: "O servidor Hono roda como Supabase Edge Function com prefixo /make-server-b7b07654. Todas usam Authorization: Bearer <anon_key>. Rotas protegidas usam _ut=<user_jwt> como query param." },
+      { type: "text", value: "O servidor Hono roda como Supabase Edge Function com prefixo /make-server-b7b07654. Todas usam Authorization: Bearer <anon_key>. Rotas protegidas passam o JWT do usuario via header X-User-Token." },
       { type: "subtitle", value: "Saude / Diagnostico" },
       { type: "table", headers: ["Metodo", "Rota", "Descricao"], rows: [
         ["GET", "/health", "Health check simples (warmup)"],
@@ -436,7 +436,7 @@ var sections: DocSection[] = [
         "Supabase Auth com JWT (access_token + refresh_token)",
         "Admin: sessao separada em localStorage proprio (carretao_admin_*) com Supabase client dedicado (non-persisting)",
         "Cliente: Supabase client padrao com persistSession",
-        "Token passado via ?_ut= query param (evita CORS preflight)",
+        "Token do usuario passado via header X-User-Token (nunca via URL para evitar vazamento em logs)",
       ]},
       { type: "subtitle", value: "Autorizacao Admin" },
       { type: "list", items: [

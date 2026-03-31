@@ -239,13 +239,14 @@ export function AdminApiSige() {
     try {
       const token = await getAccessToken();
       // Use raw fetch to get full error details (attemptedUrl, sigeData)
-      // Pass user token via _ut query param to avoid Gateway 401 (it rejects user JWTs in Authorization)
+      // User token via X-User-Token header (never in URL to prevent token leaking in logs/referer)
       const _baseApi = "https://aztdgagxvrlylszieujs.supabase.co/functions/v1/make-server-b7b07654";
-      const res = await fetch(_baseApi + "/sige/user/register?_ut=" + encodeURIComponent(token), {
+      const res = await fetch(_baseApi + "/sige/user/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Bearer " + publicAnonKey,
+          "X-User-Token": token,
         },
         body: JSON.stringify({ name: regName.trim(), email: regEmail.trim(), password: regPassword, baseUrl: baseUrl.trim() }),
       });

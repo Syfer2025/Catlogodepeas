@@ -45,15 +45,13 @@ const supabaseAnon = createClient(
 // Helper: verify auth token and return user id
 async function getAuthUserId(request: Request): Promise<string | null> {
   // Priority order for user token:
-  // 1. Query param _ut (avoids CORS preflight AND Gateway 401 on user JWTs in Authorization)
-  // 2. Legacy header X-User-Token (backward compat)
-  // 3. Authorization Bearer (fallback �� note: may be the anon key, not a user JWT)
-  var url = new URL(request.url);
-  var queryToken = url.searchParams.get("_ut");
+  // 1. X-User-Token header (primary — avoids Gateway 401 on user JWTs in Authorization)
+  // 2. Authorization Bearer (fallback — note: may be the anon key, not a user JWT)
+  // SECURITY: _ut query param was REMOVED — tokens in URLs leak via server logs,
+  //           browser history, Referer headers, and proxy logs.
   var legacyToken = request.headers.get("X-User-Token");
   var authHeader = request.headers.get("Authorization");
-  var userToken = queryToken
-    || legacyToken
+  var userToken = legacyToken
     || (authHeader ? authHeader.split(" ")[1] : null);
   if (!userToken) return null;
   try {
@@ -297,39 +295,76 @@ app.onError(function (err: any, c: any) {
   return c.json({ error: "Erro interno do servidor." }, 500);
 });
 
+// Global body size limit (1MB) — prevents memory exhaustion via oversized payloads
+var MAX_BODY_SIZE = 1024 * 1024; // 1MB
+app.use("*", async function (c: any, next: any) {
+  if (c.req.method === "POST" || c.req.method === "PUT" || c.req.method === "PATCH") {
+    var contentLength = c.req.header("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+      return c.json({ error: "Payload excede o tamanho maximo permitido." }, 413);
+    }
+  }
+  return next();
+});
+
 // Enable CORS — restricted to known origins
 var ALLOWED_ORIGINS = [
-  "https://cafe-puce-47800704.figma.site",
-  "http://localhost:5173",
-  "http://localhost:3000",
   "https://autopecascarretao.com",
   "https://www.autopecascarretao.com",
   "https://autopecascarretao.com.br",
   "https://www.autopecascarretao.com.br",
   "https://catalogo-pecas.pages.dev",
+  "https://aztdgagxvrlylszieujs.supabase.co",
 ];
+// Development origins — only active when ENVIRONMENT != "production"
+var DEV_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
+var IS_PRODUCTION = (Deno.env.get("ENVIRONMENT") || "").toLowerCase() === "production";
+
 app.use(
   "/*",
   cors({
     origin: function (origin: string) {
-      // Allow webhook callbacks (PagHiper/MercadoPago send with no Origin)
-      if (!origin) return "*";
+      // Webhook callbacks (PagHiper/MercadoPago) send with no Origin — allow only for specific paths
+      // Returning empty string blocks the request for browser clients without Origin
+      if (!origin) return "";
+      // Exact match against allowed origins
       for (var i = 0; i < ALLOWED_ORIGINS.length; i++) {
         if (origin === ALLOWED_ORIGINS[i]) return origin;
       }
-      // Allow only the project's own Supabase subdomain (not any *.supabase.co)
-      if (origin === "https://aztdgagxvrlylszieujs.supabase.co") return origin;
-      // Allow only the project's Figma site subdomain
-      if (origin === "https://cafe-puce-47800704.figma.site") return origin;
+      // Allow Cloudflare Pages preview deployments (strict subdomain check)
+      if (origin.endsWith(".catalogo-pecas.pages.dev") && origin.startsWith("https://") && origin.indexOf("/") === origin.lastIndexOf("/") + 1) {
+        return origin;
+      }
+      // Development origins (localhost) — only in non-production
+      if (!IS_PRODUCTION) {
+        for (var di = 0; di < DEV_ORIGINS.length; di++) {
+          if (origin === DEV_ORIGINS[di]) return origin;
+        }
+      }
       console.warn("[CORS] Blocked unknown origin: " + origin);
-      return ALLOWED_ORIGINS[0];
+      return "";
     },
     allowHeaders: ["Content-Type", "Authorization", "X-User-Token"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
+    credentials: false,
   })
 );
+
+// Webhook paths need no-origin access — separate middleware to allow them
+app.use(BASE + "/paghiper/*", async (c: any, next: any) => {
+  await next();
+  if (!c.req.header("origin")) {
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  }
+});
+app.use(BASE + "/mercadopago/*", async (c: any, next: any) => {
+  await next();
+  if (!c.req.header("origin")) {
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  }
+});
 
 // ══════════════════════════════��════��═══════════════════════════════════
 // Rate Limiter — in-memory sliding window per IP
@@ -707,10 +742,49 @@ function _safeError(prefix: string, e: any): string {
 
 // ═══════════════════════════════════════════════════════════════════════
 // reCAPTCHA v3 verification helper
+// Requires RECAPTCHA_SECRET_KEY env var. If not set, falls back to allowing
+// requests but logs a warning (graceful degradation, not silent bypass).
 // ═══════════════════════════════════════════════════════════════════════
-// DISABLED: reCAPTCHA is completely bypassed. Always returns ok.
-async function _verifyCaptcha(_token: string, _expectedAction: string, _minScore?: number): Promise<{ ok: boolean; score: number; error?: string }> {
-  return { ok: true, score: 1.0 };
+var RECAPTCHA_SECRET = Deno.env.get("RECAPTCHA_SECRET_KEY") || "";
+
+async function _verifyCaptcha(token: string, expectedAction: string, minScore?: number): Promise<{ ok: boolean; score: number; error?: string }> {
+  if (!RECAPTCHA_SECRET) {
+    console.warn("[reCAPTCHA] RECAPTCHA_SECRET_KEY not set — skipping verification. Set this env var for production.");
+    return { ok: true, score: 0.0 };
+  }
+  if (!token) {
+    return { ok: false, score: 0.0, error: "Token de verificacao ausente." };
+  }
+  try {
+    var resp = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "secret=" + encodeURIComponent(RECAPTCHA_SECRET) + "&response=" + encodeURIComponent(token),
+    });
+    if (!resp.ok) {
+      console.error("[reCAPTCHA] Google API returned HTTP " + resp.status);
+      return { ok: false, score: 0.0, error: "Erro na verificacao de seguranca." };
+    }
+    var data = await resp.json();
+    if (!data.success) {
+      console.warn("[reCAPTCHA] Verification failed: " + JSON.stringify(data["error-codes"] || []));
+      return { ok: false, score: 0.0, error: "Verificacao de seguranca falhou." };
+    }
+    var score = Number(data.score) || 0;
+    var threshold = minScore || 0.5;
+    if (data.action && data.action !== expectedAction) {
+      console.warn("[reCAPTCHA] Action mismatch: expected=" + expectedAction + " got=" + data.action);
+      return { ok: false, score: score, error: "Acao de seguranca invalida." };
+    }
+    if (score < threshold) {
+      console.warn("[reCAPTCHA] Low score: " + score + " (threshold=" + threshold + ") action=" + expectedAction);
+      return { ok: false, score: score, error: "Verificacao de seguranca falhou." };
+    }
+    return { ok: true, score: score };
+  } catch (e) {
+    console.error("[reCAPTCHA] Exception:", e);
+    return { ok: false, score: 0.0, error: "Erro na verificacao de seguranca." };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1138,6 +1212,58 @@ app.get(BASE + "/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// Maintenance bypass — validates preview token server-side.
+// Token is stored in KV (key: "maint_bypass_token"). Never exposed to client.
+// Returns a signed HMAC cookie so subsequent requests bypass maintenance check.
+// ═══════════════════════════════════════════════════════════════════════
+app.post(BASE + "/validate-preview", async (c) => {
+  try {
+    var rlKey = _getRateLimitKey(c, "validate_preview");
+    var rlResult = _checkRateLimit(rlKey, 5);
+    if (!rlResult.allowed) return c.json({ error: "Muitas tentativas. Aguarde." }, 429);
+
+    var body = await c.req.json();
+    var token = String(body.token || "").trim().substring(0, 100);
+    if (!token) return c.json({ valid: false }, 400);
+
+    var storedToken = await kv.get("maint_bypass_token");
+    var expected = typeof storedToken === "string" ? storedToken : String(storedToken || "");
+    if (!expected) {
+      console.warn("[validate-preview] No maint_bypass_token set in KV.");
+      return c.json({ valid: false }, 403);
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    var tokenBytes = new TextEncoder().encode(token);
+    var expectedBytes = new TextEncoder().encode(expected);
+    if (tokenBytes.length !== expectedBytes.length) {
+      return c.json({ valid: false }, 403);
+    }
+    var match = true;
+    for (var vi = 0; vi < tokenBytes.length; vi++) {
+      if (tokenBytes[vi] !== expectedBytes[vi]) match = false;
+    }
+    if (!match) {
+      console.warn("[validate-preview] Invalid bypass token attempt from " + (c.req.header("x-forwarded-for") || "unknown"));
+      return c.json({ valid: false }, 403);
+    }
+
+    // Generate HMAC signature for the cookie value (prevents forgery)
+    var secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    var cookiePayload = "bypass_" + Date.now();
+    var key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    var sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(cookiePayload));
+    var sigHex = Array.from(new Uint8Array(sig)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    var cookieValue = cookiePayload + "." + sigHex;
+
+    return c.json({ valid: true, cookie: cookieValue });
+  } catch (e) {
+    console.error("[validate-preview] Error:", e);
+    return c.json({ valid: false }, 500);
+  }
+});
+
 // ── Admin health-check with monitoring data ──
 app.get(BASE + "/health/detailed", async (c) => {
   try {
@@ -1249,9 +1375,9 @@ app.post(BASE + "/auth/login-result", async (c) => {
       // call this endpoint to reset lockouts for any victim email.
       var authHeader = c.req.header("Authorization") || "";
       var accessToken = body.accessToken || "";
-      // Try X-User-Token header/query too (frontend interceptor pattern)
+      // Try X-User-Token header (frontend interceptor pattern)
       if (!accessToken) {
-        accessToken = c.req.query("_ut") || "";
+        accessToken = c.req.header("X-User-Token") || "";
       }
       if (accessToken) {
         try {
@@ -1369,8 +1495,6 @@ app.get(BASE + "/auth/me", async (c) => {
 // ═══════════════════════════════════════════════════════════════════════
 app.get(BASE + "/auth/check-admin", async (c) => {
   try {
-    var reqUrl = new URL(c.req.raw.url);
-    var hasUtParam = !!reqUrl.searchParams.get("_ut");
     var result = await isAdminUser(c.req.raw);
     var permissions: string[] = [];
     if (result.isAdmin && result.email) {
@@ -1654,7 +1778,7 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
       });
       if (rlRes2.error) {
         console.error("[AdminWhitelist] Resend invite - generate link error:", rlRes2.error.message);
-        return c.json({ error: "Erro ao gerar link de recuperacao: " + rlRes2.error.message }, 500);
+        return c.json({ error: _safeError("Erro ao gerar link de recuperacao", rlRes2.error) }, 500);
       }
       var recoveryLink2 = rlRes2.data?.properties?.action_link || "";
       if (!recoveryLink2) {
@@ -3748,6 +3872,14 @@ app.put(BASE + "/settings", async (c) => {
     var settingsStr = JSON.stringify(body);
     if (settingsStr.length > 50000) {
       return c.json({ error: "Configuracoes excedem o tamanho maximo." }, 400);
+    }
+    // If maintenanceBypassToken is provided, store it separately in KV (never returned to client)
+    if (body.maintenanceBypassToken !== undefined) {
+      var bypassToken = String(body.maintenanceBypassToken || "").trim().substring(0, 100);
+      if (bypassToken) {
+        await kv.set("maint_bypass_token", bypassToken);
+      }
+      delete body.maintenanceBypassToken; // Never persist the token in the settings object
     }
     await kv.set("settings", body);
     return c.json(body);
@@ -12571,7 +12703,8 @@ app.get(BASE + "/produtos/preco/:sku", async (c) => {
           var _staleP = typeof _staleRaw === "string" ? JSON.parse(_staleRaw) : _staleRaw;
           if (_staleP && _staleP.found && _staleP.price !== null) {
             console.warn("[Price] Returning stale cache for " + _skuSafe + " after exception");
-            return c.json({ ..._staleP, showPrice: true, cached: true, _stale: true, _error: String(e.message || e) });
+            console.warn("[Price] Returning stale cache after error: " + String(e));
+            return c.json({ ..._staleP, showPrice: true, cached: true, _stale: true });
           }
         }
       }
@@ -16510,8 +16643,8 @@ app.post(BASE + "/sige/debug-create-order", async (c) => {
         attempts.push(result);
         return result;
       } catch (err: any) {
-        const result = { label, url, error: err.message || String(err), elapsed: Date.now() - startMs };
         console.error("[SIGE debug] ERROR:", err);
+        const result = { label, url, error: "Erro na requisicao SIGE", elapsed: Date.now() - startMs };
         attempts.push(result);
         return result;
       }
@@ -18432,9 +18565,11 @@ app.post(BASE + "/admin/audit-logs/clear", async (c) => {
 // ─── SUPER PROMO ─────────────────────────────────────
 // ═══════════════════════════════════════════════════════
 
-// GET /promo/debug — debug endpoint to diagnose why promo isn't showing
+// GET /promo/debug — debug endpoint to diagnose why promo isn't showing (ADMIN ONLY)
 app.get(BASE + "/promo/debug", async (c) => {
   try {
+    var _pdAdmin = await isAdminUser(c.req.raw);
+    if (!_pdAdmin.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
     var kvRaw: any = await kv.get("super_promo");
     var directResult = await supabaseAdmin
       .from("kv_store_b7b07654")
@@ -18478,12 +18613,14 @@ app.get(BASE + "/promo/debug", async (c) => {
       parsedKeys: obj ? Object.keys(obj).slice(0, 15) : null,
       checks, hpInfo,
     });
-  } catch (e: any) { return c.json({ error: e.message }); }
+  } catch (e: any) { return c.json({ error: _safeError("Erro no debug promo", e) }, 500); }
 });
 
-// GET /promo/active-test — simulates exactly what homepage-init does, plus clears cache
+// GET /promo/active-test — simulates exactly what homepage-init does, plus clears cache (ADMIN ONLY)
 app.get(BASE + "/promo/active-test", async (c) => {
   try {
+    var _patAdmin = await isAdminUser(c.req.raw);
+    if (!_patAdmin.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
     var batchResult = await supabaseAdmin
       .from("kv_store_b7b07654")
       .select("key, value")
@@ -18514,7 +18651,7 @@ app.get(BASE + "/promo/active-test", async (c) => {
     }
     _homepageInitCache = null;
     return c.json({ batchRawType: typeof batchRaw, batchSample: batchRaw ? (typeof batchRaw === "string" ? batchRaw.substring(0, 200) : JSON.stringify(batchRaw).substring(0, 200)) : "null", promoResult, parseError, cacheCleared: true });
-  } catch (e: any) { return c.json({ error: e.message }); }
+  } catch (e: any) { return c.json({ error: _safeError("Erro no active-test promo", e) }, 500); }
 });
 
 // GET /promo/active — public, returns current active promo (if enabled + within date range)
@@ -20218,7 +20355,8 @@ function _createSmtpTransport(cfg: any) {
       pass: String(cfg.smtpPass),
     },
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
     },
     connectionTimeout: 30000,
     greetingTimeout: 30000,
@@ -20717,7 +20855,7 @@ app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
       port: port,
       secure: secure,
       auth: { user: user, pass: pass },
-      tls: { rejectUnauthorized: false },
+      tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
       connectionTimeout: 10000,
       greetingTimeout: 10000,
     });
@@ -20737,8 +20875,9 @@ app.post(BASE + "/admin/email-marketing/smtp-test", async (c) => {
       smtpErrMsg = "Tempo limite esgotado ao conectar ao servidor SMTP. Verifique o hostname e a porta. Algumas portas (ex: 25) podem estar bloqueadas pelo provedor.";
     } else if (errCode === "EAUTH" || errMsg.indexOf("auth") >= 0 || errMsg.indexOf("535") >= 0 || errMsg.indexOf("534") >= 0) {
       smtpErrMsg = "Autenticacao SMTP falhou. Verifique usuario e senha. Se usa Gmail, pode precisar de uma 'Senha de App' em vez da senha normal.";
-    } else if (errMsg) {
-      smtpErrMsg = "Falha na conexao SMTP: " + errMsg.substring(0, 200);
+    } else {
+      console.error("[SMTP-Test] Unclassified error: code=" + errCode + " msg=" + errMsg);
+      smtpErrMsg = "Falha na conexao SMTP. Verifique as configuracoes e tente novamente.";
     }
     return c.json({ error: smtpErrMsg }, 400);
   }
@@ -20772,11 +20911,11 @@ app.post(BASE + "/admin/email-marketing/smtp-send-test", async (c) => {
         + "</div>",
     });
     console.log("[SMTP-SendTest] Email sent successfully. MessageId:", info.messageId, "Response:", info.response);
-    return c.json({ ok: true, message: "Email de teste enviado com sucesso para " + toEmail + "!", messageId: info.messageId || "", response: String(info.response || "").substring(0, 200) });
+    console.log("[SMTP-SendTest] messageId: " + (info.messageId || "") + " response: " + String(info.response || "").substring(0, 200));
+    return c.json({ ok: true, message: "Email de teste enviado com sucesso para " + toEmail + "!" });
   } catch (e: any) {
     console.error("[SMTP-SendTest] Send test email error:", e);
-    var errDetail = (e.code || "") + " " + (e.message || String(e));
-    return c.json({ error: "Falha ao enviar email de teste: " + errDetail.substring(0, 400) }, 500);
+    return c.json({ error: _safeError("Falha ao enviar email de teste", e) }, 500);
   }
 });
 
@@ -21851,7 +21990,7 @@ app.post(BASE + "/admin/psi-scan", async (c: any) => {
     return c.json({ ok: true, scan: scanResult });
   } catch (e: any) {
     console.error("[PSI] Scan error:", e);
-    return c.json({ error: "Erro ao executar scan PSI: " + (e.message || String(e)) }, 500);
+    return c.json({ error: _safeError("Erro ao executar scan PSI", e) }, 500);
   }
 });
 
@@ -25757,6 +25896,7 @@ app.get(BASE + "/google-reviews-config", async (c) => {
 app.put(BASE + "/google-reviews-config", async (c) => {
   try {
     var body = await c.req.json();
+    if (!body || typeof body !== "object" || JSON.stringify(body).length > 5000) return c.json({ error: "Payload invalido." }, 400);
     var safe = {
       enabled: !!body.enabled,
       merchantId: String(body.merchantId || "").trim().substring(0, 30),
@@ -25816,6 +25956,7 @@ app.get(BASE + "/admin/whatsapp-config", async (c) => {
 app.put(BASE + "/admin/whatsapp-config", async (c) => {
   try {
     var body = await c.req.json();
+    if (!body || typeof body !== "object" || JSON.stringify(body).length > 20000) return c.json({ error: "Payload invalido." }, 400);
     var existing = await kv.get("whatsapp_config") || DEFAULT_WHATSAPP_CONFIG;
     var safe: Record<string, any> = {
       enabled: !!body.enabled,
@@ -25859,7 +26000,12 @@ app.put(BASE + "/admin/whatsapp-config", async (c) => {
 
 app.post(BASE + "/whatsapp/cart-snapshot", async (c) => {
   try {
+    var csRlKey = _getRateLimitKey(c, "cart_snapshot");
+    var csRlResult = _checkRateLimit(csRlKey, 10);
+    if (!csRlResult.allowed) return c.json({ ok: true }); // Silent drop
+
     var body = await c.req.json();
+    if (!body || typeof body !== "object" || JSON.stringify(body).length > 10000) return c.json({ error: "Payload invalido." }, 400);
     var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
     var email = String(body.email || "").trim().toLowerCase().substring(0, 200);
     var name = String(body.name || "").trim().substring(0, 100);
@@ -25881,7 +26027,12 @@ app.post(BASE + "/whatsapp/cart-snapshot", async (c) => {
 
 app.post(BASE + "/whatsapp/cart-completed", async (c) => {
   try {
+    var ccRlKey = _getRateLimitKey(c, "cart_completed");
+    var ccRlResult = _checkRateLimit(ccRlKey, 10);
+    if (!ccRlResult.allowed) return c.json({ ok: true }); // Silent drop
+
     var body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ ok: true });
     var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
     var email = String(body.email || "").trim().toLowerCase().substring(0, 200);
     var key = "wa_cart:" + (phone || email);
@@ -25945,7 +26096,7 @@ app.post(BASE + "/admin/whatsapp-process-abandoned", async (c) => {
     return c.json({ processed, sent, errors: errors.slice(0, 10) });
   } catch (e: any) {
     console.error("[admin/whatsapp-process-abandoned POST] Error:", e);
-    return c.json({ error: "Erro ao processar carrinhos abandonados: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao processar carrinhos abandonados", e) }, 500);
   }
 });
 
@@ -25966,6 +26117,7 @@ app.post(BASE + "/admin/whatsapp-test", async (c) => {
     var waConf2 = await kv.get("whatsapp_config");
     if (!waConf2) return c.json({ error: "WhatsApp nao configurado." }, 400);
     var body = await c.req.json();
+    if (!body || typeof body !== "object" || JSON.stringify(body).length > 5000) return c.json({ error: "Payload invalido." }, 400);
     var phone = String(body.phone || "").replace(/\D/g, "").substring(0, 20);
     if (!phone) return c.json({ error: "Telefone obrigatorio." }, 400);
     var message = String(body.message || "Teste de integracao WhatsApp — Carretao Auto Pecas").substring(0, 500);
@@ -25974,7 +26126,7 @@ app.post(BASE + "/admin/whatsapp-test", async (c) => {
     return c.json({ ok: false, error: result.error || "Erro ao enviar" }, 400);
   } catch (e: any) {
     console.error("[admin/whatsapp-test POST] Error:", e);
-    return c.json({ error: "Erro: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro no teste WhatsApp", e) }, 500);
   }
 });
 
@@ -26108,7 +26260,7 @@ app.post(BASE + "/admin/reels/upload-url", async (c) => {
     var videoSigned = await supabaseAdmin.storage.from(REELS_BUCKET).createSignedUploadUrl(videoPath);
     if (videoSigned.error || !videoSigned.data) {
       console.error("[Reels] Signed video URL error:", videoSigned.error);
-      return c.json({ error: "Erro ao gerar URL de upload do video: " + String(videoSigned.error?.message || videoSigned.error) }, 500);
+      return c.json({ error: _safeError("Erro ao gerar URL de upload do video", videoSigned.error) }, 500);
     }
     var result: any = { reelId, videoPath, videoUploadUrl: videoSigned.data.signedUrl, videoToken: videoSigned.data.token, thumbPath: "", thumbUploadUrl: "", thumbToken: "" };
     if (thumbExt) {
@@ -26123,7 +26275,7 @@ app.post(BASE + "/admin/reels/upload-url", async (c) => {
     return c.json(result);
   } catch (e: any) {
     console.error("[Admin Reels upload-url] Error:", e);
-    return c.json({ error: "Erro ao gerar URLs de upload: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao gerar URLs de upload", e) }, 500);
   }
 });
 
@@ -26155,7 +26307,7 @@ app.post(BASE + "/admin/reels", async (c) => {
     return c.json({ ok: true, reel: rData });
   } catch (e: any) {
     console.error("[Admin Reels POST] Error:", e);
-    return c.json({ error: "Erro ao criar reel: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao criar reel", e) }, 500);
   }
 });
 
@@ -26192,7 +26344,7 @@ app.put(BASE + "/admin/reels/:id", async (c) => {
     return c.json({ ok: true, reel: ex });
   } catch (e: any) {
     console.error("[Admin Reels PUT] Error:", e);
-    return c.json({ error: "Erro ao atualizar reel: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao atualizar reel", e) }, 500);
   }
 });
 
@@ -26224,8 +26376,11 @@ app.put(BASE + "/admin/reels-order", async (c) => {
     var _ar5 = await isAdminUser(c.req.raw);
     if (!_ar5.isAdmin) return c.json({ error: "Nao autorizado." }, 403);
     var body5 = await c.req.json();
+    if (!body5 || typeof body5 !== "object" || JSON.stringify(body5).length > 50000) return c.json({ error: "Payload invalido." }, 400);
     var orderedIds: string[] = body5.ids;
-    if (!Array.isArray(orderedIds)) return c.json({ error: "ids deve ser um array." }, 400);
+    if (!Array.isArray(orderedIds) || orderedIds.length > 500) return c.json({ error: "ids deve ser um array (max 500)." }, 400);
+    // Sanitize each ID
+    orderedIds = orderedIds.map(function (id: any) { return String(id).substring(0, 100); });
     // Batch-read all reels at once instead of N individual reads
     var reelKeys = orderedIds.map(function (id) { return "reel:" + id; });
     var reelEntries = reelKeys.length > 0 ? await kv.mget(reelKeys) : [];
@@ -26337,12 +26492,12 @@ app.post(BASE + "/admin/influencers/upload-photo", async (c) => {
     var photoPath = "influencer-photos/" + infId + "." + ext;
     var signed = await supabaseAdmin.storage.from(INFLUENCERS_BUCKET).createSignedUploadUrl(photoPath);
     if (signed.error || !signed.data) {
-      return c.json({ error: "Erro ao gerar URL de upload: " + String(signed.error?.message || signed.error) }, 500);
+      return c.json({ error: _safeError("Erro ao gerar URL de upload", signed.error) }, 500);
     }
     return c.json({ influencerId: infId, photoPath, uploadUrl: signed.data.signedUrl, token: signed.data.token });
   } catch (e: any) {
     console.error("[Admin Influencers upload-photo] Error:", e);
-    return c.json({ error: "Erro ao gerar URL de upload: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao gerar URL de upload", e) }, 500);
   }
 });
 
@@ -26376,7 +26531,7 @@ app.post(BASE + "/admin/influencers", async (c) => {
     return c.json({ ok: true, influencer: infData });
   } catch (e: any) {
     console.error("[Admin Influencers POST] Error:", e);
-    return c.json({ error: "Erro ao criar influencer: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao criar influencer", e) }, 500);
   }
 });
 
@@ -26427,7 +26582,7 @@ app.put(BASE + "/admin/influencers/:id", async (c) => {
     return c.json({ ok: true, influencer: exInf });
   } catch (e: any) {
     console.error("[Admin Influencers PUT] Error:", e);
-    return c.json({ error: "Erro ao atualizar influencer: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro ao atualizar influencer", e) }, 500);
   }
 });
 
@@ -26455,7 +26610,7 @@ app.post(BASE + "/admin/influencers/fix-reel-stamps", async (c) => {
     return c.json({ ok: true, stamped });
   } catch (e: any) {
     console.error("[Fix reel stamps] Error:", e);
-    return c.json({ error: "Erro: " + String(e) }, 500);
+    return c.json({ error: _safeError("Erro no fix de reel stamps", e) }, 500);
   }
 });
 
@@ -26789,5 +26944,20 @@ setTimeout(function () {
   _processAbandonedCartsCron(); // First run
   setInterval(_processAbandonedCartsCron, ABANDONED_CART_INTERVAL_MS);
 }, 120000);
+
+// Seed maint_bypass_token if not already set (one-time migration from hardcoded token)
+(async function () {
+  try {
+    var existing = await kv.get("maint_bypass_token");
+    if (!existing) {
+      // Generate a secure random token for first-time setup
+      var arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      var secureToken = Array.from(arr).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      await kv.set("maint_bypass_token", secureToken);
+      console.log("[Startup] Generated maint_bypass_token. Use PUT /settings with maintenanceBypassToken to change it.");
+    }
+  } catch (e) { console.error("[Startup] Failed to seed maint_bypass_token:", e); }
+})();
 
 Deno.serve(app.fetch);
