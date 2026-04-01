@@ -45,6 +45,7 @@ export function AdminBrands() {
   const [prodSearch, setProdSearch] = useState("");
   const [prodResults, setProdResults] = useState<ProdutoDB[]>([]);
   const [prodSearching, setProdSearching] = useState(false);
+  const [prodTotalFound, setProdTotalFound] = useState(0);
   const prodSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Delete confirm
@@ -94,6 +95,7 @@ export function AdminBrands() {
     setFormProducts([]);
     setProdSearch("");
     setProdResults([]);
+    setProdTotalFound(0);
     setFormZoom(1);
     setModal("add");
   };
@@ -111,6 +113,7 @@ export function AdminBrands() {
     setFormProducts(brand.products || []);
     setProdSearch("");
     setProdResults([]);
+    setProdTotalFound(0);
     setFormZoom(brand.logoZoom || 1);
     setModal("edit");
   };
@@ -130,18 +133,20 @@ export function AdminBrands() {
     reader.readAsDataURL(file);
   };
 
-  // Product search with debounce
+  // Product search with debounce — returns up to 100 results
   const searchProducts = useCallback((query: string) => {
     if (prodSearchTimer.current) clearTimeout(prodSearchTimer.current);
     if (!query.trim()) {
       setProdResults([]);
+      setProdTotalFound(0);
       return;
     }
     setProdSearching(true);
     prodSearchTimer.current = setTimeout(async () => {
       try {
-        const res = await api.getCatalog(1, 20, query.trim());
+        const res = await api.getCatalog(1, 100, query.trim());
         setProdResults(res.data || []);
+        setProdTotalFound(res.pagination?.total || res.data?.length || 0);
       } catch (e) {
         console.error("[AdminBrands] Product search error:", e);
       } finally {
@@ -155,9 +160,27 @@ export function AdminBrands() {
     searchProducts(val);
   };
 
+  // Auto-search by brand name
+  const searchByBrandName = () => {
+    if (!formName.trim()) return;
+    setProdSearch(formName.trim());
+    searchProducts(formName.trim());
+  };
+
   const addProduct = (p: ProdutoDB) => {
     if (formProducts.some(function (fp) { return fp.sku === p.sku; })) return;
     setFormProducts([...formProducts, { sku: p.sku, titulo: p.titulo }]);
+  };
+
+  // Bulk add all search results that aren't already added
+  const addAllResults = () => {
+    var newProducts = [...formProducts];
+    for (var p of prodResults) {
+      if (!newProducts.some(function (fp) { return fp.sku === p.sku; })) {
+        newProducts.push({ sku: p.sku, titulo: p.titulo });
+      }
+    }
+    setFormProducts(newProducts);
   };
 
   const removeProduct = (sku: string) => {
@@ -608,6 +631,19 @@ export function AdminBrands() {
                   Produtos ({formProducts.length})
                 </label>
 
+                {/* Auto-search by brand name */}
+                {formName.trim() && (
+                  <button
+                    type="button"
+                    onClick={searchByBrandName}
+                    className="mb-3 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border-2 border-dashed border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-colors"
+                    style={{ fontSize: "0.8rem", fontWeight: 600 }}
+                  >
+                    <Search className="w-4 h-4" />
+                    Buscar todos os produtos com "{formName.trim()}" no nome
+                  </button>
+                )}
+
                 {/* Search products */}
                 <div className="relative mb-3">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -626,33 +662,67 @@ export function AdminBrands() {
 
                 {/* Search results */}
                 {prodResults.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto mb-3">
-                    {prodResults.map(function (p) {
-                      var alreadyAdded = formProducts.some(function (fp) { return fp.sku === p.sku; });
-                      return (
-                        <button
-                          key={p.sku}
-                          onClick={() => { if (!alreadyAdded) addProduct(p); }}
-                          disabled={alreadyAdded}
-                          className={"w-full text-left px-3 py-2 flex items-center justify-between transition-colors border-b border-gray-100 last:border-0 " + (alreadyAdded ? "bg-emerald-50 opacity-60 cursor-not-allowed" : "hover:bg-white cursor-pointer")}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-gray-700 truncate" style={{ fontSize: "0.8rem", fontWeight: 500 }}>{p.titulo}</p>
-                            <p className="text-gray-400" style={{ fontSize: "0.68rem" }}>SKU: {p.sku}</p>
-                          </div>
-                          {alreadyAdded ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 ml-2" />
-                          ) : (
-                            <Plus className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
-                          )}
-                        </button>
-                      );
-                    })}
+                  <div className="mb-3">
+                    {/* Results header with count + bulk actions */}
+                    <div className="flex items-center justify-between bg-gray-100 rounded-t-lg border border-gray-200 border-b-0 px-3 py-2">
+                      <span className="text-gray-600" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        {prodTotalFound > prodResults.length
+                          ? prodResults.length + " de " + prodTotalFound + " resultados"
+                          : prodResults.length + (prodResults.length === 1 ? " resultado" : " resultados")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={addAllResults}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
+                        style={{ fontSize: "0.7rem", fontWeight: 600 }}
+                      >
+                        <Plus className="w-3 h-3" />
+                        Adicionar Todos
+                      </button>
+                    </div>
+                    <div className="bg-gray-50 rounded-b-lg border border-gray-200 max-h-56 overflow-y-auto">
+                      {prodResults.map(function (p) {
+                        var alreadyAdded = formProducts.some(function (fp) { return fp.sku === p.sku; });
+                        return (
+                          <button
+                            key={p.sku}
+                            onClick={() => { if (!alreadyAdded) addProduct(p); }}
+                            disabled={alreadyAdded}
+                            className={"w-full text-left px-3 py-2 flex items-center justify-between transition-colors border-b border-gray-100 last:border-0 " + (alreadyAdded ? "bg-emerald-50 opacity-60 cursor-not-allowed" : "hover:bg-white cursor-pointer")}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-gray-700 truncate" style={{ fontSize: "0.8rem", fontWeight: 500 }}>{p.titulo}</p>
+                              <p className="text-gray-400" style={{ fontSize: "0.68rem" }}>SKU: {p.sku}</p>
+                            </div>
+                            {alreadyAdded ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 ml-2" />
+                            ) : (
+                              <Plus className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
                 {/* Selected products */}
                 {formProducts.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-500" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                        {formProducts.length} {formProducts.length === 1 ? "produto selecionado" : "produtos selecionados"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFormProducts([])}
+                        className="flex items-center gap-1 text-red-500 hover:text-red-700 transition-colors"
+                        style={{ fontSize: "0.68rem", fontWeight: 600 }}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Remover todos
+                      </button>
+                    </div>
                   <div className="space-y-1.5 max-h-56 overflow-y-auto">
                     {formProducts.map(function (p, idx) {
                       return (
@@ -674,6 +744,7 @@ export function AdminBrands() {
                         </div>
                       );
                     })}
+                  </div>
                   </div>
                 ) : (
                   <p className="text-gray-400 text-center py-4" style={{ fontSize: "0.78rem" }}>
