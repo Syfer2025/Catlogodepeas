@@ -13320,12 +13320,8 @@ async function _validatePaymentPrices(
     }
   }
 
-  var ok = true;
-  if (verifiedCount > 0 && flaggedItems.length > 0) {
-    if (flaggedItems.length >= Math.ceil(verifiedCount * 0.3)) {
-      ok = false;
-    }
-  }
+  // SECURITY: Block if ANY item has a tampered price (zero tolerance)
+  var ok = flaggedItems.length === 0;
   return { ok: ok, expectedTotalCents: expectedTotalCents, clientTotalCents: clientTotalCents, verifiedCount: verifiedCount, totalItems: totalItems, flaggedItems: flaggedItems };
 }
 
@@ -13494,7 +13490,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (pixPriceCheck.flaggedItems.length > 0) {
-        console.warn("[PagHiper-PIX] PRICE WARNING for order " + order_id);
+        console.warn("[PagHiper-PIX] PRICE FLAGGED for order " + order_id + ": " + pixPriceCheck.flaggedItems.join(", "));
       }
     } catch (pvErr) {
       console.error("[PagHiper-PIX] Price validation error (non-blocking): " + pvErr);
@@ -13796,7 +13792,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (boletoPriceCheck.flaggedItems.length > 0) {
-        console.warn("[PagHiper-Boleto] PRICE WARNING for order " + order_id);
+        console.warn("[PagHiper-Boleto] PRICE FLAGGED for order " + order_id + ": " + boletoPriceCheck.flaggedItems.join(", "));
       }
     } catch (pvErr2) {
       console.error("[PagHiper-Boleto] Price validation error (non-blocking): " + pvErr2);
@@ -17852,7 +17848,7 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
         return c.json({ error: "Valores dos itens nao conferem com o catalogo. Atualize a pagina e tente novamente." }, 400);
       }
       if (mpPriceCheck.flaggedItems.length > 0) {
-        console.warn("[MercadoPago] PRICE WARNING: flagged items detected");
+        console.warn("[MercadoPago] PRICE FLAGGED: " + mpPriceCheck.flaggedItems.join(", "));
       }
     } catch (pvErr3) {
       console.error("[MercadoPago] Price validation error (non-blocking): " + pvErr3);
