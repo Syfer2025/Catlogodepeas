@@ -654,7 +654,6 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
         ref={function (el) {
           (videoRef as any).current = el;
           if (el) {
-            el.muted = true;
             el.play().catch(function () {});
           }
         }}
@@ -663,7 +662,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
         playsInline
         autoPlay
         loop
-        muted
+        muted={muted}
         preload="auto"
         onClick={function () {
           if (videoRef.current) {
