@@ -352,20 +352,6 @@ app.use(
   })
 );
 
-// Webhook paths need no-origin access — separate middleware to allow them
-app.use(BASE + "/paghiper/*", async (c: any, next: any) => {
-  await next();
-  if (!c.req.header("origin")) {
-    c.res.headers.set("Access-Control-Allow-Origin", "*");
-  }
-});
-app.use(BASE + "/mercadopago/*", async (c: any, next: any) => {
-  await next();
-  if (!c.req.header("origin")) {
-    c.res.headers.set("Access-Control-Allow-Origin", "*");
-  }
-});
-
 // ══════════════════════════════��════��═══════════════════════════════════
 // Rate Limiter — in-memory sliding window per IP
 // ═══════════════════════════════════════════════════════════════════════
@@ -816,6 +802,21 @@ function _validatePasswordStrength(password: string): string | null {
 }
 
 const BASE = "/make-server-b7b07654";
+
+// Webhook paths need no-origin access — CORS returns "" for missing origin,
+// but payment webhooks (PagHiper/MercadoPago) legitimately send no Origin header.
+app.use(BASE + "/paghiper/*", async (c: any, next: any) => {
+  await next();
+  if (!c.req.header("origin")) {
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  }
+});
+app.use(BASE + "/mercadopago/*", async (c: any, next: any) => {
+  await next();
+  if (!c.req.header("origin")) {
+    c.res.headers.set("Access-Control-Allow-Origin", "*");
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════
 // Global Rate Limiting — applies to ALL routes (200 req/min per IP)
