@@ -7002,27 +7002,59 @@ function collectDescendantSlugs(nodes: any[], targetSlug: string): string[] {
 }
 
 // In-memory cache for product metas (category index)
-let metaIndexCache: { data: Map<string, any>; fetchedAt: number } | null = null;
-const META_INDEX_CACHE_TTL = 5 * 60 * 1000; // 5 minutes (reduced KV reads for CPU savings)
+let metaIndexCache: { data: Map<string, any>; fetchedAt: number; buster: string } | null = null;
+const META_INDEX_CACHE_TTL = 30 * 1000; // 30 seconds (reduced KV reads for CPU savings, but keeping it fresh enough for admin edits)
 
 async function getAllProductMetas(): Promise<Map<string, any>> {
   const now = Date.now();
-  if (metaIndexCache && now - metaIndexCache.fetchedAt < META_INDEX_CACHE_TTL) {
+  let currentBuster = "";
+  try { currentBuster = await kv.get("meta_index_cache_buster") || ""; } catch {}
+  
+  if (metaIndexCache && now - metaIndexCache.fetchedAt < META_INDEX_CACHE_TTL && metaIndexCache.buster === currentBuster) {
     return metaIndexCache.data;
   }
-  const metas = await kv.getByPrefix("produto_meta:");
+
   const map = new Map<string, any>();
-  for (const meta of metas) {
-    if (meta && typeof meta === "object" && meta.sku) {
-      map.set(meta.sku, meta);
+  const limit = 1000;
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabaseAdmin
+      .from("kv_store_b7b07654")
+      .select("value")
+      .like("key", "produto_meta:%")
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error("[getAllProductMetas] Error:", error);
+      break;
+    }
+
+    const rows = data || [];
+    for (const row of rows) {
+      const meta = row.value;
+      if (meta && typeof meta === "object" && meta.sku) {
+        map.set(meta.sku, meta);
+      }
+    }
+
+    if (rows.length < limit) {
+      hasMore = false;
+    } else {
+      offset += limit;
     }
   }
-  metaIndexCache = { data: map, fetchedAt: now };
+
+  metaIndexCache = { data: map, fetchedAt: now, buster: currentBuster };
   return map;
 }
 
 function invalidateMetaCache(): void {
   metaIndexCache = null;
+  try {
+    kv.set("meta_index_cache_buster", Date.now().toString()).catch(() => {});
+  } catch (e) {}
 }
 
 function findCategoryName(nodes: any[], slug: string): string | null {
@@ -8086,7 +8118,7 @@ app.delete(BASE + "/produtos/:sku/delete", async (c) => {
       return c.json({ error: "Erro ao excluir do banco." }, 500);
     }
 
-    try { await kv.del(`produto_meta:${sku}`); invalidateMetaCache(); } catch {}
+    try { await kv.del(`produto_meta:${sku}`); invalidateMetaCache(); _productDetailCache.delete(sku); } catch {}
 
     try {
       const { data: files } = await supabaseAdmin.storage.from("produtos").list(sku, { limit: 100 });
@@ -23417,7 +23449,12 @@ app.post(BASE + "/admin/auto-categorize-apply", async (c) => {
     }
 
     invalidateMetaCache();
-    // AutoCateg: assignments applied
+    // Clear product detail cache for affected SKUs so next load fetches fresh data
+    for (var ci = 0; ci < assignments.length; ci++) {
+      if (assignments[ci] && assignments[ci].sku) {
+        _productDetailCache.delete(assignments[ci].sku);
+      }
+    }
 
     return c.json({ applied: applied, total: assignments.length, errors: errors });
   } catch (e) {

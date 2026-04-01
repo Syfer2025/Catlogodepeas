@@ -53,6 +53,7 @@ var INVALIDATION_MAP: Record<string, string[]> = {
   "admin/settings":             ["settings", "homepage"],
   "admin/super-promo":          ["promo", "homepage"],
   "admin/coupons":              ["coupons"],
+  "admin/auto-categorize-apply":["products", "categories", "homepage"],
   "admin/products":             ["products", "homepage"],
   "admin/reels":                ["reels"],
   "admin/influencers":          ["influencers"],

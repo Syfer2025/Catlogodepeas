@@ -28,10 +28,12 @@
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { Product, Category } from "../data/products";
 
-const _useCfGateway = !!import.meta.env.VITE_CF_GATEWAY;
-const BASE_URL = _useCfGateway
-  ? "/api"
-  : `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
+const _cfGatewayVal = import.meta.env.VITE_CF_GATEWAY || "";
+const BASE_URL = _cfGatewayVal === "dev"
+  ? "/api-dev"
+  : _cfGatewayVal
+    ? "/api"
+    : `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge Function Warmup — fires at module load time (before React renders).

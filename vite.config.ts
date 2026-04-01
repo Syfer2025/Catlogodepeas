@@ -39,6 +39,16 @@ export default defineConfig({
     },
   },
 
+  server: {
+    proxy: {
+      '/api-dev': {
+        target: 'https://aztdgagxvrlylszieujs.supabase.co/functions/v1/make-server-b7b07654',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-dev/, ''),
+      },
+    },
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
