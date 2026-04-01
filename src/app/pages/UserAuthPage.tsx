@@ -90,7 +90,6 @@ export function UserAuthPage() {
   // Duplicate checks state
   const [emailTaken, setEmailTaken] = useState(false);
   const [cpfTaken, setCpfTaken] = useState(false);
-  const [cpfTakenEmail, setCpfTakenEmail] = useState("");
   const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   // Field touch tracking (show validation only after user interacted)
@@ -382,7 +381,7 @@ export function UserAuthPage() {
 
   // ─── Debounced CPF uniqueness check ───
   useEffect(() => {
-    if (!cpfValidation.valid) { setCpfTaken(false); setCpfTakenEmail(""); return; }
+    if (!cpfValidation.valid) { setCpfTaken(false); return; }
     var cancelled = false;
     var timer = setTimeout(() => {
       if (cancelled) return;
@@ -390,7 +389,6 @@ export function UserAuthPage() {
         .then((res) => {
           if (cancelled) return;
           setCpfTaken(res.cpfTaken || false);
-          setCpfTakenEmail(res.cpfEmail || "");
         })
         .catch(() => {});
     }, 600);
@@ -560,10 +558,7 @@ export function UserAuthPage() {
       return;
     }
     if (cpfTaken) {
-      var cpfErrMsg = "Este CPF já está vinculado a outra conta";
-      if (cpfTakenEmail) cpfErrMsg = cpfErrMsg + " (" + cpfTakenEmail + ")";
-      cpfErrMsg = cpfErrMsg + ". Se é sua conta, use 'Esqueci minha senha' para recuperá-la.";
-      setError(cpfErrMsg);
+      setError("Este CPF já está vinculado a outra conta. Se é sua conta, use 'Esqueci minha senha' para recuperá-la.");
       return;
     }
     if (regPassword.length < 8) {
@@ -606,11 +601,7 @@ export function UserAuthPage() {
         }
         if (avail.cpfTaken) {
           setCpfTaken(true);
-          setCpfTakenEmail(avail.cpfEmail || "");
-          var cpfBlock = "O CPF informado já está vinculado a outra conta";
-          if (avail.cpfEmail) cpfBlock = cpfBlock + " (" + avail.cpfEmail + ")";
-          cpfBlock = cpfBlock + ".";
-          blockReasons.push(cpfBlock);
+          blockReasons.push("O CPF informado já está vinculado a outra conta.");
         }
         if (avail.cnpjTaken) {
           setCnpjTaken(true);
@@ -674,11 +665,8 @@ export function UserAuthPage() {
         throw new Error("Não foi possível enviar o email de recuperação. Verifique o endereço informado.");
       }
 
-      if (result.recoveryId) {
-        sessionStorage.setItem("recovery_id", result.recoveryId);
-        sessionStorage.setItem("recovery_email", forgotEmail.trim());
-      }
-
+      // Recovery ID is no longer returned by the server (security fix).
+      // The user will click the email link which redirects with Supabase tokens.
       setForgotStep("sent");
     } catch (err: any) {
       console.error("Forgot password error:", err);
@@ -1555,7 +1543,7 @@ export function UserAuthPage() {
                         CPF já cadastrado
                       </p>
                       <p className="text-amber-600 mt-1" style={{ fontSize: "0.75rem" }}>
-                        Este CPF já está vinculado a uma conta existente{cpfTakenEmail ? " (" + cpfTakenEmail + ")" : ""}.
+                        Este CPF já está vinculado a uma conta existente.
                       </p>
                       <div className="flex gap-2 mt-2">
                         <button

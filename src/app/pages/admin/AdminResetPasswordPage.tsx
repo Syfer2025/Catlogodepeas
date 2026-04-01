@@ -1,12 +1,10 @@
-import { useState, useEffect, useRef, startTransition } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { Link, useNavigate } from "react-router";
 import { Lock, Loader2, AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowLeft, ShieldCheck, Mail } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import * as api from "../../services/api";
 
 const LOGIN_LOGO_CACHE_KEY = "carretao_admin_logo_url";
-const POLL_INTERVAL = 3000; // 3 seconds
-
 type PageMode = "waiting" | "password" | "no-session" | "success";
 
 export function AdminResetPasswordPage() {
@@ -21,12 +19,6 @@ export function AdminResetPasswordPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Polling
-  const [pollCount, setPollCount] = useState(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Keep the recoveryId available for the password submit step
-  const ridRef = useRef<string | null>(null);
 
   // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(() => {
@@ -59,56 +51,48 @@ export function AdminResetPasswordPage() {
       .finally(() => setLogoLoading(false));
   }, []);
 
-  // ─── Start polling for recovery status ───
+  // ─── Detect Supabase recovery tokens from email link ───
   useEffect(() => {
-    const rid = localStorage.getItem("recovery_id");
+    let cancelled = false;
 
-    if (!rid) {
-      setMode("no-session");
-      return;
-    }
+    async function detectRecoverySession() {
+      // Supabase appends #access_token=...&refresh_token=...&type=recovery to the redirect URL
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.replace("#", ""));
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        const type = params.get("type");
 
-    ridRef.current = rid;
+        if (type === "recovery" && accessToken && refreshToken) {
+          // Clean up the hash from the URL
+          window.history.replaceState(null, "", window.location.pathname);
 
-    const poll = async () => {
-      try {
-        const result = await api.recoveryStatus(rid);
-        setPollCount((c) => c + 1);
+          const { error: sessionErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
 
-        if (result.status === "verified") {
-          // Stop polling
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (!cancelled && !sessionErr) {
+            setMode("password");
+            return;
+          }
+        }
+      }
 
-          // Show password form (ridRef still holds the rid for the submit step)
+      // Also check if there's already an active recovery session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!cancelled) {
+        if (session) {
           setMode("password");
-        } else if (result.status === "expired" || result.status === "not_found") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          localStorage.removeItem("recovery_id");
-          localStorage.removeItem("recovery_email");
-          ridRef.current = null;
+        } else {
           setMode("no-session");
         }
-        // else status === "pending" → keep polling
-      } catch (err) {
-        console.error("[ResetPassword] Poll error:", err);
-        // Don't stop polling on transient errors
       }
-    };
+    }
 
-    // Poll immediately and then every POLL_INTERVAL
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL);
-
-    // Stop polling after 10 minutes (safety)
-    const timeout = setTimeout(() => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      setMode("no-session");
-    }, 600000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      clearTimeout(timeout);
-    };
+    detectRecoverySession();
+    return () => { cancelled = true; };
   }, []);
 
   // ─── Password validation ───
@@ -131,40 +115,14 @@ export function AdminResetPasswordPage() {
       return;
     }
 
-    const rid = ridRef.current;
-    if (!rid) {
-      setError("Sessão de recuperação perdida. Tente novamente.");
-      setMode("no-session");
-      return;
-    }
-
     setLoading(true);
     try {
-      // Use the server admin API to change the password
-      const result = await api.resetPassword(rid, newPassword);
+      // Use Supabase's built-in password update (requires active recovery session)
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
 
-      if (result.error) {
-        setError(result.error);
+      if (updateErr) {
+        setError(updateErr.message || "Erro ao redefinir senha.");
         return;
-      }
-
-      // Try to sign in with the new password before cleaning up
-      const recoveryEmail = localStorage.getItem("recovery_email");
-
-      // Clean up
-      localStorage.removeItem("recovery_id");
-      localStorage.removeItem("recovery_email");
-      ridRef.current = null;
-
-      if (recoveryEmail) {
-        try {
-          await supabase.auth.signInWithPassword({
-            email: recoveryEmail,
-            password: newPassword,
-          });
-        } catch {
-          // Not critical — user can sign in manually
-        }
       }
 
       setMode("success");
@@ -253,7 +211,7 @@ export function AdminResetPasswordPage() {
 
           {/* Content */}
           <div className="p-8">
-            {/* ─── Waiting for email link click ─── */}
+            {/* ─── Waiting for session detection ─── */}
             {mode === "waiting" && (
               <div className="text-center py-4">
                 <div className="relative mx-auto w-16 h-16 mb-5">
@@ -261,17 +219,11 @@ export function AdminResetPasswordPage() {
                   <div className="absolute inset-0 border-3 border-gray-700 border-t-red-500 rounded-full animate-spin" />
                 </div>
                 <p className="text-gray-300 mb-2" style={{ fontSize: "0.95rem", fontWeight: 500 }}>
-                  Aguardando verificação...
+                  Verificando sessão...
                 </p>
                 <p className="text-gray-500 leading-relaxed" style={{ fontSize: "0.8rem" }}>
-                  Abra seu e-mail e clique no link de recuperação que enviamos.
-                  Esta página detectará automaticamente quando você clicar.
+                  Detectando sessão de recuperação...
                 </p>
-                <div className="mt-4 flex items-center justify-center gap-2 text-gray-600" style={{ fontSize: "0.75rem" }}>
-                  <div className="w-2 h-2 bg-red-500/60 rounded-full animate-pulse" />
-                  Verificando a cada {POLL_INTERVAL / 1000}s...
-                  {pollCount > 0 && <span className="text-gray-700">({pollCount})</span>}
-                </div>
               </div>
             )}
 

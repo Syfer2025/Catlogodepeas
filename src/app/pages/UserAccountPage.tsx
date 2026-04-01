@@ -545,10 +545,8 @@ export function UserAccountPage() {
 
     try {
       var result = await api.userForgotPassword(profile.email);
-      if (result.recoveryId) {
-        sessionStorage.setItem("recovery_id", result.recoveryId);
-        sessionStorage.setItem("recovery_email", profile.email);
-      }
+      // Recovery ID is no longer returned by the server (security fix).
+      // The user will click the email link which redirects with Supabase tokens.
       setResetEmailSent(true);
     } catch (err: any) {
       console.error("Send password reset error:", err);

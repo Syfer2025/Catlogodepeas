@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, startTransition } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { Link, useNavigate } from "react-router";
 import Lock from "lucide-react/dist/esm/icons/lock.js";
 import Loader2 from "lucide-react/dist/esm/icons/loader-2.js";
@@ -10,9 +10,6 @@ import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.js";
 import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
 import Mail from "lucide-react/dist/esm/icons/mail.js";
 import { supabase } from "../services/supabaseClient";
-import * as api from "../services/api";
-
-const POLL_INTERVAL = 3000;
 
 type PageMode = "waiting" | "password" | "no-session" | "success";
 
@@ -29,54 +26,45 @@ export function UserResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Polling
-  const [pollCount, setPollCount] = useState(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ridRef = useRef<string | null>(null);
-
-  // Start polling
+  // Detect Supabase recovery tokens from email link
   useEffect(() => {
-    const rid = sessionStorage.getItem("recovery_id");
+    let cancelled = false;
 
-    if (!rid) {
-      setMode("no-session");
-      return;
-    }
+    async function detectRecoverySession() {
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.replace("#", ""));
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        const type = params.get("type");
 
-    ridRef.current = rid;
+        if (type === "recovery" && accessToken && refreshToken) {
+          window.history.replaceState(null, "", window.location.pathname);
 
-    const poll = async () => {
-      try {
-        const result = await api.recoveryStatus(rid);
-        setPollCount((c) => c + 1);
+          const { error: sessionErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
 
-        if (result.status === "verified") {
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (!cancelled && !sessionErr) {
+            setMode("password");
+            return;
+          }
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!cancelled) {
+        if (session) {
           setMode("password");
-        } else if (result.status === "expired" || result.status === "not_found") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          sessionStorage.removeItem("recovery_id");
-          sessionStorage.removeItem("recovery_email");
-          ridRef.current = null;
+        } else {
           setMode("no-session");
         }
-      } catch (err) {
-        console.error("[UserResetPassword] Poll error:", err);
       }
-    };
+    }
 
-    poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL);
-
-    const timeout = setTimeout(() => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      setMode("no-session");
-    }, 600000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      clearTimeout(timeout);
-    };
+    detectRecoverySession();
+    return () => { cancelled = true; };
   }, []);
 
   // Password validation
@@ -99,35 +87,14 @@ export function UserResetPasswordPage() {
       return;
     }
 
-    const rid = ridRef.current;
-    if (!rid) {
-      setError("Sessão de recuperação perdida. Tente novamente.");
-      setMode("no-session");
-      return;
-    }
-
     setLoading(true);
     try {
-      const result = await api.resetPassword(rid, newPassword);
-      if (result.error) {
-        setError(result.error);
+      // Use Supabase's built-in password update (requires active recovery session)
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (updateErr) {
+        setError(updateErr.message || "Erro ao redefinir senha.");
         return;
-      }
-
-      const recoveryEmail = sessionStorage.getItem("recovery_email");
-
-      // Clean up
-      sessionStorage.removeItem("recovery_id");
-      sessionStorage.removeItem("recovery_email");
-      ridRef.current = null;
-
-      if (recoveryEmail) {
-        try {
-          await supabase.auth.signInWithPassword({
-            email: recoveryEmail,
-            password: newPassword,
-          });
-        } catch {}
       }
 
       setMode("success");
@@ -198,16 +165,11 @@ export function UserResetPasswordPage() {
                   <div className="absolute inset-0 border-3 border-gray-200 border-t-red-500 rounded-full animate-spin" />
                 </div>
                 <p className="text-gray-700 mb-2" style={{ fontSize: "0.95rem", fontWeight: 500 }}>
-                  Aguardando verificação...
+                  Verificando sessão...
                 </p>
                 <p className="text-gray-500 leading-relaxed" style={{ fontSize: "0.8rem" }}>
-                  Abra seu e-mail e clique no link de recuperação. Esta página detectará automaticamente.
+                  Detectando sessão de recuperação...
                 </p>
-                <div className="mt-4 flex items-center justify-center gap-2 text-gray-400" style={{ fontSize: "0.75rem" }}>
-                  <div className="w-2 h-2 bg-red-500/60 rounded-full animate-pulse" />
-                  Verificando a cada {POLL_INTERVAL / 1000}s...
-                  {pollCount > 0 && <span className="text-gray-300">({pollCount})</span>}
-                </div>
               </div>
             )}
 

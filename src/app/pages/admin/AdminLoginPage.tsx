@@ -193,11 +193,8 @@ export function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps) {
     try {
       const result = await api.forgotPassword(forgotEmail.trim());
 
-      if (result.recoveryId) {
-        localStorage.setItem("recovery_id", result.recoveryId);
-        localStorage.setItem("recovery_email", forgotEmail.trim());
-      }
-
+      // Recovery ID is no longer returned by the server (security fix).
+      // The user will click the email link which redirects with Supabase tokens.
       setForgotSuccess(true);
     } catch (err: any) {
       console.error("Exceção ao solicitar recuperação:", err);

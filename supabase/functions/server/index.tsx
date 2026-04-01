@@ -1993,7 +1993,7 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     }
 
     // Always respond with sent: true (don't reveal if email exists)
-    return c.json({ sent: true, recoveryId });
+    return c.json({ sent: true });
   } catch (e) {
     console.error("Forgot-password exception:", e);
     return c.json({ error: "Erro interno ao processar recuperação." }, 500);
@@ -2285,7 +2285,7 @@ app.post(BASE + "/auth/signup-check", async (c) => {
     var checkCpf = (body.cpf || "").replace(/\D/g, "");
     var checkCnpj = (body.cnpj || "").replace(/\D/g, "");
 
-    var result: any = { emailTaken: false, cpfTaken: false, cnpjTaken: false, cpfPersonType: null, cnpjPersonType: null };
+    var result: any = { emailTaken: false, cpfTaken: false, cnpjTaken: false };
 
     // Check email in Supabase Auth
     if (checkEmail) {
@@ -2311,30 +2311,12 @@ app.post(BASE + "/auth/signup-check", async (c) => {
                 var existCpf = (sp.cpf || "").replace(/\D/g, "");
                 if (existCpf === checkCpf) {
                   result.cpfTaken = true;
-                  result.cpfPersonType = sp.personType || "pf";
-                  if (sp.email) {
-                    var emailParts = (sp.email || "").split("@");
-                    if (emailParts.length === 2 && emailParts[0].length > 2) {
-                      result.cpfEmail = emailParts[0].slice(0, 2) + "***@" + emailParts[1];
-                    } else {
-                      result.cpfEmail = "***@" + (emailParts[1] || "email.com");
-                    }
-                  }
                 }
               }
               if (checkCnpj && checkCnpj.length === 14) {
                 var existCnpjVal = (sp.cnpj || "").replace(/\D/g, "");
                 if (existCnpjVal === checkCnpj) {
                   result.cnpjTaken = true;
-                  result.cnpjPersonType = sp.personType || "pj";
-                  if (sp.email) {
-                    var cnpjEmailParts = (sp.email || "").split("@");
-                    if (cnpjEmailParts.length === 2 && cnpjEmailParts[0].length > 2) {
-                      result.cnpjEmail = cnpjEmailParts[0].slice(0, 2) + "***@" + cnpjEmailParts[1];
-                    } else {
-                      result.cnpjEmail = "***@" + (cnpjEmailParts[1] || "email.com");
-                    }
-                  }
                 }
               }
             } catch {}
@@ -3399,7 +3381,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     const body = await c.req.json();
     if (_checkHoneypot(body)) {
       console.warn("[Honeypot] Bot detected on user forgot-password");
-      return c.json({ sent: true, recoveryId: "ok" });
+      return c.json({ sent: true });
     }
     // Input validation
     var vResult = validateOrError(body, schemas.forgotPassword);
@@ -3443,7 +3425,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
       return c.json({ sent: false, error: "Erro ao enviar email de recuperação. Tente novamente em alguns minutos." });
     }
 
-    return c.json({ sent: true, recoveryId });
+    return c.json({ sent: true });
   } catch (e) {
     console.error("User forgot-password exception:", e);
     return c.json({ error: "Erro interno ao processar recuperação." }, 500);
@@ -13685,7 +13667,7 @@ app.post(BASE + "/paghiper/pix/cancel", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado." }, 401);
     const isAdmin = await isAdminUser(c.req.raw);
-    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+    if (!isAdmin.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
@@ -13997,7 +13979,7 @@ app.post(BASE + "/paghiper/boleto/cancel", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado." }, 401);
     const isAdmin = await isAdminUser(c.req.raw);
-    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+    if (!isAdmin.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     const creds = await getPagHiperCredentials();
     if (!creds) return c.json({ error: "PagHiper não configurado." }, 400);
@@ -14195,9 +14177,14 @@ app.get(BASE + "/paghiper/transactions", async (c) => {
   }
 });
 
-// GET /paghiper/transaction/:id — get single transaction
+// GET /paghiper/transaction/:id — get single transaction (admin only)
 app.get(BASE + "/paghiper/transaction/:id", async (c) => {
   try {
+    const txUserId = await getAuthUserId(c.req.raw);
+    if (!txUserId) return c.json({ error: "Não autorizado." }, 401);
+    const txAdmin = await isAdminUser(c.req.raw);
+    if (!txAdmin.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+
     const txId = (c.req.param("id") || "").substring(0, 100);
     if (!txId) return c.json({ error: "ID invalido." }, 400);
     const raw = await kv.get(`paghiper_tx_${txId}`);
@@ -18281,6 +18268,8 @@ app.post(BASE + "/mercadopago/search-payments", async (c) => {
   try {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado" }, 401);
+    const spAdmin = await isAdminUser(c.req.raw);
+    if (!spAdmin.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     const creds = await getMPCredentials();
     if (!creds) return c.json({ error: "Mercado Pago não configurado." }, 400);
@@ -18465,7 +18454,7 @@ app.get(BASE + "/mercadopago/transactions", async (c) => {
     const userId = await getAuthUserId(c.req.raw);
     if (!userId) return c.json({ error: "Não autorizado" }, 401);
     const isAdmin = await isAdminUser(c.req.raw);
-    if (!isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+    if (!isAdmin.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
 
     var txRaws = await kv.getByPrefix("mp_tx:");
     var payRaws = await kv.getByPrefix("mp_payment:");

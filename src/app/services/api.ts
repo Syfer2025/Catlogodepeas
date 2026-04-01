@@ -504,10 +504,6 @@ export interface SignupCheckResult {
   emailTaken: boolean;
   cpfTaken: boolean;
   cnpjTaken: boolean;
-  cpfPersonType: string | null;
-  cnpjPersonType: string | null;
-  cpfEmail?: string;
-  cnpjEmail?: string;
   error?: string;
 }
 
