@@ -133,7 +133,7 @@ export function AdminBrands() {
     reader.readAsDataURL(file);
   };
 
-  // Product search with debounce — returns up to 100 results
+  // Product search with debounce — fetches ALL pages automatically
   const searchProducts = useCallback((query: string) => {
     if (prodSearchTimer.current) clearTimeout(prodSearchTimer.current);
     if (!query.trim()) {
@@ -144,9 +144,20 @@ export function AdminBrands() {
     setProdSearching(true);
     prodSearchTimer.current = setTimeout(async () => {
       try {
-        const res = await api.getCatalog(1, 100, query.trim());
-        setProdResults(res.data || []);
-        setProdTotalFound(res.pagination?.total || res.data?.length || 0);
+        var allProducts: ProdutoDB[] = [];
+        var page = 1;
+        var pageSize = 100;
+        var hasMore = true;
+        while (hasMore) {
+          var res = await api.getCatalog(page, pageSize, query.trim());
+          var batch = res.data || [];
+          allProducts = allProducts.concat(batch);
+          var total = res.pagination?.total || batch.length;
+          setProdTotalFound(total);
+          hasMore = batch.length === pageSize && allProducts.length < total;
+          page++;
+        }
+        setProdResults(allProducts);
       } catch (e) {
         console.error("[AdminBrands] Product search error:", e);
       } finally {
