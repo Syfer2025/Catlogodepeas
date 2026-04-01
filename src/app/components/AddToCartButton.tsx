@@ -5,7 +5,7 @@
  * Integra: CartContext (addItem), GA4 (add_to_cart), Marketing (AddToCart pixel).
  */
 import { useState, useEffect, useCallback } from "react";
-import { ShoppingCart, Plus, Minus, Check, Loader2, Ban } from "lucide-react";
+import { ShoppingCart, Plus, Minus, Check, Loader2, Ban, MessageCircle } from "lucide-react";
 import { useCart } from "../contexts/CartContext";
 import * as api from "../services/api";
 import { getResolvedProductImageUrl } from "./ProductImage";
@@ -207,10 +207,10 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
       return (
         <span
           className="flex items-center gap-1.5 bg-amber-100 text-amber-600 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-default"
-          title="Produto nao habilitado para venda"
+          title="Disponível apenas para cotação"
         >
-          <Ban className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Indisponivel</span>
+          <MessageCircle className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Sob cotação</span>
         </span>
       );
     }
@@ -266,20 +266,28 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
     );
   }
 
-  // Non-sellable — product not enabled for sale by admin
+  // Non-sellable — product not enabled for online sale, only quotation via WhatsApp
   if (sellable !== undefined && sellable !== true) {
+    var whatsappMsg = "Olá! Gostaria de solicitar uma cotação para a peça:\n\n📦 " + titulo + "\n🔖 SKU: " + sku + "\n\n" + (typeof window !== "undefined" ? window.location.href : "");
+    var whatsappUrl = "https://wa.me/5544997330202?text=" + encodeURIComponent(whatsappMsg);
     return (
-      <div className="space-y-2">
-        <button
-          disabled
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-100 text-amber-600 cursor-not-allowed shadow-none"
-          style={{ fontSize: "0.95rem", fontWeight: 700 }}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 justify-center text-amber-600" style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+          <Ban className="w-4 h-4" />
+          Disponível apenas para cotação
+        </div>
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white shadow-lg transition-all hover:opacity-90"
+          style={{ fontSize: "0.95rem", fontWeight: 700, background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)" }}
         >
-          <Ban className="w-5 h-5" />
-          Produto Indisponivel
-        </button>
-        <p className="text-amber-500 text-center" style={{ fontSize: "0.78rem" }}>
-          Este produto esta temporariamente indisponivel para venda.
+          <MessageCircle className="w-5 h-5" />
+          Solicitar Cotação via WhatsApp
+        </a>
+        <p className="text-gray-400 text-center" style={{ fontSize: "0.72rem" }}>
+          Este produto não está disponível para compra online.
         </p>
       </div>
     );

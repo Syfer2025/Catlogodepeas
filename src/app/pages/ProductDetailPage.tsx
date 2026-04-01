@@ -1018,10 +1018,10 @@ export function ProductDetailPage() {
               {sellable === false ? (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-amber-600" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                    Produto indisponível para venda no momento.
+                    Produto disponível apenas para cotação.
                   </p>
                   <p className="text-amber-500 mt-1" style={{ fontSize: "0.78rem" }}>
-                    Este produto está em nosso catálogo mas não pode ser adquirido online.
+                    Este produto não pode ser adquirido online. Solicite uma cotação via WhatsApp.
                   </p>
                 </div>
               ) : isInPromo && promoProduct ? (
@@ -1116,8 +1116,8 @@ export function ProductDetailPage() {
                 <StockBadge sku={product.sku} variant="full" preloaded={mainBalance} />
               </div>
 
-              {/* Extended Warranty Selector */}
-              {warrantyPlans.length > 0 && (function () {
+              {/* Extended Warranty Selector — hidden when not sellable */}
+              {sellable !== false && warrantyPlans.length > 0 && (function () {
                 var _productPrice = (isInPromo && promoProduct) ? promoProduct.promoPrice : (mainPrice && mainPrice.found ? mainPrice.price : null);
                 return (
                   <div className="mb-4 sm:mb-5">
@@ -1217,15 +1217,17 @@ export function ProductDetailPage() {
                 />
               </div>
 
-              {/* Shipping Calculator */}
-              <div className="mb-4 sm:mb-5">
-                <ShippingCalculator
-                  items={[{ sku: product.sku, quantity: 1 }]}
-                  totalValue={0}
-                  compact={false}
-                  showSavedAddress={true}
-                />
-              </div>
+              {/* Shipping Calculator — only when product is sellable for online purchase */}
+              {sellable !== false && (
+                <div className="mb-4 sm:mb-5">
+                  <ShippingCalculator
+                    items={[{ sku: product.sku, quantity: 1 }]}
+                    totalValue={0}
+                    compact={false}
+                    showSavedAddress={true}
+                  />
+                </div>
+              )}
 
               {/* Dynamic Attributes */}
               {attrsLoading ? (

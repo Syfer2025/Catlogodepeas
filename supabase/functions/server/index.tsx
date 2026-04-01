@@ -880,6 +880,8 @@ var MAINTENANCE_EXEMPT_PATHS = [
   "/mercadopago/webhook",         // Payment webhooks must always work
   "/settings",                    // Admin needs to toggle maintenance off
   "/admin",                       // Admin panel must remain functional
+  "/validate-preview",            // Maintenance bypass token validation must work during maintenance
+  "/health",                      // Health check always available
 ];
 
 app.use("*", async function (c: any, next: any) {
