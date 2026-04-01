@@ -23438,6 +23438,7 @@ app.post(BASE + "/admin/auto-categorize-apply", async (c) => {
     }
 
     invalidateMetaCache();
+    invalidateHomepageCache();
     // Clear product detail cache for affected SKUs so next load fetches fresh data
     for (var ci = 0; ci < assignments.length; ci++) {
       if (assignments[ci] && assignments[ci].sku) {
