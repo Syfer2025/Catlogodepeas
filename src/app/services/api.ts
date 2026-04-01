@@ -3172,10 +3172,13 @@ export interface ShippingOption {
   source?: "manual" | "table" | "api";
   /** SisFrete quotation ID — flows from cotacao to pedido to romaneio to NF */
   sisfreteQuoteId?: string;
+  /** Server-side shipping quote ID for price validation at checkout */
+  shippingQuoteId?: string;
 }
 
 export interface ShippingCalcResponse {
   options: ShippingOption[];
+  shippingQuoteId?: string;
   destination: { uf: string; localidade: string; logradouro?: string; bairro?: string };
   destUf: string;
   destRegion: string;
@@ -3568,6 +3571,7 @@ export interface MPCreatePreferencePayload {
     unit_price: number;
   }>;
   shipping_cost?: number;
+  shippingQuoteId?: string;
   back_urls?: {
     success: string;
     failure: string;

@@ -568,25 +568,79 @@ async function _validateStock(items: any[]): Promise<{ ok: boolean; outOfStock: 
 // ═══════════════════════════════════════════════════════════════════════
 // Shipping Validation — ensures shipping option is present and valid
 // ═══════════════════════════════════════════════════════════════════════
-function _validateShipping(body: any): { ok: boolean; error: string } {
+async function _validateShipping(body: any): Promise<{ ok: boolean; error: string; validatedPrice?: number }> {
   var shipping = body.shippingOption || body.shipping_option || null;
-  // If shipping_cost is sent directly (MercadoPago), that's also valid
-  if (body.shipping_cost !== undefined && Number(body.shipping_cost) >= 0) {
-    return { ok: true, error: "" };
-  }
-  if (!shipping) {
+  var shippingCost = body.shipping_cost;
+
+  // Determine the carrier and price to validate
+  var carrierId = "";
+  var clientPrice = -1;
+  var quoteId = "";
+
+  if (shipping) {
+    carrierId = shipping.carrierId || shipping.carrier_id || "";
+    clientPrice = Number(shipping.price);
+    quoteId = shipping.shippingQuoteId || "";
+    if (!carrierId && !shipping.carrierName && !shipping.carrier_name) {
+      return { ok: false, error: "Transportadora do frete nao identificada." };
+    }
+    if (isNaN(clientPrice) || clientPrice < 0) {
+      return { ok: false, error: "Valor do frete invalido." };
+    }
+  } else if (shippingCost !== undefined) {
+    clientPrice = Number(shippingCost);
+    if (isNaN(clientPrice) || clientPrice < 0) {
+      return { ok: false, error: "Valor do frete invalido." };
+    }
+    quoteId = body.shippingQuoteId || "";
+  } else {
     return { ok: false, error: "Opcao de frete obrigatoria. Selecione uma forma de envio." };
   }
-  // Must have a carrier name or id
-  if (!shipping.carrierName && !shipping.carrierId && !shipping.carrier_name) {
-    return { ok: false, error: "Transportadora do frete nao identificada." };
+
+  // SECURITY: Validate shipping price against stored server-side quote
+  if (quoteId) {
+    try {
+      var storedRaw = await kv.get("shipping_quote:" + quoteId);
+      if (storedRaw) {
+        var stored = typeof storedRaw === "string" ? JSON.parse(storedRaw) : storedRaw;
+        // Quote expires after 2 hours
+        if (stored.createdAt && (Date.now() - stored.createdAt) > 2 * 60 * 60 * 1000) {
+          return { ok: false, error: "Cotacao de frete expirada. Recalcule o frete." };
+        }
+        var quotedOptions = stored.options || [];
+        var matched = false;
+        for (var si = 0; si < quotedOptions.length; si++) {
+          var qOpt = quotedOptions[si];
+          if (carrierId && qOpt.carrierId === carrierId) {
+            if (Math.abs(clientPrice - qOpt.price) > 0.01) {
+              console.warn("[Shipping] PRICE MISMATCH for carrier " + carrierId + ": client=" + clientPrice + " quoted=" + qOpt.price);
+              return { ok: false, error: "Valor do frete diverge da cotacao. Recalcule o frete." };
+            }
+            matched = true;
+            break;
+          } else if (!carrierId && Math.abs(clientPrice - qOpt.price) <= 0.01) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          console.warn("[Shipping] No matching option in quote " + quoteId + " for carrier=" + carrierId + " price=" + clientPrice);
+          return { ok: false, error: "Opcao de frete nao encontrada na cotacao. Recalcule o frete." };
+        }
+        return { ok: true, error: "", validatedPrice: clientPrice };
+      } else {
+        console.warn("[Shipping] Quote " + quoteId + " not found in KV");
+      }
+    } catch (sqErr) {
+      console.warn("[Shipping] Error validating quote:", sqErr);
+    }
   }
-  // Must have a price (0 is valid for free shipping)
-  var price = Number(shipping.price);
-  if (isNaN(price) || price < 0) {
-    return { ok: false, error: "Valor do frete invalido." };
+
+  // Fallback: no quoteId or quote not found — log warning but allow (backward compat)
+  if (!quoteId) {
+    console.warn("[Shipping] No shippingQuoteId provided — accepting client-sent price " + clientPrice + " without server validation");
   }
-  return { ok: true, error: "" };
+  return { ok: true, error: "", validatedPrice: clientPrice };
 }
 
 function _checkHoneypot(body: any): boolean {
@@ -4341,8 +4395,30 @@ app.post(BASE + "/shipping/calculate", async (c) => {
     });
     deduped.sort((a: any, b: any) => a.price - b.price);
 
+    // SECURITY: Store shipping quote server-side for checkout validation
+    var shippingQuoteId = "";
+    if (deduped.length > 0) {
+      shippingQuoteId = "sq_" + Date.now() + "_" + Math.random().toString(36).substring(2, 10);
+      var quoteData = {
+        id: shippingQuoteId,
+        cep: destCep,
+        options: deduped.map(function(o: any) { return { carrierId: o.carrierId, price: o.price, free: !!o.free }; }),
+        createdAt: Date.now(),
+      };
+      try {
+        await kv.set("shipping_quote:" + shippingQuoteId, JSON.stringify(quoteData));
+      } catch (sqErr) {
+        console.warn("[Shipping] Failed to store quote in KV:", sqErr);
+      }
+      // Attach quoteId to each option
+      for (var qi = 0; qi < deduped.length; qi++) {
+        deduped[qi].shippingQuoteId = shippingQuoteId;
+      }
+    }
+
     return c.json({
       options: deduped,
+      shippingQuoteId: shippingQuoteId || undefined,
       destination: destInfo,
       destUf,
       destRegion,
@@ -13456,7 +13532,7 @@ app.post(BASE + "/paghiper/pix/create", async (c) => {
     }
 
     // SECURITY: Validate shipping option server-side
-    var pixShipCheck = _validateShipping(body);
+    var pixShipCheck = await _validateShipping(body);
     if (!pixShipCheck.ok) return c.json({ error: pixShipCheck.error }, 400);
 
     // SECURITY: Validate stock server-side
@@ -13758,7 +13834,7 @@ app.post(BASE + "/paghiper/boleto/create", async (c) => {
     }
 
     // SECURITY: Validate shipping option server-side
-    var boletoShipCheck = _validateShipping(body);
+    var boletoShipCheck = await _validateShipping(body);
     if (!boletoShipCheck.ok) return c.json({ error: boletoShipCheck.error }, 400);
 
     // SECURITY: Validate stock server-side
@@ -14601,7 +14677,7 @@ app.post(BASE + "/sige/create-sale", async (c) => {
     }
 
     // SECURITY: Validate shipping option server-side
-    var csShipCheck = _validateShipping(body);
+    var csShipCheck = await _validateShipping(body);
     if (!csShipCheck.ok) return c.json({ error: csShipCheck.error }, 400);
 
     // SECURITY: Validate stock server-side
@@ -15409,7 +15485,7 @@ app.post(BASE + "/user/save-order", async (c) => {
     if (!localOrderId) return c.json({ error: "localOrderId obrigatório." }, 400);
 
     // SECURITY: Validate shipping option server-side
-    var soShipCheck = _validateShipping(body);
+    var soShipCheck = await _validateShipping(body);
     if (!soShipCheck.ok) return c.json({ error: soShipCheck.error }, 400);
 
     // SECURITY: Validate stock server-side
@@ -17819,7 +17895,7 @@ app.post(BASE + "/mercadopago/create-preference", async (c) => {
     }
 
     // SECURITY: Validate shipping option server-side
-    var mpShipCheck = _validateShipping(body);
+    var mpShipCheck = await _validateShipping(body);
     if (!mpShipCheck.ok) return c.json({ error: mpShipCheck.error }, 400);
 
     // SECURITY: Validate stock server-side
@@ -17991,7 +18067,7 @@ app.post(BASE + "/mercadopago/process-card-payment", async (c) => {
     }
 
     // SECURITY: Validate shipping option server-side
-    var ccShipCheck = _validateShipping(body);
+    var ccShipCheck = await _validateShipping(body);
     if (!ccShipCheck.ok) return c.json({ error: ccShipCheck.error, success: false }, 400);
 
     // SECURITY: Validate stock server-side

@@ -790,6 +790,7 @@ export function CheckoutPage() {
         deliveryDays: selectedShipping.deliveryDays,
         free: selectedShipping.free,
         sisfreteQuoteId: selectedShipping.sisfreteQuoteId || undefined,
+        shippingQuoteId: selectedShipping.shippingQuoteId || undefined,
       } : undefined;
       const orderCouponInfo = couponApplied ? {
         code: couponApplied.code,
@@ -929,6 +930,7 @@ export function CheckoutPage() {
           payer_name: effectiveName,
           items: mpItems,
           shipping_cost: shippingPrice > 0 ? shippingPrice : undefined,
+          shippingQuoteId: selectedShipping?.shippingQuoteId || undefined,
           back_urls: {
             success: baseUrl + "/checkout",
             failure: baseUrl + "/checkout",
