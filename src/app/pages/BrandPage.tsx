@@ -111,9 +111,9 @@ export function BrandPage() {
 
   return (
     <div className="min-h-[60vh]">
-      {/* Brand Header — compact */}
+      {/* Brand Header */}
       <section className="border-b border-gray-100 bg-white">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 pt-3 pb-4">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-1.5 text-gray-400 mb-3" style={{ fontSize: "0.75rem" }}>
             <Link to="/" className="hover:text-red-600 transition-colors">Início</Link>
@@ -122,28 +122,26 @@ export function BrandPage() {
           </nav>
 
           <div className="flex items-center gap-4">
-            {/* Logo — small */}
+            {/* Logo card — same style as homepage carousel */}
             <div
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gray-50 flex items-center justify-center shrink-0 p-2 border border-gray-100"
+              className="flex items-center justify-center shrink-0 rounded-xl border border-gray-200 overflow-hidden"
+              style={{ width: 130, height: 80, backgroundColor: brand.bgColor || "#ffffff" }}
             >
               {brand.logoUrl ? (
                 <img
                   src={brand.logoUrl}
                   alt={brand.name}
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-[90px] max-h-[55px] object-contain"
+                  loading="eager"
                   style={brand.logoZoom && brand.logoZoom !== 1 ? { transform: "scale(" + brand.logoZoom + ")" } : undefined}
                 />
               ) : (
-                <Award className="w-7 h-7 text-gray-300" />
+                <Award className="w-8 h-8 text-gray-300" />
               )}
             </div>
 
-            {/* Info */}
             <div>
-              <h1
-                className="text-gray-800"
-                style={{ fontSize: "1.15rem", fontWeight: 700, lineHeight: 1.2 }}
-              >
+              <h1 className="text-gray-800" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
                 {brand.name}
               </h1>
               <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.8rem" }}>
@@ -173,7 +171,7 @@ export function BrandPage() {
               {/* Sidebar — only when there are categories */}
               {categories.length > 0 && (
                 <aside className="w-full lg:w-56 shrink-0">
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 sticky top-24 overflow-hidden">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
                       <Filter className="w-4 h-4 text-gray-400" />
                       <h3 className="text-gray-700 font-semibold" style={{ fontSize: "0.82rem" }}>
@@ -181,7 +179,7 @@ export function BrandPage() {
                       </h3>
                     </div>
 
-                    <div className="overflow-y-auto p-2 space-y-0.5" style={{ maxHeight: "calc(100vh - 10rem)" }}>
+                    <div className="p-2 space-y-0.5">
                       <button
                         onClick={() => setSelectedCategory(null)}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-left ${
