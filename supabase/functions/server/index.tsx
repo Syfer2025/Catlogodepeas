@@ -15581,10 +15581,17 @@ app.post(BASE + "/user/save-order", async (c) => {
     if (validatedCouponDiscount > 0) {
       serverTotal = Math.max(0, serverTotal - validatedCouponDiscount);
     }
-    // Use server-calculated total; log if client sent a different value
+    // SECURITY: Block order if client total diverges significantly from server total
     var clientTotal = Number(total) || 0;
-    if (Math.abs(serverTotal - clientTotal) > 1) {
-      console.warn("[save-order] Total mismatch for " + localOrderId + ": client=" + clientTotal + " server=" + serverTotal.toFixed(2));
+    var totalDiff = serverTotal - clientTotal;
+    if (totalDiff > 1) {
+      // Client is trying to pay LESS than server calculated — block
+      console.warn("[save-order] TOTAL TAMPERING BLOCKED for " + localOrderId + ": client=" + clientTotal + " server=" + serverTotal.toFixed(2) + " diff=" + totalDiff.toFixed(2));
+      return c.json({ error: "Total do pedido diverge do valor calculado. Atualize a pagina e tente novamente." }, 400);
+    }
+    if (Math.abs(totalDiff) > 1) {
+      // Client is paying MORE — log warning but allow (overpaying is their problem, not a security issue)
+      console.warn("[save-order] Total mismatch for " + localOrderId + ": client=" + clientTotal + " server=" + serverTotal.toFixed(2) + " (client overpaying)");
     }
 
     const orderRecord: any = {
