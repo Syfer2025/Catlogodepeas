@@ -1,0 +1,15 @@
+# ═══════════════════════════════════════════════════════════════════
+# Cloudflare Pages — Custom response headers
+# Applied to all static assets served from the edge.
+# ═══════════════════════════════════════════════════════════════════
+
+# Hashed assets (JS/CSS chunks) — immutable, cached 1 year
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# All responses — security headers
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
