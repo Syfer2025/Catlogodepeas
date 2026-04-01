@@ -3879,7 +3879,7 @@ export interface BrandItem {
   filename?: string;
   bgColor: string;
   logoZoom?: number;
-  products: Array<{ sku: string; titulo: string }>;
+  products: Array<{ sku: string; titulo: string; category?: string }>;
   order: number;
   active: boolean;
   contentType?: string;
@@ -3899,7 +3899,7 @@ export const getBrandBySlug = (slug: string) =>
 /** Admin: create a brand with logo upload */
 export const createBrand = async (
   file: File,
-  data: { name: string; slug: string; bgColor: string; order: number; active: boolean; products: Array<{ sku: string; titulo: string }>; logoZoom?: number },
+  data: { name: string; slug: string; bgColor: string; order: number; active: boolean; products: Array<{ sku: string; titulo: string; category?: string }>; logoZoom?: number },
   accessToken: string
 ): Promise<{ created: boolean; brand: BrandItem }> => {
   const formData = new FormData();
@@ -3926,7 +3926,7 @@ export const createBrand = async (
 /** Admin: update a brand (optionally replace logo) */
 export const updateBrand = async (
   id: string,
-  data: { name?: string; slug?: string; bgColor?: string; order?: number; active?: boolean; products?: Array<{ sku: string; titulo: string }>; logoZoom?: number },
+  data: { name?: string; slug?: string; bgColor?: string; order?: number; active?: boolean; products?: Array<{ sku: string; titulo: string; category?: string }>; logoZoom?: number },
   accessToken: string,
   file?: File | null
 ): Promise<{ updated: boolean; brand: BrandItem }> => {

@@ -23058,6 +23058,26 @@ app.get(BASE + "/brands", async (c) => {
     });
     await Promise.allSettled(signPromises);
 
+    // Auto-populate products for all brands
+    var allMetas = await getAllProductMetas();
+    brands.forEach(function (brand) {
+      if (!brand.products) brand.products = [];
+      var existingSkus = new Set(brand.products.map(function(p: any) { return p.sku; }));
+      var dynamicProducts: any[] = [];
+      allMetas.forEach(function (meta, sku) {
+        if (meta.visible === false) return;
+        if (meta.brand && (meta.brand.trim() === brand.name || meta.brand.trim().toLowerCase() === brand.name.toLowerCase() || meta.brand.trim().toLowerCase() === brand.slug)) {
+          if (!existingSkus.has(sku)) {
+             dynamicProducts.push({ sku: sku, titulo: meta.titulo || "Produto " + sku });
+             existingSkus.add(sku);
+          }
+        }
+      });
+      if (dynamicProducts.length > 0) {
+         brand.products = brand.products.concat(dynamicProducts);
+      }
+    });
+
     return c.json({ brands: brands });
   } catch (e: any) {
     console.error("[brands] Error:", e);
@@ -23094,6 +23114,31 @@ app.get(BASE + "/brands/:slug", async (c) => {
           found.logoUrl = signRes.data.signedUrl;
         }
       } catch { /* keep stored url */ }
+    }
+
+    // Auto-populate products that are assigned to this brand via ProductMeta
+    var allMetas = await getAllProductMetas();
+    if (!found.products) found.products = [];
+    var existingSkus = new Set(found.products.map(function(p: any) { return p.sku; }));
+    // Enrich existing products with category from meta
+    for (var ep = 0; ep < found.products.length; ep++) {
+      var existingMeta = allMetas.get(found.products[ep].sku);
+      if (existingMeta && existingMeta.category) {
+        found.products[ep].category = existingMeta.category;
+      }
+    }
+    var dynamicProducts: any[] = [];
+    allMetas.forEach(function (meta, sku) {
+      if (meta.visible === false) return;
+      if (meta.brand && (meta.brand.trim() === found.name || meta.brand.trim().toLowerCase() === found.name.toLowerCase() || meta.brand.trim().toLowerCase() === found.slug)) {
+        if (!existingSkus.has(sku)) {
+          dynamicProducts.push({ sku: sku, titulo: meta.titulo || "Produto " + sku, category: meta.category || "" });
+          existingSkus.add(sku);
+        }
+      }
+    });
+    if (dynamicProducts.length > 0) {
+      found.products = found.products.concat(dynamicProducts);
     }
 
     return c.json({ brand: found });
