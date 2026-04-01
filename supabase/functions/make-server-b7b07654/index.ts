@@ -15553,9 +15553,39 @@ app.post(BASE + "/user/save-order", async (c) => {
     if (shippingOption && shippingOption.price) {
       serverTotal += Number(shippingOption.price) || 0;
     }
-    // Apply coupon discount if present
-    if (body.coupon && body.coupon.discountAmount) {
-      serverTotal = Math.max(0, serverTotal - (Number(body.coupon.discountAmount) || 0));
+    // SECURITY: Validate coupon discount server-side — never trust client discountAmount
+    var validatedCouponDiscount = 0;
+    if (body.coupon && body.coupon.code) {
+      try {
+        var soCouponRaw = await kv.get("coupon:" + String(body.coupon.code).toLowerCase());
+        if (soCouponRaw) {
+          var soCouponData = typeof soCouponRaw === "string" ? JSON.parse(soCouponRaw) : soCouponRaw;
+          if (soCouponData.active !== false) {
+            var soItemsTotal = serverTotal; // items + shipping already calculated
+            if (soCouponData.type === "percent" || soCouponData.discountType === "percentage") {
+              validatedCouponDiscount = Math.round(soItemsTotal * (Number(soCouponData.value || soCouponData.discountValue) || 0) / 100 * 100) / 100;
+            } else {
+              validatedCouponDiscount = Number(soCouponData.value || soCouponData.discountValue) || 0;
+            }
+            if (soCouponData.maxDiscount) {
+              validatedCouponDiscount = Math.min(validatedCouponDiscount, Number(soCouponData.maxDiscount));
+            }
+            validatedCouponDiscount = Math.min(validatedCouponDiscount, soItemsTotal);
+          }
+        }
+        var clientDiscount = Number(body.coupon.discountAmount) || 0;
+        if (clientDiscount > 0 && validatedCouponDiscount <= 0) {
+          console.warn("[save-order] COUPON TAMPERING BLOCKED for " + localOrderId + " — client sent discount=" + clientDiscount + " but coupon '" + body.coupon.code + "' is invalid/inactive");
+        } else if (clientDiscount > validatedCouponDiscount * 1.05) {
+          console.warn("[save-order] COUPON DISCOUNT MISMATCH for " + localOrderId + " — client=" + clientDiscount + " server=" + validatedCouponDiscount.toFixed(2));
+        }
+      } catch (couponErr) {
+        console.error("[save-order] Coupon validation error: " + couponErr);
+        validatedCouponDiscount = 0;
+      }
+    }
+    if (validatedCouponDiscount > 0) {
+      serverTotal = Math.max(0, serverTotal - validatedCouponDiscount);
     }
     // Use server-calculated total; log if client sent a different value
     var clientTotal = Number(total) || 0;
