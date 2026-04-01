@@ -6,6 +6,8 @@ import Package from "lucide-react/dist/esm/icons/package";
 import Loader2 from "lucide-react/dist/esm/icons/loader-circle";
 import AlertCircle from "lucide-react/dist/esm/icons/circle-alert";
 import Filter from "lucide-react/dist/esm/icons/filter";
+import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import * as api from "../services/api";
 import type { BrandItem } from "../services/api";
 import { ProductCard } from "../components/ProductCard";
@@ -14,6 +16,8 @@ import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
 type ProductWithCategory = ProdutoItem & { categoryName?: string };
 
+var PRODUCTS_PER_PAGE = 24;
+
 export function BrandPage() {
   const { slug } = useParams<{ slug: string }>();
   const [brand, setBrand] = useState<BrandItem | null>(null);
@@ -21,6 +25,7 @@ export function BrandPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useDocumentMeta({
     title: brand ? brand.name + " - Carretão Auto Peças" : "Marca - Carretão Auto Peças",
@@ -73,6 +78,15 @@ export function BrandPage() {
     if (!selectedCategory) return products;
     return products.filter(p => p.categoryName === selectedCategory);
   }, [products, selectedCategory]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pagedProducts = filteredProducts.slice((safePage - 1) * PRODUCTS_PER_PAGE, safePage * PRODUCTS_PER_PAGE);
+
+  const goToPage = (p: number) => {
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   if (loading) {
     return (
@@ -181,7 +195,7 @@ export function BrandPage() {
 
                     <div className="p-2 space-y-0.5">
                       <button
-                        onClick={() => setSelectedCategory(null)}
+                        onClick={() => { setSelectedCategory(null); setPage(1); }}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-left ${
                           selectedCategory === null
                             ? "bg-red-50 text-red-600 font-medium"
@@ -196,7 +210,7 @@ export function BrandPage() {
                       {categories.map(cat => (
                         <button
                           key={cat.name}
-                          onClick={() => setSelectedCategory(cat.name)}
+                          onClick={() => { setSelectedCategory(cat.name); setPage(1); }}
                           className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-left ${
                             selectedCategory === cat.name
                               ? "bg-red-50 text-red-600 font-medium"
@@ -219,22 +233,27 @@ export function BrandPage() {
 
               {/* Product grid */}
               <div className="flex-1">
-                {selectedCategory && (
-                  <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-gray-700 font-medium" style={{ fontSize: "0.95rem" }}>
-                      {selectedCategory}
-                    </h2>
-                    <button
-                      onClick={() => setSelectedCategory(null)}
-                      className="text-red-500 hover:text-red-600 text-sm font-medium"
-                    >
-                      Limpar filtro
-                    </button>
-                  </div>
-                )}
+                {/* Top bar: category name + page info */}
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-gray-700 font-medium" style={{ fontSize: "0.9rem" }}>
+                    {selectedCategory || "Todos os Produtos"}
+                    {selectedCategory && (
+                      <button
+                        onClick={() => { setSelectedCategory(null); setPage(1); }}
+                        className="ml-2 text-red-500 hover:text-red-600 text-xs font-medium"
+                      >
+                        (limpar)
+                      </button>
+                    )}
+                  </h2>
+                  <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>
+                    {filteredProducts.length} {filteredProducts.length === 1 ? "item" : "itens"}
+                    {totalPages > 1 && (" — pág. " + safePage + "/" + totalPages)}
+                  </span>
+                </div>
 
                 <div className={`grid grid-cols-2 sm:grid-cols-3 ${categories.length > 0 ? "lg:grid-cols-4" : "lg:grid-cols-5"} gap-3 sm:gap-5`}>
-                  {filteredProducts.map(function (product) {
+                  {pagedProducts.map(function (product) {
                     return (
                       <ProductCard
                         key={product.sku}
@@ -244,14 +263,59 @@ export function BrandPage() {
                   })}
                 </div>
 
-                {filteredProducts.length === 0 && selectedCategory && (
+                {pagedProducts.length === 0 && selectedCategory && (
                   <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
                     <p className="text-gray-500 mb-2">Nenhum produto nesta categoria.</p>
                     <button
-                      onClick={() => setSelectedCategory(null)}
+                      onClick={() => { setSelectedCategory(null); setPage(1); }}
                       className="text-red-500 hover:text-red-600 text-sm font-medium"
                     >
                       Limpar filtro
+                    </button>
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-1.5 mt-8">
+                    <button
+                      onClick={() => goToPage(safePage - 1)}
+                      disabled={safePage <= 1}
+                      className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-gray-600" />
+                    </button>
+
+                    {Array.from({ length: totalPages }, function (_, i) { return i + 1; }).map(function (p) {
+                      // Show first, last, and pages near current
+                      if (p === 1 || p === totalPages || (p >= safePage - 2 && p <= safePage + 2)) {
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => goToPage(p)}
+                            className={`min-w-[36px] h-9 rounded-lg text-sm font-medium transition-colors ${
+                              p === safePage
+                                ? "bg-red-600 text-white"
+                                : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        );
+                      }
+                      // Show ellipsis
+                      if (p === safePage - 3 || p === safePage + 3) {
+                        return <span key={p} className="px-1 text-gray-400 text-sm">...</span>;
+                      }
+                      return null;
+                    })}
+
+                    <button
+                      onClick={() => goToPage(safePage + 1)}
+                      disabled={safePage >= totalPages}
+                      className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
                     </button>
                   </div>
                 )}
