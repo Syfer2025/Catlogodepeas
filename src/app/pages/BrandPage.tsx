@@ -111,17 +111,20 @@ export function BrandPage() {
 
   return (
     <div className="min-h-[60vh]">
-      {/* Brand Header */}
-      <section
-        className="relative overflow-hidden"
-        style={{ backgroundColor: brand.bgColor || "#f8f8f8" }}
-      >
-        <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            {/* Logo */}
+      {/* Brand Header — compact */}
+      <section className="border-b border-gray-100 bg-white">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1.5 text-gray-400 mb-3" style={{ fontSize: "0.75rem" }}>
+            <Link to="/" className="hover:text-red-600 transition-colors">Início</Link>
+            <span>/</span>
+            <span className="text-gray-600 font-medium">{brand.name}</span>
+          </nav>
+
+          <div className="flex items-center gap-4">
+            {/* Logo — small */}
             <div
-              className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl bg-white flex items-center justify-center shrink-0 p-4"
-              style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gray-50 flex items-center justify-center shrink-0 p-2 border border-gray-100"
             >
               {brand.logoUrl ? (
                 <img
@@ -131,32 +134,23 @@ export function BrandPage() {
                   style={brand.logoZoom && brand.logoZoom !== 1 ? { transform: "scale(" + brand.logoZoom + ")" } : undefined}
                 />
               ) : (
-                <Award className="w-12 h-12 text-gray-300" />
+                <Award className="w-7 h-7 text-gray-300" />
               )}
             </div>
 
             {/* Info */}
-            <div className="text-center sm:text-left">
+            <div>
               <h1
-                className="text-gray-800 mb-2"
-                style={{ fontSize: "clamp(1.4rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.01em" }}
+                className="text-gray-800"
+                style={{ fontSize: "1.15rem", fontWeight: 700, lineHeight: 1.2 }}
               >
                 {brand.name}
               </h1>
-              <p className="text-gray-500" style={{ fontSize: "0.9rem" }}>
-                {brand.products.length} {brand.products.length === 1 ? "produto" : "produtos"} disponíveis
+              <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.8rem" }}>
+                {products.length} {products.length === 1 ? "produto" : "produtos"}
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Breadcrumb */}
-        <div className="max-w-7xl mx-auto px-4 pb-4">
-          <nav className="flex items-center gap-1.5 text-gray-400" style={{ fontSize: "0.75rem" }}>
-            <Link to="/" className="hover:text-red-600 transition-colors">Início</Link>
-            <span>/</span>
-            <span className="text-gray-600 font-medium">{brand.name}</span>
-          </nav>
         </div>
       </section>
 
@@ -178,45 +172,43 @@ export function BrandPage() {
 
               {/* Sidebar — only when there are categories */}
               {categories.length > 0 && (
-                <aside className="w-full lg:w-64 shrink-0">
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-24">
-                    <div className="flex items-center gap-2 mb-4 pb-4 border-b border-gray-100">
-                      <Filter className="w-5 h-5 text-gray-500" />
-                      <h3 className="text-gray-800 font-semibold" style={{ fontSize: "0.95rem" }}>
+                <aside className="w-full lg:w-56 shrink-0">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 sticky top-24 overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+                      <Filter className="w-4 h-4 text-gray-400" />
+                      <h3 className="text-gray-700 font-semibold" style={{ fontSize: "0.82rem" }}>
                         Categorias
                       </h3>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="overflow-y-auto p-2 space-y-0.5" style={{ maxHeight: "calc(100vh - 10rem)" }}>
                       <button
                         onClick={() => setSelectedCategory(null)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left ${
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-left ${
                           selectedCategory === null
                             ? "bg-red-50 text-red-600 font-medium"
                             : "text-gray-600 hover:bg-gray-50"
                         }`}
-                        style={{ fontSize: "0.85rem" }}
+                        style={{ fontSize: "0.78rem" }}
                       >
                         <span>Todos</span>
-                        <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full text-xs">
-                          {products.length}
-                        </span>
+                        <span className="text-gray-400 text-xs">{products.length}</span>
                       </button>
 
                       {categories.map(cat => (
                         <button
                           key={cat.name}
                           onClick={() => setSelectedCategory(cat.name)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left ${
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-left ${
                             selectedCategory === cat.name
                               ? "bg-red-50 text-red-600 font-medium"
                               : "text-gray-600 hover:bg-gray-50"
                           }`}
-                          style={{ fontSize: "0.85rem" }}
+                          style={{ fontSize: "0.78rem" }}
                         >
                           <span className="truncate pr-2">{cat.name}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${
-                            selectedCategory === cat.name ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-500"
+                          <span className={`text-xs ${
+                            selectedCategory === cat.name ? "text-red-500" : "text-gray-400"
                           }`}>
                             {cat.count}
                           </span>
