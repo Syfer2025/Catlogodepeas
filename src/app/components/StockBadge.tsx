@@ -264,7 +264,7 @@ function StockBadgeInner({ sku, variant = "compact", preloaded }: StockBadgeProp
       <p className={inStock ? "text-green-800" : "text-red-700"} style={{ fontSize: "0.9rem", fontWeight: 700 }}>
         {inStock
           ? `${available} disponíve${available !== 1 ? "is" : "l"} em estoque`
-          : "Produto indisponível"}
+          : "Estoque zerado"}
       </p>
     </div>
   );

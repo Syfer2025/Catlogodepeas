@@ -882,6 +882,13 @@ var MAINTENANCE_EXEMPT_PATHS = [
   "/admin",                       // Admin panel must remain functional
   "/validate-preview",            // Maintenance bypass token validation must work during maintenance
   "/health",                      // Health check always available
+  "/produtos/saldos",             // Read-only: bulk stock balances (POST with SKU array)
+  "/produtos/precos-bulk",        // Read-only: bulk prices
+  "/produtos/meta/bulk",          // Read-only: bulk product metadata
+  "/reviews/summaries-batch",     // Read-only: bulk review summaries
+  "/promo/active",                // Read-only: active promo check
+  "/sige/saldo",                  // Read-only: individual stock balance
+  "/sige/preco",                  // Read-only: individual price
 ];
 
 app.use("*", async function (c: any, next: any) {

@@ -54,6 +54,9 @@ type SortDir = "asc" | "desc";
 
 // ─── Helpers ───
 
+// Portuguese stop words — ignored in category/product matching
+var STOP_WORDS = new Set(["de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas", "para", "por", "com", "sem", "ao", "ou", "um", "uma", "os", "as", "el", "la", "se", "que", "es"]);
+
 function removeAccents(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -63,7 +66,13 @@ function normalizeText(str: string): string {
 }
 
 function extractWords(str: string): string[] {
-  return normalizeText(str).split(" ").filter(function (w) { return w.length > 1; });
+  return normalizeText(str).split(" ").filter(function (w) { return w.length > 2 && !STOP_WORDS.has(w); });
+}
+
+/** Word-boundary-aware match: checks if `word` exists as a complete word in `text` (not as substring) */
+function textHasWord(text: string, word: string): boolean {
+  if (word.length < 3) return false;
+  return (" " + text + " ").indexOf(" " + word + " ") !== -1;
 }
 
 // Automotive synonym/keyword expansions
@@ -96,7 +105,12 @@ function flattenCategoryTree(tree: CategoryNode[], parentSlug: string | null = n
     for (var wi = 0; wi < words.length; wi++) {
       var w = words[wi];
       for (var expKey in KEYWORD_EXPANSIONS) {
-        if (w === expKey || w === expKey + "s" || expKey.indexOf(w) === 0 || w.indexOf(expKey) === 0) {
+        // Exact match, plural form, or stem match (both words >= 5 chars, diff <= 3 chars)
+        var isMatch = w === expKey || w === expKey + "s" || w + "s" === expKey;
+        if (!isMatch && w.length >= 5 && expKey.length >= 5 && Math.abs(w.length - expKey.length) <= 3) {
+          isMatch = w.indexOf(expKey) === 0 || expKey.indexOf(w) === 0;
+        }
+        if (isMatch) {
           var expWords = KEYWORD_EXPANSIONS[expKey];
           for (var ew = 0; ew < expWords.length; ew++) {
             if (expandedKeywords.indexOf(expWords[ew]) === -1) expandedKeywords.push(expWords[ew]);
@@ -116,15 +130,17 @@ function flattenCategoryTree(tree: CategoryNode[], parentSlug: string | null = n
 function scoreProduct(productText: string, productWords: string[], category: FlatCategory): { score: number; matched: string[] } {
   var matched: string[] = [];
   for (var ki = 0; ki < category.keywords.length; ki++) {
-    if (productText.indexOf(category.keywords[ki]) !== -1) matched.push(category.keywords[ki]);
+    if (textHasWord(productText, category.keywords[ki])) matched.push(category.keywords[ki]);
   }
   if (matched.length === 0) return { score: 0, matched: [] };
   var nameWords = extractWords(category.name);
   var nameMatched = 0;
   for (var ni = 0; ni < nameWords.length; ni++) {
-    if (productText.indexOf(nameWords[ni]) !== -1) nameMatched++;
+    if (textHasWord(productText, nameWords[ni])) nameMatched++;
   }
   var nameScore = nameWords.length > 0 ? (nameMatched / nameWords.length) * 100 : 0;
+  // Specificity bonus: categories with more name words matching get a boost
+  var specificityBonus = nameWords.length > 1 ? Math.min(nameMatched * 5, 15) : 0;
   var expansionBonus = Math.min((matched.length - nameMatched) * 3, 20);
   var depthBonus = Math.min(category.depth * 5, 10);
   var exactBonus = 0;
@@ -134,7 +150,7 @@ function scoreProduct(productText: string, productWords: string[], category: Fla
     }
   }
   exactBonus = Math.min(exactBonus, 20);
-  return { score: Math.min(Math.round(nameScore + expansionBonus + depthBonus + exactBonus), 100), matched };
+  return { score: Math.min(Math.round(nameScore + specificityBonus + expansionBonus + depthBonus + exactBonus), 100), matched };
 }
 
 function findCategoryName(tree: CategoryNode[], slug: string): string {
@@ -199,7 +215,7 @@ export function AdminAutoCateg() {
                 else if (typeof attrVal === "string") textParts.push(attrVal);
               }
               var productText = normalizeText(textParts.join(" "));
-              var productWords = productText.split(" ").filter(function (w) { return w.length > 1; });
+              var productWords = productText.split(" ").filter(function (w) { return w.length > 2 && !STOP_WORDS.has(w); });
               var bestScore = 0; var bestCat: FlatCategory | null = null; var bestMatched: string[] = [];
               for (var ci = 0; ci < flatCats.length; ci++) {
                 var result = scoreProduct(productText, productWords, flatCats[ci]);
