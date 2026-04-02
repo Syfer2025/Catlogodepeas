@@ -7188,23 +7188,38 @@ async function getAllProductsSearchIndex(): Promise<Array<{ sku: string; titulo:
     return productSearchIndexCache.data;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("produtos")
-    .select("sku,titulo")
-    .range(0, 49999);
+  // Paginate to ensure ALL products are loaded (Supabase limits ~1000 rows per request)
+  const allRows: Array<{ sku: string; titulo: string }> = [];
+  const pageSize = 1000;
+  var offset = 0;
+  var hasMore = true;
 
-  if (error) {
-    console.error("[getAllProductsSearchIndex] Error:", error);
-    return productSearchIndexCache?.data || [];
+  while (hasMore) {
+    const { data, error } = await supabaseAdmin
+      .from("produtos")
+      .select("sku,titulo")
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.error("[getAllProductsSearchIndex] Error at offset=" + offset + ":", error);
+      break;
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    for (var ri = 0; ri < rows.length; ri++) {
+      var row = rows[ri];
+      if (row && row.sku) allRows.push({ sku: String(row.sku), titulo: String(row.titulo || "") });
+    }
+
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
   }
 
-  const rows = Array.isArray(data) ? data : [];
-  const nextData = rows
-    .filter((row: any) => row && row.sku)
-    .map((row: any) => ({ sku: String(row.sku), titulo: String(row.titulo || "") }));
-
-  productSearchIndexCache = { data: nextData, fetchedAt: now };
-  return nextData;
+  productSearchIndexCache = { data: allRows, fetchedAt: now };
+  return allRows;
 }
 
 function getEffectiveSearchTokens(searchTerm: string): string[] {
