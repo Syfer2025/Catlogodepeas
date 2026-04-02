@@ -120,7 +120,7 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
         {/* Price section — hide for non-sellable products */}
         <div className="mb-1.5 sm:mb-3">
           {showNotSellable ? (
-            <span className="text-amber-500" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Indisponível p/ venda</span>
+            <span className="text-amber-500" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Disponível apenas para cotação</span>
           ) : (
             <PriceBadge sku={product.sku} variant="compact" preloaded={preloadedPrice} />
           )}
@@ -166,7 +166,7 @@ export function ProductCardInner({ product, balance, preloadedPrice, reviewSumma
             onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "none"; }}
           >
             <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            {showOutOfStock ? "Indisponível" : showNotSellable ? "Indisponível" : "Comprar"}
+            {showOutOfStock ? "Indisponível" : showNotSellable ? "Sob cotação" : "Comprar"}
           </span>
         </div>
       </div>

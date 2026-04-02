@@ -10,6 +10,7 @@ import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left.js";
 import ShieldCheck from "lucide-react/dist/esm/icons/shield-check.js";
 import Mail from "lucide-react/dist/esm/icons/mail.js";
 import { supabase } from "../services/supabaseClient";
+import * as api from "../services/api";
 
 type PageMode = "waiting" | "password" | "no-session" | "success";
 
@@ -31,6 +32,36 @@ export function UserResetPasswordPage() {
     let cancelled = false;
 
     async function detectRecoverySession() {
+      async function activateUserRecoveryMode() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          if (!cancelled) setMode("no-session");
+          return;
+        }
+
+        try {
+          const adminCheck = await api.checkAdmin(session.access_token);
+          if (adminCheck.isAdmin) {
+            await supabase.auth.signOut({ scope: "local" });
+            if (!cancelled) {
+              setError("Este link é exclusivo do painel administrativo. Use a recuperação do admin.");
+              setMode("no-session");
+            }
+            return;
+          }
+        } catch (validationErr: any) {
+          console.error("[UserResetPasswordPage] Session validation error:", validationErr);
+          await supabase.auth.signOut({ scope: "local" });
+          if (!cancelled) {
+            setError("Não foi possível validar esta sessão de recuperação.");
+            setMode("no-session");
+          }
+          return;
+        }
+
+        if (!cancelled) setMode("password");
+      }
+
       const searchParams = new URLSearchParams(window.location.search);
       const tokenHash = searchParams.get("token_hash");
       const recoveryType = searchParams.get("type");
@@ -46,7 +77,7 @@ export function UserResetPasswordPage() {
           searchParams.delete("type");
           const cleanSearch = searchParams.toString();
           window.history.replaceState(null, "", window.location.pathname + (cleanSearch ? "?" + cleanSearch : "") + window.location.hash);
-          setMode("password");
+          await activateUserRecoveryMode();
           return;
         }
 
@@ -73,19 +104,17 @@ export function UserResetPasswordPage() {
           });
 
           if (!cancelled && !sessionErr) {
-            setMode("password");
+            await activateUserRecoveryMode();
             return;
           }
         }
       }
 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!cancelled) {
-        if (session) {
-          setMode("password");
-        } else {
-          setMode("no-session");
-        }
+      if (session?.access_token) {
+        await activateUserRecoveryMode();
+      } else if (!cancelled) {
+        setMode("no-session");
       }
     }
 

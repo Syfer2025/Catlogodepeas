@@ -5,7 +5,7 @@
  *
  * QUANDO ATIVO (catalogMode=true):
  * - Precos sao ocultados em todo o site (ProductCard, ProductDetail, SuperPromo)
- * - Em vez de preco, mostra "Consulte o preco" ou "Ver Detalhes"
+ * - Em vez de preco, mostra "Consulte o preço" ou "Ver Detalhes"
  * - Botoes mudam de "Comprar" para "Ver Detalhes"
  * - Checkout e carrinho ficam desabilitados
  *

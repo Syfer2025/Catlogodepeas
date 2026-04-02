@@ -61,7 +61,7 @@ export function AdminHomepageCategories() {
 
       const [catRes, cardsRes] = await Promise.all([
         api.getCategoryTree(),
-        api.getHomepageCategories(),
+        api.getAdminHomepageCategories(token),
       ]);
 
       const tree = catRes && Array.isArray(catRes) && catRes.length > 0 ? catRes : defaultCategoryTree;
@@ -190,9 +190,9 @@ export function AdminHomepageCategories() {
       const token = await getValidAdminToken();
       if (!token) throw new Error("Sessão expirada.");
       await api.deleteHomepageCategory(card.id, token);
+      setCards((current) => current.filter((item) => item.id !== card.id));
       showToast("success", "Categoria removida!");
       setDeleteConfirm(null);
-      await loadCards();
       invalidateHomepageCache();
     } catch (e: any) {
       showToast("error", "Erro ao deletar: " + (e.message || e));
@@ -205,8 +205,10 @@ export function AdminHomepageCategories() {
     try {
       const token = await getValidAdminToken();
       if (!token) return;
-      await api.updateHomepageCategory(card.id, { active: !card.active }, token);
-      await loadCards();
+      const response = await api.updateHomepageCategory(card.id, { active: !card.active }, token);
+      setCards((current) => current
+        .map((item) => (item.id === card.id ? response.card : item))
+        .sort((a, b) => (a.order || 0) - (b.order || 0)));
       invalidateHomepageCache();
     } catch (e: any) {
       showToast("error", "Erro: " + (e.message || e));

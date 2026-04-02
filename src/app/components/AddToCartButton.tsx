@@ -255,20 +255,34 @@ export function AddToCartButton({ sku, titulo, variant = "full", overridePrice, 
     ? Math.max(0, effectiveAvailableQty - existingInCart)
     : Infinity;
   const isDisabled = priceLoading || liveOutOfStock || maxAddable <= 0 || validating;
+  const productUrl = typeof window !== "undefined" ? window.location.href : "";
+  const catalogWhatsappMsg = "Olá! Gostaria de consultar esta peça:\n\n📦 " + titulo + "\n🔖 SKU: " + sku + (productUrl ? "\n\n" + productUrl : "");
+  const catalogWhatsappUrl = "https://wa.me/5544997330202?text=" + encodeURIComponent(catalogWhatsappMsg);
 
   if (catalogMode) {
     return (
-      <div className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700"
-        style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-        <ShoppingCart className="w-5 h-5" />
-        Entre em contato para comprar
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 justify-center text-amber-700" style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+          <MessageCircle className="w-4 h-4" />
+          Consulte preço e disponibilidade pelo WhatsApp
+        </div>
+        <a
+          href={catalogWhatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white shadow-lg transition-all hover:opacity-90"
+          style={{ fontSize: "0.95rem", fontWeight: 700, background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)" }}
+        >
+          <MessageCircle className="w-5 h-5" />
+          Consultar via WhatsApp
+        </a>
       </div>
     );
   }
 
   // Non-sellable — product not enabled for online sale, only quotation via WhatsApp
   if (sellable !== undefined && sellable !== true) {
-    var whatsappMsg = "Olá! Gostaria de solicitar uma cotação para a peça:\n\n📦 " + titulo + "\n🔖 SKU: " + sku + "\n\n" + (typeof window !== "undefined" ? window.location.href : "");
+    var whatsappMsg = "Olá! Gostaria de solicitar uma cotação para a peça:\n\n📦 " + titulo + "\n🔖 SKU: " + sku + (productUrl ? "\n\n" + productUrl : "");
     var whatsappUrl = "https://wa.me/5544997330202?text=" + encodeURIComponent(whatsappMsg);
     return (
       <div className="space-y-3">

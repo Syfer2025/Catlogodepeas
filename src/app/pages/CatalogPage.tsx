@@ -26,6 +26,7 @@ import "../utils/emptyStateAnimations";
 import { JsonLdBreadcrumb } from "../components/JsonLdBreadcrumb";
 
 const ITEMS_PER_PAGE = 48;
+const AUTO_SORT_MODE = "auto";
 
 /** Small thumbnail for list-view rows */
 function ListRowThumb({ sku }: { sku: string }) {
@@ -67,7 +68,7 @@ export function CatalogPage() {
   const [metaMap, setMetaMap] = useState<Record<string, ProductMeta>>({});
 
   // ── Sort & filter state ──
-  const [sortMode, setSortMode] = useState<string>("nome-asc");
+  const [sortMode, setSortMode] = useState<string>(AUTO_SORT_MODE);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [stockFilter, setStockFilter] = useState<"all" | "inStock" | "outOfStock">("all");
 
@@ -86,8 +87,19 @@ export function CatalogPage() {
     ogDescription: _catDesc,
   });
 
-  // All sort modes are now handled server-side
-  const serverSortParam = sortMode;
+  // All sort modes are now handled server-side.
+  // When the user lands here via Enter in the header search, keep relevance as
+  // the default until they explicitly choose another order.
+  const effectiveSortMode = sortMode === AUTO_SORT_MODE
+    ? (searchQuery ? "relevancia" : "nome-asc")
+    : sortMode;
+  const serverSortParam = effectiveSortMode;
+
+  useEffect(() => {
+    if (!searchQuery && sortMode === "relevancia") {
+      setSortMode(AUTO_SORT_MODE);
+    }
+  }, [searchQuery, sortMode]);
 
   const fetchProdutos = useCallback(async () => {
     setLoading(true);
@@ -362,7 +374,7 @@ export function CatalogPage() {
                 <ArrowUpDown className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Ordenar:</span>
                 <span className="font-medium">
-                  {sortMode === "nome-asc" ? "A-Z" : sortMode === "nome-desc" ? "Z-A" : sortMode === "preco-asc" ? "Menor preço" : sortMode === "preco-desc" ? "Maior preço" : sortMode === "sku-asc" ? "SKU" : sortMode === "estoque" ? "Estoque" : "Nome"}
+                  {effectiveSortMode === "relevancia" ? "Melhor correspondência" : effectiveSortMode === "nome-asc" ? "A-Z" : effectiveSortMode === "nome-desc" ? "Z-A" : effectiveSortMode === "preco-asc" ? "Menor preço" : effectiveSortMode === "preco-desc" ? "Maior preço" : effectiveSortMode === "sku-asc" ? "SKU" : effectiveSortMode === "estoque" ? "Estoque" : "Nome"}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
@@ -371,6 +383,7 @@ export function CatalogPage() {
                   <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
                   <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 min-w-[180px]">
                     {[
+                      ...(searchQuery ? [{ value: "relevancia", label: "Melhor correspondência" }] : []),
                       { value: "nome-asc", label: "Nome A-Z" },
                       { value: "nome-desc", label: "Nome Z-A" },
                       { value: "sku-asc", label: "Código (SKU)" },
@@ -387,7 +400,7 @@ export function CatalogPage() {
                             // All sorts are server-side, always reset to page 1
                             setPage(1);
                           }}
-                          className={"w-full text-left px-4 py-2 hover:bg-red-50 transition-colors " + (sortMode === opt.value ? "text-red-600 font-semibold bg-red-50/50" : "text-gray-700")}
+                          className={"w-full text-left px-4 py-2 hover:bg-red-50 transition-colors " + (effectiveSortMode === opt.value ? "text-red-600 font-semibold bg-red-50/50" : "text-gray-700")}
                           style={{ fontSize: "0.82rem" }}
                         >
                           {opt.label}

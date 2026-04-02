@@ -1,5 +1,7 @@
 import { lazy } from "react";
 
+var CHUNK_RELOAD_MARKER = "__chunk_reload_once__";
+
 /**
  * Wraps React.lazy with automatic retry on dynamic import failures.
  * Handles transient network errors (cold starts, flaky connections)
@@ -19,8 +21,14 @@ function _retryImport<T extends React.ComponentType<any>>(
   maxRetries: number,
   attempt: number
 ): Promise<{ default: T }> {
-  return factory().catch(function (err: any) {
+  return factory().then(function (mod) {
+    _clearChunkReloadMarker();
+    return mod;
+  }).catch(function (err: any) {
     if (attempt >= maxRetries) {
+      if (_isDynamicImportFailure(err) && _reloadOnceForChunkError()) {
+        return new Promise<{ default: T }>(function () {});
+      }
       // All retries exhausted — throw so the error boundary can catch it
       console.error("[lazyWithRetry] All " + (maxRetries + 1) + " attempts failed:", err);
       throw err;
@@ -33,4 +41,38 @@ function _retryImport<T extends React.ComponentType<any>>(
       }, delay);
     });
   });
+}
+
+function _isDynamicImportFailure(err: any): boolean {
+  var message = String(err?.message || err || "").toLowerCase();
+  var name = String(err?.name || "").toLowerCase();
+  return (
+    message.includes("failed to fetch dynamically imported module") ||
+    message.includes("error loading dynamically imported module") ||
+    message.includes("importing a module script failed") ||
+    message.includes("chunkloaderror") ||
+    name.includes("chunkloaderror")
+  );
+}
+
+function _reloadOnceForChunkError(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    var currentPath = window.location.pathname + window.location.search;
+    if (sessionStorage.getItem(CHUNK_RELOAD_MARKER) === currentPath) {
+      sessionStorage.removeItem(CHUNK_RELOAD_MARKER);
+      return false;
+    }
+    sessionStorage.setItem(CHUNK_RELOAD_MARKER, currentPath);
+  } catch {}
+  console.warn("[lazyWithRetry] Dynamic import failed after retries. Reloading page once to refresh stale chunks.");
+  window.location.reload();
+  return true;
+}
+
+function _clearChunkReloadMarker(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(CHUNK_RELOAD_MARKER);
+  } catch {}
 }

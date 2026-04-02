@@ -56,6 +56,36 @@ export function AdminResetPasswordPage() {
     let cancelled = false;
 
     async function detectRecoverySession() {
+      async function activateAdminRecoveryMode() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          if (!cancelled) setMode("no-session");
+          return;
+        }
+
+        try {
+          const adminCheck = await api.checkAdmin(session.access_token);
+          if (!adminCheck.isAdmin) {
+            await supabase.auth.signOut({ scope: "local" });
+            if (!cancelled) {
+              setError("Este link é exclusivo da área de clientes. Use a recuperação da conta do site.");
+              setMode("no-session");
+            }
+            return;
+          }
+        } catch (validationErr: any) {
+          console.error("[AdminResetPasswordPage] Session validation error:", validationErr);
+          await supabase.auth.signOut({ scope: "local" });
+          if (!cancelled) {
+            setError("Não foi possível validar esta sessão de recuperação.");
+            setMode("no-session");
+          }
+          return;
+        }
+
+        if (!cancelled) setMode("password");
+      }
+
       const searchParams = new URLSearchParams(window.location.search);
       const tokenHash = searchParams.get("token_hash");
       const recoveryType = searchParams.get("type");
@@ -71,7 +101,7 @@ export function AdminResetPasswordPage() {
           searchParams.delete("type");
           const cleanSearch = searchParams.toString();
           window.history.replaceState(null, "", window.location.pathname + (cleanSearch ? "?" + cleanSearch : "") + window.location.hash);
-          setMode("password");
+          await activateAdminRecoveryMode();
           return;
         }
 
@@ -100,7 +130,7 @@ export function AdminResetPasswordPage() {
           });
 
           if (!cancelled && !sessionErr) {
-            setMode("password");
+            await activateAdminRecoveryMode();
             return;
           }
         }
@@ -108,12 +138,10 @@ export function AdminResetPasswordPage() {
 
       // Also check if there's already an active recovery session
       const { data: { session } } = await supabase.auth.getSession();
-      if (!cancelled) {
-        if (session) {
-          setMode("password");
-        } else {
-          setMode("no-session");
-        }
+      if (session?.access_token) {
+        await activateAdminRecoveryMode();
+      } else if (!cancelled) {
+        setMode("no-session");
       }
     }
 

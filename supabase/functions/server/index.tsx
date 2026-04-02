@@ -1037,6 +1037,15 @@ app.use(BASE + "/auth/user/*", async (c: any, next: any) => {
     console.warn("[RateLimit] BLOCKED auth/user from " + rlKey);
     return _rl429(c, "Muitas requisições. Tente novamente em " + Math.ceil(rlResult.retryAfterMs / 1000) + " segundos.", rlResult);
   }
+
+  var authUserId = await getAuthUserId(c.req.raw);
+  if (authUserId) {
+    var authUserIsAdmin = await checkAdmin(authUserId);
+    if (authUserIsAdmin) {
+      return c.json({ error: "Conta administrativa não pode usar a área do cliente." }, 403);
+    }
+  }
+
   return next();
 });
 
@@ -2357,9 +2366,13 @@ app.post(BASE + "/auth/signup-check", async (c) => {
     // Check email in Supabase Auth
     if (checkEmail) {
       try {
-        var existingUser = await _findUserByEmail(checkEmail);
-        if (existingUser) {
+        if (await _isAdminRecoveryEmail(checkEmail)) {
           result.emailTaken = true;
+        } else {
+          var existingUser = await _findUserByEmail(checkEmail);
+          if (existingUser) {
+            result.emailTaken = true;
+          }
         }
       } catch (emailErr) {
         console.error("[signup-check] Email lookup error:", emailErr);
@@ -2416,7 +2429,7 @@ app.post(BASE + "/auth/user/signup", async (c) => {
     if (!vResult.valid) {
       return c.json({ error: vResult.errors[0] || "Dados invalidos." }, 400);
     }
-    var email = vResult.data.email || "";
+    var email = String(vResult.data.email || "").toLowerCase().trim();
     var password = body.password || ""; // keep raw for auth
     var name = vResult.data.name || "";
     var phone = vResult.data.phone || "";
@@ -2433,6 +2446,10 @@ app.post(BASE + "/auth/user/signup", async (c) => {
     var pwErr = _validatePasswordStrength(password);
     if (pwErr) {
       return c.json({ error: pwErr }, 400);
+    }
+
+    if (await _isAdminRecoveryEmail(email)) {
+      return c.json({ error: "Este email não está disponível para cadastro. Use outro endereço de email.", field: "email" }, 409);
     }
 
     // PJ-specific server-side validation
@@ -3468,7 +3485,7 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
       console.error("User forgot-password: user lookup error:", lookupErr);
     }
 
-    if (user) {
+    if (user && !(await _isAdminRecoveryEmail(email))) {
       var sentOk = await _sendPasswordRecoveryEmail(email, "user");
       if (!sentOk) {
         console.error("[ForgotPasswordUser] Failed to send custom user recovery email for " + email);
@@ -6936,13 +6953,6 @@ app.post(BASE + "/produtos/match-skus", async (c) => {
 
 app.get(BASE + "/produtos/autocomplete", async (c) => {
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
-
-    if (!supabaseUrl || !supabaseKey) {
-      return c.json({ error: "Configuração incompleta do servidor." }, 500);
-    }
-
     const query = (c.req.query("q") || "").trim().substring(0, 200);
     const limitResults = Math.min(parseInt(c.req.query("limit") || "8", 10), 20);
 
@@ -6952,66 +6962,100 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
 
     const queryNorm = normalizeText(query);
     const queryPhonetic = phoneticKey(query);
-    const queryTokens = queryNorm.split(" ").filter((t) => t.length >= 2);
+    const effectiveTokens = getEffectiveSearchTokens(query);
 
-    // Generate accent-aware search conditions using AND logic between tokens
-    const searchConditions = buildSearchConditions(query, "autocomplete");
+    const [products, allMetas] = await Promise.all([
+      getAllProductsSearchIndex(),
+      getAllProductMetas(),
+    ]);
 
-    const queryStr = `select=sku,titulo&or=(${encodeURIComponent(searchConditions)})&order=titulo.asc`;
-    const apiUrl = `${supabaseUrl}/rest/v1/produtos?${queryStr}`;
+    const matches: Array<{ sku: string; titulo: string; score: number; meta: any }> = [];
 
-    // Autocomplete query received;
+    for (const product of products) {
+      const meta = allMetas.get(product.sku) || null;
+      if (meta && meta.visible === false) continue;
 
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        apikey: supabaseKey,
-        Authorization: `Bearer ${supabaseKey}`,
-        "Content-Type": "application/json",
-        Range: "0-199",
-        Prefer: "count=exact",
-      },
+      const titulo = product.titulo || "";
+      const brand = String(meta?.brand || "");
+      const category = String(meta?.category || "");
+      const description = [
+        meta?.description,
+        meta?.descricao,
+        meta?.seoDescription,
+        meta?.seo_description,
+      ].filter(Boolean).join(" ");
+      const compatibility = Array.isArray(meta?.compatibility)
+        ? meta.compatibility.filter(Boolean).join(" ")
+        : "";
+      const customAttributes = meta?.customAttributes && typeof meta.customAttributes === "object"
+        ? Object.values(meta.customAttributes).filter(Boolean).join(" ")
+        : "";
+      const keywordHints = [
+        meta?.keywords,
+        meta?.searchTerms,
+        meta?.aliases,
+        meta?.alias,
+        meta?.synonyms,
+        meta?.sinonimos,
+      ].flatMap((value: any) => Array.isArray(value) ? value : [value]).filter(Boolean).join(" ");
+
+      const combinedText = [titulo, brand, category, description, compatibility, customAttributes, keywordHints]
+        .filter(Boolean)
+        .join(" ");
+      const combinedNorm = normalizeText(combinedText);
+
+      var allTokensFound = true;
+      for (var ti = 0; ti < effectiveTokens.length; ti++) {
+        if (!combinedNorm.includes(effectiveTokens[ti])) {
+          allTokensFound = false;
+          break;
+        }
+      }
+
+      const baseScore = scoreProduct(queryNorm, queryPhonetic, effectiveTokens, titulo, product.sku || "");
+      const brandMatch = matchesSearchableText(brand, queryNorm, effectiveTokens);
+      const categoryMatch = matchesSearchableText(category, queryNorm, effectiveTokens);
+      const descriptionMatch = matchesSearchableText(description, queryNorm, effectiveTokens);
+      const compatibilityMatch = matchesSearchableText(compatibility, queryNorm, effectiveTokens);
+      const customAttributesMatch = matchesSearchableText(customAttributes, queryNorm, effectiveTokens);
+      const keywordMatch = matchesSearchableText(keywordHints, queryNorm, effectiveTokens);
+
+      if (!baseScore && !brandMatch && !categoryMatch && !descriptionMatch && !compatibilityMatch && !customAttributesMatch && !keywordMatch && !allTokensFound) {
+        continue;
+      }
+
+      let totalScore = baseScore;
+      if (brandMatch) totalScore += 350;
+      if (categoryMatch) totalScore += 170;
+      if (descriptionMatch) totalScore += 180;
+      if (compatibilityMatch) totalScore += 240;
+      if (customAttributesMatch) totalScore += 140;
+      if (keywordMatch) totalScore += 220;
+      if (allTokensFound && effectiveTokens.length > 1) totalScore += 300;
+      if (!totalScore) totalScore = 1;
+
+      matches.push({ sku: product.sku, titulo: titulo, score: totalScore, meta: meta });
+    }
+
+    matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.titulo || "").localeCompare(b.titulo || "", "pt-BR");
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Autocomplete Supabase error [" + response.status + "]: " + errorText);
-      return c.json({ error: "Erro na busca.", results: [] }, 502);
-    }
-
-    const data: { sku: string; titulo: string }[] = await response.json();
-
-    // Parse total from Content-Range
-    const contentRange = response.headers.get("Content-Range") || response.headers.get("content-range");
-    let totalMatches = data.length;
-    if (contentRange) {
-      const match = contentRange.match(/\/(\d+|\*)/);
-      if (match && match[1] !== "*") totalMatches = parseInt(match[1], 10);
-    }
-
-    // Score and rank results
-    const scored = data.map((item) => ({
-      ...item,
-      score: scoreProduct(queryNorm, queryPhonetic, queryTokens, item.titulo, item.sku),
-    }));
-
-    // Filter out zero-score items and sort by score desc
-    const ranked = scored
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limitResults);
-
-    // Determine match types for UI hints
-    const results = ranked.map((item) => {
+    const totalMatches = matches.length;
+    const results = matches.slice(0, limitResults).map((item) => {
       const tituloNorm = normalizeText(item.titulo);
       const skuNorm = normalizeText(item.sku);
+      const brandNorm = normalizeText(item.meta?.brand || "");
+      const categoryNorm = normalizeText(item.meta?.category || "");
+      const compatibilityNorm = normalizeText(Array.isArray(item.meta?.compatibility) ? item.meta.compatibility.join(" ") : "");
       let matchType: "exact" | "sku" | "similar" | "fuzzy" = "fuzzy";
 
-      if (tituloNorm.includes(queryNorm) || skuNorm.includes(queryNorm)) {
+      if (tituloNorm === queryNorm || skuNorm === queryNorm || tituloNorm.includes(queryNorm) || skuNorm.includes(queryNorm)) {
         matchType = "exact";
       } else if (skuNorm.includes(queryNorm.replace(/\s/g, ""))) {
         matchType = "sku";
-      } else if (item.score >= 80) {
+      } else if (brandNorm.includes(queryNorm) || categoryNorm.includes(queryNorm) || compatibilityNorm.includes(queryNorm) || item.score >= 120) {
         matchType = "similar";
       }
 
@@ -7233,6 +7277,123 @@ function matchesSearchableText(candidate: unknown, queryNorm: string, effectiveT
     if (!normalizedCandidate.includes(token)) return false;
   }
   return true;
+}
+
+function buildCatalogMetaSearchPayload(meta: any): {
+  brand: string;
+  category: string;
+  description: string;
+  compatibility: string;
+  customAttributes: string;
+  keywordHints: string;
+} {
+  var description = [
+    meta?.description,
+    meta?.descricao,
+    meta?.seoDescription,
+    meta?.seo_description,
+  ].filter(Boolean).join(" ");
+
+  var compatibility = Array.isArray(meta?.compatibility)
+    ? meta.compatibility.filter(Boolean).join(" ")
+    : "";
+
+  var customAttributes = meta?.customAttributes && typeof meta.customAttributes === "object"
+    ? Object.values(meta.customAttributes).filter(Boolean).join(" ")
+    : "";
+
+  var keywordHints = [
+    meta?.keywords,
+    meta?.searchTerms,
+    meta?.aliases,
+    meta?.alias,
+    meta?.synonyms,
+    meta?.sinonimos,
+  ].flatMap((value: any) => Array.isArray(value) ? value : [value]).filter(Boolean).join(" ");
+
+  return {
+    brand: String(meta?.brand || ""),
+    category: String(meta?.category || ""),
+    description: description,
+    compatibility: compatibility,
+    customAttributes: customAttributes,
+    keywordHints: keywordHints,
+  };
+}
+
+function rankCatalogSearchResults(
+  items: Array<{ sku: string; titulo: string }>,
+  searchTerm: string,
+  allMetas: Map<string, any>,
+  options?: { visibleOnly?: boolean; allowedSkus?: Set<string> | null },
+): Array<{ sku: string; titulo: string; score: number }> {
+  var queryNorm = normalizeText(searchTerm);
+  var queryPhonetic = phoneticKey(searchTerm);
+  var effectiveTokens = getEffectiveSearchTokens(searchTerm);
+  var ranked: Array<{ sku: string; titulo: string; score: number }> = [];
+
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var meta = allMetas.get(item.sku) || null;
+    if (options?.visibleOnly && meta && meta.visible === false) continue;
+    if (options?.allowedSkus && !options.allowedSkus.has(item.sku)) continue;
+
+    var titulo = item.titulo || "";
+    var metaPayload = buildCatalogMetaSearchPayload(meta);
+    var combinedText = [
+      titulo,
+      metaPayload.brand,
+      metaPayload.category,
+      metaPayload.description,
+      metaPayload.compatibility,
+      metaPayload.customAttributes,
+      metaPayload.keywordHints,
+    ].filter(Boolean).join(" ");
+    var combinedNorm = normalizeText(combinedText);
+
+    var allTokensFound = true;
+    for (var ti = 0; ti < effectiveTokens.length; ti++) {
+      if (!combinedNorm.includes(effectiveTokens[ti])) {
+        allTokensFound = false;
+        break;
+      }
+    }
+
+    var baseScore = scoreProduct(queryNorm, queryPhonetic, effectiveTokens, titulo, item.sku || "");
+    var brandMatch = matchesSearchableText(metaPayload.brand, queryNorm, effectiveTokens);
+    var categoryMatch = matchesSearchableText(metaPayload.category, queryNorm, effectiveTokens);
+    var descriptionMatch = matchesSearchableText(metaPayload.description, queryNorm, effectiveTokens);
+    var compatibilityMatch = matchesSearchableText(metaPayload.compatibility, queryNorm, effectiveTokens);
+    var customAttributesMatch = matchesSearchableText(metaPayload.customAttributes, queryNorm, effectiveTokens);
+    var keywordMatch = matchesSearchableText(metaPayload.keywordHints, queryNorm, effectiveTokens);
+
+    if (!baseScore && !brandMatch && !categoryMatch && !descriptionMatch && !compatibilityMatch && !customAttributesMatch && !keywordMatch && !allTokensFound) {
+      continue;
+    }
+
+    var totalScore = baseScore;
+    var tituloNorm = normalizeText(titulo);
+    var skuNorm = normalizeText(item.sku || "");
+    if (queryNorm && tituloNorm.includes(queryNorm)) totalScore += 400;
+    if (queryNorm && skuNorm.includes(queryNorm.replace(/\s/g, ""))) totalScore += 450;
+    if (brandMatch) totalScore += 350;
+    if (categoryMatch) totalScore += 170;
+    if (descriptionMatch) totalScore += 180;
+    if (compatibilityMatch) totalScore += 240;
+    if (customAttributesMatch) totalScore += 140;
+    if (keywordMatch) totalScore += 220;
+    if (allTokensFound && effectiveTokens.length > 1) totalScore += 300;
+    if (!totalScore) totalScore = 1;
+
+    ranked.push({ sku: item.sku, titulo: titulo, score: totalScore });
+  }
+
+  ranked.sort(function (a, b) {
+    if (b.score !== a.score) return b.score - a.score;
+    return (a.titulo || "").localeCompare(b.titulo || "", "pt-BR");
+  });
+
+  return ranked;
 }
 
 function invalidateMetaCache(): void {
@@ -7554,6 +7715,60 @@ app.get(BASE + "/produtos", async (c) => {
     // ── SERVER-SIDE PRICE / STOCK SORT (global across pages)
     // ═══════════════════════════════════════════════════════
     var isPriceSort = sortParam === "preco-asc" || sortParam === "preco-desc" || sortParam === "estoque";
+    var isRelevanceSort = sortParam === "relevancia" && !!search.trim();
+    if (isRelevanceSort) {
+      var relCategoryName: string | null = null;
+      var relCategoryBreadcrumb: string[] | null = null;
+      var relAllowedSkus: Set<string> | null = null;
+      var relAllMetas = await getAllProductMetas();
+
+      if (categoriaSlug) {
+        var relCatTree = (await kv.get("category_tree")) || [];
+        var relTargetSlugs = collectDescendantSlugs(relCatTree, categoriaSlug);
+        if (relTargetSlugs.length === 0) relTargetSlugs.push(categoriaSlug);
+        relCategoryName = findCategoryName(relCatTree, categoriaSlug);
+        relCategoryBreadcrumb = buildCategoryBreadcrumb(relCatTree, categoriaSlug);
+
+        relAllowedSkus = new Set<string>();
+        var relTargetSet = new Set(relTargetSlugs);
+        relAllMetas.forEach(function (meta) {
+          if (meta.visible === false) return;
+          if (meta.category && relTargetSet.has(meta.category) && meta.sku) {
+            relAllowedSkus!.add(meta.sku);
+          }
+        });
+
+        if (relAllowedSkus.size === 0) {
+          return c.json({
+            data: [],
+            pagination: { page: 1, limit: limit, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
+            categoria: categoriaSlug,
+            categoryName: relCategoryName,
+            categoryBreadcrumb: relCategoryBreadcrumb,
+          });
+        }
+      }
+
+      var relSearchIndex = await getAllProductsSearchIndex();
+      var relRanked = rankCatalogSearchResults(relSearchIndex, search, relAllMetas, {
+        visibleOnly: publicMode === "1" || !!categoriaSlug,
+        allowedSkus: relAllowedSkus,
+      });
+      var relTotal = relRanked.length;
+      var relTotalPages = Math.ceil(relTotal / limit);
+      var relSlice = relRanked.slice(rangeStart, rangeStart + limit).map(function (item) {
+        return { sku: item.sku, titulo: item.titulo };
+      });
+
+      return c.json({
+        data: relSlice,
+        pagination: { page: page, limit: limit, total: relTotal, totalPages: relTotalPages, hasNext: page < relTotalPages, hasPrev: page > 1 },
+        categoria: categoriaSlug || null,
+        categoryName: relCategoryName,
+        categoryBreadcrumb: relCategoryBreadcrumb,
+      });
+    }
+
     if (isPriceSort && (publicMode === "1" || categoriaSlug)) {
       // PriceSort request
       var psT0 = Date.now();
@@ -19175,6 +19390,44 @@ app.get(BASE + "/homepage-categories", async (c) => {
   }
 });
 
+// GET /admin/homepage-categories — admin, returns all cards including inactive
+app.get(BASE + "/admin/homepage-categories", async (c) => {
+  try {
+    var userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+
+    var allRaw = await kv.getByPrefix("hpcat:");
+    var cards: any[] = [];
+    for (var raw of allRaw) {
+      try {
+        var card = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (card && card.id) cards.push(card);
+      } catch { /* skip */ }
+    }
+    cards.sort(function(a: any, b: any) { return (a.order || 0) - (b.order || 0); });
+
+    var signPromises = cards.map(function(card: any) {
+      if (!card.filename) return Promise.resolve(null);
+      return supabaseAdmin.storage
+        .from(ASSETS_BUCKET)
+        .createSignedUrl(card.filename, 86400)
+        .then(function(res: any) {
+          if (res.data && res.data.signedUrl) {
+            card.imageUrl = res.data.signedUrl;
+          }
+          return null;
+        })
+        .catch(function() { return null; });
+    });
+    await Promise.allSettled(signPromises);
+
+    return c.json({ categories: cards });
+  } catch (e: any) {
+    console.error("[admin/homepage-categories] Error:", e);
+    return c.json({ error: "Erro ao buscar categorias da homepage." }, 500);
+  }
+});
+
 // POST /admin/homepage-categories — create a new homepage category card (upload image + metadata)
 app.post(BASE + "/admin/homepage-categories", async (c) => {
   try {
@@ -19238,6 +19491,7 @@ app.post(BASE + "/admin/homepage-categories", async (c) => {
     };
 
     await kv.set("hpcat:" + cardId, JSON.stringify(card));
+    invalidateHomepageCache();
     // homepage-categories: created
 
     return c.json({ created: true, card: card });
@@ -19333,6 +19587,7 @@ app.put(BASE + "/admin/homepage-categories/:id", async (c) => {
 
     card.updatedAt = new Date().toISOString();
     await kv.set("hpcat:" + cardId, JSON.stringify(card));
+    invalidateHomepageCache();
     // homepage-categories: updated
 
     return c.json({ updated: true, card: card });
@@ -19361,6 +19616,7 @@ app.delete(BASE + "/admin/homepage-categories/:id", async (c) => {
     }
 
     await kv.del("hpcat:" + cardId);
+    invalidateHomepageCache();
     // homepage-categories: deleted
 
     return c.json({ deleted: true });

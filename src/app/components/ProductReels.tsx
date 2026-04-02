@@ -40,7 +40,7 @@ export function ProductReelPlayer({ reel, onClose }: { reel: ReelItem; onClose: 
   var videoRef = useRef<HTMLVideoElement>(null);
   var progressRef = useRef<HTMLDivElement>(null);
   var [playing, setPlaying] = useState(true);
-  var [muted, setMuted] = useState(true);
+  var [muted, setMuted] = useState(false);
   var [currentTime, setCurrentTime] = useState(0);
   var [duration, setDuration] = useState(0);
   var [dragging, setDragging] = useState(false);
@@ -79,6 +79,19 @@ export function ProductReelPlayer({ reel, onClose }: { reel: ReelItem; onClose: 
     window.addEventListener("keydown", handler);
     return function () { window.removeEventListener("keydown", handler); };
   }, []);
+
+  useEffect(function () {
+    var vid = videoRef.current;
+    if (!vid) return;
+    vid.currentTime = 0;
+    vid.muted = false;
+    setMuted(false);
+    vid.play().catch(function () {
+      vid.muted = true;
+      setMuted(true);
+      vid.play().catch(function () {});
+    });
+  }, [reel.videoUrl]);
 
   function togglePlay() {
     var vid = videoRef.current;

@@ -111,7 +111,7 @@ function PromoPriceDisplay({ sku, promo, product, preloadedPrice, hidePrices }: 
     return (
       <div className="flex items-center gap-1.5" style={{ minHeight: "2.5rem" }}>
         <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg" style={{ fontSize: "0.68rem", fontWeight: 600 }}>
-          Consulte o preco
+          Consulte o preço
         </span>
       </div>
     );

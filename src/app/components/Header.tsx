@@ -196,7 +196,7 @@ export function Header() {
 
           {/* Search — desktop */}
           <div className="hidden lg:flex flex-1 max-w-xl mx-4">
-            <SearchAutocomplete />
+            <SearchAutocomplete variant="header" />
           </div>
 
           {/* Right-side actions */}
@@ -395,7 +395,7 @@ export function Header() {
 
       {/* ══════ MOBILE SEARCH BAR ══════ */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-2">
-        <SearchAutocomplete />
+        <SearchAutocomplete variant="mobile" placeholder="Peça, marca ou código..." />
       </div>
 
       {/* ══════ MOBILE MENU OVERLAY ══════ */}

@@ -382,7 +382,7 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
   sellableSet: Set<string> | null;
 }) {
   var [currentIndex, setCurrentIndex] = useState(initialIndex);
-  var [muted, setMuted] = useState(true);
+  var [muted, setMuted] = useState(false);
   var videoRef = useRef<HTMLVideoElement>(null);
   var touchStartY = useRef(0);
   var touchStartX = useRef(0);
@@ -424,6 +424,8 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
     var vid = videoRef.current;
     if (!vid) return;
     vid.currentTime = 0;
+    vid.muted = false;
+    setMuted(false);
     vid.play().catch(function () {
       vid.muted = true;
       setMuted(true);
@@ -852,9 +854,9 @@ function ReelsViewer({ reels, priceMap, initialIndex, onClose, sellableSet }: {
                           </p>
                         </div>
                       ) : !prodSellable ? (
-                        <p className="text-amber-500 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Indisponível para venda</p>
+                        <p className="text-amber-500 mt-0.5" style={{ fontSize: "0.72rem", fontWeight: 600 }}>Disponível apenas para cotação</p>
                       ) : (
-                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.78rem" }}>Consulte o preco</p>
+                        <p className="text-gray-400 mt-0.5" style={{ fontSize: "0.78rem" }}>Consulte o preço</p>
                       )}
                     </div>
                     <div className="flex flex-col gap-1 shrink-0">

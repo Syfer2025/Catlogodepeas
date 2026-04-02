@@ -30,11 +30,14 @@ import type { Product, Category } from "../data/products";
 
 const _cfGatewayVal = import.meta.env.VITE_CF_GATEWAY || "";
 const DIRECT_FUNCTION_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
+const IS_DEV_SERVER = import.meta.env.DEV;
 const BASE_URL = _cfGatewayVal === "dev"
   ? "/api-dev"
   : _cfGatewayVal
     ? "/api"
-    : DIRECT_FUNCTION_BASE_URL;
+    : IS_DEV_SERVER
+      ? "/api-dev"
+      : DIRECT_FUNCTION_BASE_URL;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge Function Warmup — fires at module load time (before React renders).
@@ -1998,9 +2001,9 @@ export interface AutocompleteResponse {
   totalMatches: number;
 }
 
-export const autocomplete = (q: string, limit = 8) => {
+export const autocomplete = (q: string, limit = 8, options?: RequestInit) => {
   const params = new URLSearchParams({ q, limit: String(limit) });
-  return request<AutocompleteResponse>(`/produtos/autocomplete?${params.toString()}`);
+  return request<AutocompleteResponse>(`/produtos/autocomplete?${params.toString()}`, options);
 };
 
 // ─── Product Images (Supabase Storage) ───
@@ -3882,6 +3885,12 @@ export interface HomepageCategoryCard {
 /** Public: get active homepage category cards */
 export const getHomepageCategories = () =>
   request<{ categories: HomepageCategoryCard[] }>("/homepage-categories");
+
+/** Admin: get all homepage category cards, including inactive */
+export const getAdminHomepageCategories = (accessToken: string) =>
+  request<{ categories: HomepageCategoryCard[] }>("/admin/homepage-categories", {
+    headers: { "X-User-Token": accessToken },
+  });
 
 /** Admin: create a homepage category card with image upload */
 export const createHomepageCategory = async (

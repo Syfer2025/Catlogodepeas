@@ -20,7 +20,7 @@
  * - "full": para pagina de detalhe do produto (tamanho maior, parcelamento)
  *
  * MODO CATALOGO:
- * Se catalogMode=true, mostra "Consulte o preco" ao inves do valor.
+ * Se catalogMode=true, mostra "Consulte o preço" ao inves do valor.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 import React, { useState, useEffect, useCallback } from "react";
@@ -290,7 +290,7 @@ function PriceBadgeInner({ sku, variant = "full", preloaded, forceShow }: PriceB
     return (
       <div className="flex items-center gap-1.5">
         <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg" style={{ fontSize: variant === "compact" ? "0.68rem" : "0.85rem", fontWeight: 600 }}>
-          Consulte o preco
+          Consulte o preço
         </span>
       </div>
     );

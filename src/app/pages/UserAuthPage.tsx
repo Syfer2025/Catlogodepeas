@@ -4,7 +4,7 @@
  * Supabase Auth. CNPJ auto-preenche via Receita Federal.
  * Pos-login: redireciona para /minha-conta ou /checkout.
  */
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect, startTransition, useCallback } from "react";
 import { Link, useNavigate } from "react-router";
 import User from "lucide-react/dist/esm/icons/user";
 import Mail from "lucide-react/dist/esm/icons/mail";
@@ -26,22 +26,18 @@ import { useDocumentMeta } from "../hooks/useDocumentMeta";
 import { useGA4 } from "../components/GA4Provider";
 import { useMarketing } from "../components/MarketingPixels";
 
-// ─── Google Logo SVG (inline for zero external dependency) ───
-// Force re-build
-function GoogleLogo() {
-  return (
-    <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-    </svg>
-  );
-}
-
 type Tab = "login" | "register";
 type ForgotStep = "idle" | "form" | "sent";
 type RegisterStep = "form" | "email-sent";
+
+const CUSTOMER_GOOGLE_LOGIN_ENABLED = false;
+
+function _sessionUsesGoogleProvider(session: any): boolean {
+  const provider = session?.user?.app_metadata?.provider;
+  if (provider === "google") return true;
+  const providers = session?.user?.app_metadata?.providers;
+  return Array.isArray(providers) && providers.includes("google");
+}
 
 export function UserAuthPage() {
   const navigate = useNavigate();
@@ -100,6 +96,36 @@ export function UserAuthPage() {
   const [forgotStep, setForgotStep] = useState<ForgotStep>("idle");
   const [forgotEmail, setForgotEmail] = useState("");
 
+  const clearCustomerSession = useCallback(async () => {
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {}
+  }, []);
+
+  const validateCustomerSession = useCallback(async (session: any): Promise<boolean> => {
+    if (!session?.access_token) return false;
+
+    if (!CUSTOMER_GOOGLE_LOGIN_ENABLED && _sessionUsesGoogleProvider(session)) {
+      await clearCustomerSession();
+      return false;
+    }
+
+    try {
+      const adminCheck = await api.checkAdmin(session.access_token);
+      if (adminCheck.isAdmin) {
+        await clearCustomerSession();
+        setError("Esta conta é exclusiva do painel administrativo. Use o login do admin.");
+        return false;
+      }
+      return true;
+    } catch (validationErr) {
+      console.error("[UserAuthPage] Session validation error:", validationErr);
+      await clearCustomerSession();
+      setError("Não foi possível validar esta sessão. Tente novamente.");
+      return false;
+    }
+  }, [clearCustomerSession]);
+
   // Check if already logged in + handle OAuth callback
   useEffect(() => {
     let redirected = false;
@@ -118,7 +144,6 @@ export function UserAuthPage() {
     if (oauthError) {
       const desc = oauthErrorDesc || oauthError;
       console.error("[UserAuthPage] OAuth error from Supabase:", oauthError, oauthErrorCode, desc);
-      setError("Erro no login com Google: " + desc.replace(/\+/g, " ") + ". Tente novamente ou use email/senha.");
       // Clean the URL
       try {
         window.history.replaceState({}, "", window.location.pathname);
@@ -129,15 +154,23 @@ export function UserAuthPage() {
     // 1) If URL has ?code=... from PKCE OAuth callback, try manual exchange
     const code = urlParams.get("code");
     if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchErr }) => {
+      if (!CUSTOMER_GOOGLE_LOGIN_ENABLED) {
+        try {
+          window.history.replaceState({}, "", window.location.pathname);
+        } catch (_e) { /* ignore */ }
+        clearCustomerSession();
+        return;
+      }
+
+      supabase.auth.exchangeCodeForSession(code).then(async ({ data, error: exchErr }) => {
         if (exchErr) {
           console.error("[UserAuthPage] Code exchange failed:", exchErr.message);
-          setError("Falha ao completar login com Google: " + exchErr.message);
+          setError("Falha ao concluir a autenticação. Entre com email e senha.");
           // Still try getSession as fallback
-          supabase.auth.getSession().then(({ data: d2 }) => {
-            if (d2.session?.access_token) goToAccount();
+          supabase.auth.getSession().then(async ({ data: d2 }) => {
+            if (d2.session?.access_token && await validateCustomerSession(d2.session)) goToAccount();
           });
-        } else if (data.session?.access_token) {
+        } else if (data.session?.access_token && await validateCustomerSession(data.session)) {
           goToAccount();
         }
       });
@@ -148,28 +181,30 @@ export function UserAuthPage() {
     }
 
     // 2) Check if user already has an active session
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.access_token) goToAccount();
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.access_token && await validateCustomerSession(data.session)) goToAccount();
     });
 
     // 3) Listen for auth state changes (catches INITIAL_SESSION, SIGNED_IN, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.access_token) {
-        goToAccount();
+        validateCustomerSession(session).then((ok) => {
+          if (ok) goToAccount();
+        });
       }
     });
 
     // 4) Also check hash fragment for implicit flow tokens (#access_token=...)
     if (window.location.hash && window.location.hash.includes("access_token")) {
       setTimeout(() => {
-        supabase.auth.getSession().then(({ data }) => {
-          if (data.session?.access_token) goToAccount();
+        supabase.auth.getSession().then(async ({ data }) => {
+          if (data.session?.access_token && await validateCustomerSession(data.session)) goToAccount();
         });
       }, 1000);
     }
 
     return () => { subscription.unsubscribe(); };
-  }, [navigate]);
+  }, [navigate, validateCustomerSession]);
 
   // Phone mask
   const formatPhone = (val: string) => {
@@ -474,10 +509,14 @@ export function UserAuthPage() {
       // Report success (clears failed attempt counter) — pass token so backend can verify
       api.reportLoginResult(loginEmail.trim(), true, data.session?.access_token).catch(() => {});
 
-      // GA4 + Meta: login event
-      trackEvent("login", { method: "email" });
-
       if (data.session?.access_token) {
+        const canUseCustomerArea = await validateCustomerSession(data.session);
+        if (!canUseCustomerArea) {
+          return;
+        }
+
+        // GA4 + Meta: login event
+        trackEvent("login", { method: "email" });
         startTransition(() => { navigate("/", { replace: true }); });
       }
     } catch (err: any) {
@@ -694,38 +733,6 @@ export function UserAuthPage() {
   };
 
   const strength = getStrength(regPassword);
-
-  // ─── Google OAuth ───
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const handleGoogleLogin = async () => {
-    setError(null);
-    setGoogleLoading(true);
-    try {
-      // Do not forget to complete setup at https://supabase.com/docs/guides/auth/social-login/auth-google
-      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.origin + "/minha-conta",
-        },
-      });
-      if (oauthErr) {
-        console.error("Google OAuth error:", oauthErr);
-        if (oauthErr.message.includes("provider is not enabled") || oauthErr.message.includes("not enabled")) {
-          setError("Login com Google ainda não está habilitado. Entre em contato com o administrador.");
-        } else {
-          setError(oauthErr.message || "Erro ao iniciar login com Google.");
-        }
-        setGoogleLoading(false);
-      }
-      // If no error, user is being redirected to Google — do NOT set googleLoading=false
-      // GA4: login with Google (fires before redirect)
-      trackEvent("login", { method: "google" });
-    } catch (err: any) {
-      console.error("Google OAuth exception:", err);
-      setError(err.message || "Erro ao conectar com Google.");
-      setGoogleLoading(false);
-    }
-  };
 
   // ─── Forgot password modal ───
   if (forgotStep !== "idle") {
@@ -1068,31 +1075,6 @@ export function UserAuthPage() {
                     <>
                       Entrar
                       <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-
-                {/* Divider */}
-                <div className="flex items-center gap-3 my-1">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou</span>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </div>
-
-                {/* Google OAuth */}
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={googleLoading}
-                  className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
-                  style={{ fontSize: "0.9rem", fontWeight: 500 }}
-                >
-                  {googleLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                  ) : (
-                    <>
-                      <GoogleLogo />
-                      Continuar com Google
                     </>
                   )}
                 </button>
@@ -1676,33 +1658,6 @@ export function UserAuthPage() {
                   {" "}e{" "}
                   <Link to="/politica-de-privacidade" className="underline hover:text-gray-600">política de privacidade</Link>.
                 </p>
-
-                {/* Google OAuth — only for PF; PJ must register with full form */}
-                {personType === "pf" ? (
-                  <>
-                    <div className="flex items-center gap-3 mt-4">
-                      <div className="flex-1 h-px bg-gray-200" />
-                      <span className="text-gray-400" style={{ fontSize: "0.78rem" }}>ou cadastre-se com</span>
-                      <div className="flex-1 h-px bg-gray-200" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleGoogleLogin}
-                      disabled={googleLoading}
-                      className="w-full bg-white hover:bg-gray-50 disabled:opacity-60 border border-gray-300 text-gray-700 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-colors cursor-pointer shadow-sm"
-                      style={{ fontSize: "0.9rem", fontWeight: 500 }}
-                    >
-                      {googleLoading ? (
-                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                      ) : (
-                        <>
-                          <GoogleLogo />
-                          Continuar com Google
-                        </>
-                      )}
-                    </button>
-                  </>
-                ) : null}
               </form>
             )}
           </div>

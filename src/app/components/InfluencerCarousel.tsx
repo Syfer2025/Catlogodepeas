@@ -33,6 +33,7 @@ export function InfluencerCarousel() {
   var [viewerOpen, setViewerOpen] = useState(false);
   var [priceMap, setPriceMap] = useState<Record<string, ReelPriceData>>({});
   var scrollRef = useRef<HTMLDivElement>(null);
+  var closingViewerFromHistory = useRef(false);
 
   useEffect(function () {
     api.getInfluencers().then(function (res) {
@@ -107,6 +108,53 @@ export function InfluencerCarousel() {
     setViewerOpen(true);
   }
 
+  var dismissViewer = useCallback(function () {
+    setViewerOpen(false);
+    setSelectedInfluencer(null);
+  }, []);
+
+  var closeViewer = useCallback(function (syncHistory = true) {
+    if (syncHistory && typeof window !== "undefined") {
+      try {
+        var currentState = window.history.state;
+        if (currentState && currentState.__influencerReelsViewer === true) {
+          closingViewerFromHistory.current = true;
+          window.history.back();
+          return;
+        }
+      } catch {}
+    }
+    dismissViewer();
+  }, [dismissViewer]);
+
+  useEffect(function () {
+    if (!viewerOpen || !selectedInfluencer || typeof window === "undefined") return;
+
+    try {
+      var currentState = window.history.state;
+      if (!(currentState && currentState.__influencerReelsViewer === true)) {
+        var nextState = currentState && typeof currentState === "object"
+          ? Object.assign({}, currentState)
+          : {};
+        nextState.__influencerReelsViewer = true;
+        nextState.influencerId = selectedInfluencer.id;
+        window.history.pushState(nextState, "", window.location.href);
+      }
+    } catch {}
+
+    function handlePopState() {
+      dismissViewer();
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return function () {
+      window.removeEventListener("popstate", handlePopState);
+      if (closingViewerFromHistory.current) {
+        closingViewerFromHistory.current = false;
+      }
+    };
+  }, [viewerOpen, selectedInfluencer, dismissViewer]);
+
   var scroll = useCallback(function (dir: "left" | "right") {
     if (!scrollRef.current) return;
     var amount = dir === "left" ? -200 : 200;
@@ -162,7 +210,7 @@ export function InfluencerCarousel() {
           influencer={selectedInfluencer}
           reels={selectedInfluencer.reels}
           priceMap={priceMap}
-          onClose={function () { setViewerOpen(false); setSelectedInfluencer(null); }}
+          onClose={closeViewer}
         />
       )}
     </section>
@@ -593,7 +641,6 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
         {currentProducts.length === 1 && (
           <Link
             to={"/produto/" + encodeURIComponent(currentProducts[0].sku)}
-            onClick={onClose}
             className="flex flex-col items-center gap-1"
           >
             <div className="w-11 h-11 bg-black/40 rounded-full flex items-center justify-center text-white hover:bg-black/60 transition-colors">
@@ -701,7 +748,6 @@ function InfluencerReelsViewer({ influencer, reels, priceMap, onClose }: {
                     <Link
                       key={prod.sku}
                       to={"/produto/" + encodeURIComponent(prod.sku)}
-                      onClick={onClose}
                       className="shrink-0 flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-lg p-2 hover:bg-white/20 transition-colors"
                       style={{ maxWidth: "200px" }}
                     >

@@ -418,21 +418,46 @@ function DeferredCartDrawerMount() {
 
 /** MaintenanceGate - checks maintenance mode */
 function MaintenanceGate({ children }: { children: ReactNode }) {
+  function hasBypassCookie() {
+    if (typeof document === "undefined") return false;
+    try {
+      var cookies = document.cookie.split(";");
+      for (var ci = 0; ci < cookies.length; ci++) {
+        var parts = cookies[ci].trim().split("=");
+        if (parts[0] === "maint_bypass" && parts.slice(1).join("=").startsWith("bypass_")) {
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  var host = typeof window !== "undefined" ? window.location.hostname : "";
+  var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br" || host.endsWith(".catalogo-pecas.pages.dev") || host === "catalogo-pecas.pages.dev";
   var [maintenance, setMaintenance] = useState(false);
-  var [bypassed, setBypassed] = useState(false);
   var pathname = typeof window !== "undefined" ? window.location.pathname : "";
   var isDocsPage = pathname === "/docs";
   var isPublicRecoveryPage = pathname === "/conta/redefinir-senha";
   var skipMaintenanceGate = isDocsPage || isPublicRecoveryPage;
+  var [maintenanceResolved, setMaintenanceResolved] = useState(!isProduction || skipMaintenanceGate);
+  var [bypassed, setBypassed] = useState(hasBypassCookie);
 
   useEffect(function () {
-    if (skipMaintenanceGate) return;
+    var cancelled = false;
+
+    if (skipMaintenanceGate) {
+      setMaintenance(false);
+      setMaintenanceResolved(true);
+      return;
+    }
+
     var COOKIE_NAME = "maint_bypass";
     try {
       var params = new URLSearchParams(window.location.search);
       var previewParam = params.get("preview");
       if (previewParam === "off") {
         document.cookie = COOKIE_NAME + "=;path=/;max-age=0;SameSite=Lax;Secure";
+        setBypassed(false);
         params.delete("preview");
         var cleanUrl2 = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
         window.history.replaceState({}, "", cleanUrl2);
@@ -442,47 +467,57 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
         var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
         window.history.replaceState({}, "", cleanUrl);
         api.validatePreviewToken(previewParam).then(function (result) {
-          if (result && result.valid && result.cookie) {
+          if (!cancelled && result && result.valid && result.cookie) {
             document.cookie = COOKIE_NAME + "=" + result.cookie + ";path=/;max-age=86400;SameSite=Lax;Secure";
             setBypassed(true);
           }
         }).catch(function () {});
-        return;
       }
     } catch (e) {}
-    // Check existing bypass cookie (HMAC-signed by server, not forgeable)
-    try {
-      var cookies = document.cookie.split(";");
-      for (var ci = 0; ci < cookies.length; ci++) {
-        var parts = cookies[ci].trim().split("=");
-        if (parts[0] === COOKIE_NAME && parts.slice(1).join("=").startsWith("bypass_")) {
-          setBypassed(true);
-          return;
-        }
-      }
-    } catch (e) {}
-    var host = window.location.hostname;
-    var isProduction = host === "autopecascarretao.com" || host === "autopecascarretao.com.br" || host === "www.autopecascarretao.com" || host === "www.autopecascarretao.com.br" || host.endsWith(".catalogo-pecas.pages.dev") || host === "catalogo-pecas.pages.dev";
-    if (!isProduction) return;
-    // Default to maintenance ON — only turns OFF if API explicitly returns maintenanceMode:false.
-    // This ensures the site stays locked if the backend is unreachable.
-    setMaintenance(true);
+
+    if (hasBypassCookie()) setBypassed(true);
+    if (!isProduction) {
+      setMaintenance(false);
+      setMaintenanceResolved(true);
+      return;
+    }
+
+    setMaintenanceResolved(false);
     var attempts = 0;
     var maxAttempts = 3;
     function tryCheck() {
       attempts++;
       api.getSettings().then(function (s) {
-        if (s && s.maintenanceMode === false) setMaintenance(false);
+        if (cancelled) return;
+        setMaintenance(!!(s && s.maintenanceMode));
+        setMaintenanceResolved(true);
       }).catch(function () {
+        if (cancelled) return;
         if (attempts < maxAttempts) {
           setTimeout(tryCheck, 2000);
         } else {
           console.warn("[MaintenanceGate] API unreachable after " + maxAttempts + " attempts — keeping maintenance ON");
+          setMaintenance(true);
+          setMaintenanceResolved(true);
         }
       });
     }
     tryCheck();
-  }, []);
+    return function () { cancelled = true; };
+  }, [isProduction, skipMaintenanceGate]);
+
+  if (!maintenanceResolved && !skipMaintenanceGate && isProduction) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-8 h-8 border-3 border-red-200 border-t-red-600 rounded-full animate-spin" />
+          <p className="text-gray-500" style={{ fontSize: "0.92rem", fontWeight: 500 }}>
+            Carregando a loja...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (bypassed && maintenance) {
     return (
