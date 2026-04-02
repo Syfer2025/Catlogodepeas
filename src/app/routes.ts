@@ -15,6 +15,7 @@ import { createBrowserRouter } from "react-router";
 import React from "react";
 import { Layout } from "./components/Layout";
 import { RouteErrorFallback } from "./components/RouteErrorFallback";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
 
 // ── Public pages — lazy loaded for smaller initial bundle ────────────────────
 const HomePage = React.lazy(() =>
@@ -79,10 +80,10 @@ const NotFoundPage = React.lazy(() =>
 );
 
 // ── Admin routes — lazy loaded (customers never download admin code) ─────────
-const AdminPage = React.lazy(() =>
-  import("./pages/admin/AdminPage").then((m) => ({ default: m.AdminPage }))
+const AdminEntryPage = lazyWithRetry(() =>
+  import("./pages/admin/AdminEntryPage").then((m) => ({ default: m.AdminEntryPage }))
 );
-const AdminResetPasswordPage = React.lazy(() =>
+const AdminResetPasswordPage = lazyWithRetry(() =>
   import("./pages/admin/AdminResetPasswordPage").then((m) => ({ default: m.AdminResetPasswordPage }))
 );
 
@@ -193,7 +194,7 @@ export const router = createBrowserRouter([
   {
     path: "/admin",
     errorElement: React.createElement(RouteErrorFallback),
-    Component: AdminPage,
+    Component: AdminEntryPage,
   },
   {
     path: "/admin/reset-password",

@@ -29,11 +29,12 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { Product, Category } from "../data/products";
 
 const _cfGatewayVal = import.meta.env.VITE_CF_GATEWAY || "";
+const DIRECT_FUNCTION_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
 const BASE_URL = _cfGatewayVal === "dev"
   ? "/api-dev"
   : _cfGatewayVal
     ? "/api"
-    : `https://${projectId}.supabase.co/functions/v1/make-server-b7b07654`;
+    : DIRECT_FUNCTION_BASE_URL;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge Function Warmup — fires at module load time (before React renders).
@@ -279,13 +280,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 /** Priority request that bypasses the global concurrency semaphore.
  *  Use for critical auth calls that must never be blocked by bulk product fetches. */
 async function requestPriority<T>(path: string, options?: RequestInit): Promise<T> {
-  return _requestInner<T>(path, options);
+  try {
+    return await _requestInner<T>(path, options);
+  } catch (e: any) {
+    const isNetwork = e?.name === "AbortError"
+      || (e instanceof TypeError && /failed to fetch|network/i.test(e.message || ""));
+    if (!isNetwork || BASE_URL === DIRECT_FUNCTION_BASE_URL) {
+      throw e;
+    }
+    console.warn("[API] Priority request failed via gateway on " + path + ", retrying direct Supabase origin.");
+    return _requestInner<T>(path, options, DIRECT_FUNCTION_BASE_URL);
+  }
 }
 
-async function _requestInner<T>(path: string, options?: RequestInit): Promise<T> {
+async function _requestInner<T>(path: string, options?: RequestInit, baseUrl: string = BASE_URL): Promise<T> {
   var callerSignal = options ? (options.signal as AbortSignal | undefined) : undefined;
   // Wait for edge function warmup before first attempt (prevents cold-start network errors)
-  if (!_warmupReady) {
+  if (baseUrl === BASE_URL && !_warmupReady) {
     await Promise.race([
       _warmupPromise,
       callerSignal ? new Promise<void>(function (_, reject) {
@@ -316,7 +327,7 @@ async function _requestInner<T>(path: string, options?: RequestInit): Promise<T>
       // X-User-Token has no additional CORS cost. The server reads it directly.
       const _merged: Record<string, string> = { ...headers, ...((options?.headers || {}) as Record<string, string>) };
       let _finalPath = path;
-      const res = await fetch(BASE_URL + _finalPath, {
+      const res = await fetch(baseUrl + _finalPath, {
         ...options,
         headers: _merged,
         signal: controller.signal,
