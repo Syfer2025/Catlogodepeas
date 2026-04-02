@@ -7063,21 +7063,31 @@ app.get(BASE + "/admin/product-search", async (c) => {
       const meta = allMetas.get(product.sku) || null;
       if (meta && meta.visible === false) continue;
 
-      const baseScore = scoreProduct(queryNorm, queryPhonetic, effectiveTokens, product.titulo || "", product.sku || "");
-      const brandMatch = matchesSearchableText(meta?.brand, queryNorm, effectiveTokens);
-      const descriptionMatch = matchesSearchableText(
-        [meta?.description, meta?.descricao, meta?.seoDescription, meta?.seo_description]
-          .filter(Boolean)
-          .join(" "),
-        queryNorm,
-        effectiveTokens,
-      );
+      const titulo = product.titulo || "";
+      const brand = meta?.brand || "";
+      const descParts = [meta?.description, meta?.descricao, meta?.seoDescription, meta?.seo_description].filter(Boolean).join(" ");
 
-      if (!baseScore && !brandMatch && !descriptionMatch) continue;
+      // Cross-field matching: combine titulo + brand + description for token search
+      const combinedText = [titulo, brand, descParts].filter(Boolean).join(" ");
+      const combinedNorm = normalizeText(combinedText);
+
+      // Check if ALL query tokens appear somewhere across combined fields
+      var allTokensFound = true;
+      for (var ti = 0; ti < effectiveTokens.length; ti++) {
+        if (!combinedNorm.includes(effectiveTokens[ti])) { allTokensFound = false; break; }
+      }
+
+      const baseScore = scoreProduct(queryNorm, queryPhonetic, effectiveTokens, titulo, product.sku || "");
+      const brandMatch = matchesSearchableText(brand, queryNorm, effectiveTokens);
+      const descriptionMatch = matchesSearchableText(descParts, queryNorm, effectiveTokens);
+
+      if (!baseScore && !brandMatch && !descriptionMatch && !allTokensFound) continue;
 
       let totalScore = baseScore;
       if (brandMatch) totalScore += 350;
       if (descriptionMatch) totalScore += 180;
+      // Cross-field boost: tokens spread across title+brand+description
+      if (allTokensFound && effectiveTokens.length > 1) totalScore += 300;
       if (!totalScore) totalScore = 1;
 
       matches.push({ sku: product.sku, titulo: product.titulo, score: totalScore });
