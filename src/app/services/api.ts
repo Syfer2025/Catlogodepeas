@@ -4318,6 +4318,22 @@ export const sendSmtpTestEmail = (accessToken: string, to: string) =>
     headers: { "X-User-Token": accessToken },
   });
 
+// ─── Transactional Email Testing ───
+
+export type TransactionalEmailType = "order_confirmation" | "payment_approved" | "admin_new_order" | "shipping_notification" | "abandoned_cart" | "warranty_certificate";
+
+export const sendTransactionalTestEmail = (accessToken: string, type: TransactionalEmailType, toEmail: string) =>
+  request<{ ok: boolean; message: string }>("/admin/email-test/send", {
+    method: "POST",
+    body: JSON.stringify({ type, toEmail }),
+    headers: { "X-User-Token": accessToken },
+  });
+
+export const previewTransactionalEmail = (accessToken: string, type: TransactionalEmailType) =>
+  request<{ ok: boolean; html: string }>("/admin/email-test/preview/" + type, {
+    headers: { "X-User-Token": accessToken },
+  });
+
 // ─── Admin Dashboard ───
 
 export interface DashboardStats {

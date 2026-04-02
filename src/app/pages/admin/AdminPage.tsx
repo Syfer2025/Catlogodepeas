@@ -33,7 +33,7 @@
  */
 import { useState, useEffect, useCallback, startTransition } from "react";
 import { Link } from "react-router";
-import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen } from "lucide-react";
+import { Package, Layers, Settings, ExternalLink, Menu, X, LogOut, User, ChevronRight, Loader2, Tag, Users, Plug, CreditCard, Truck, ShoppingCart, ScrollText, Image, LayoutGrid, Flame, ShieldCheck, AlertTriangle, Shield, Columns2, BadgeCheck, Mail, LayoutDashboard, Ticket, FileCheck, Award, Star, Handshake, Building2, FlaskConical, Bug, Megaphone, Gift, MessageCircle, Search, ChevronDown, Wallet, BarChart3, Palette, Wrench, MousePointerClick, Video, Sparkles, HelpCircle, Ruler, BookOpen, Send } from "lucide-react";
 import { AdminLoginPage } from "./AdminLoginPage";
 import * as api from "../../services/api";
 import { supabase } from "../../services/supabaseClient";
@@ -83,8 +83,9 @@ const AdminInfrastructure = lazy(() => import("./AdminInfrastructure").then((m) 
 const AdminFaq = lazy(() => import("./AdminFaq").then((m) => ({ default: m.AdminFaq })));
 const AdminDimensions = lazy(() => import("./AdminDimensions").then((m) => ({ default: m.AdminDimensions })));
 const AdminSalesControl = lazy(() => import("./AdminSalesControl").then((m) => ({ default: m.AdminSalesControl })));
+const AdminTransactionalEmails = lazy(() => import("./AdminTransactionalEmails").then((m) => ({ default: m.AdminTransactionalEmails })));
 
-type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions" | "sales-control";
+type Tab = "dashboard" | "orders" | "products" | "categories" | "attributes" | "clients" | "coupons" | "banners" | "mid-banners" | "hp-categories" | "super-promo" | "brands" | "reviews" | "api-sige" | "paghiper" | "mercadopago" | "shipping" | "sisfrete-wt" | "marketing" | "audit-log" | "settings" | "admins" | "footer-badges" | "email-marketing" | "lgpd-requests" | "warranty" | "affiliates" | "branches" | "regression-test" | "error-scanner" | "exit-intent" | "whatsapp" | "reels" | "influencers" | "infrastructure" | "faq" | "dimensions" | "sales-control" | "transactional-emails";
 
 const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -100,6 +101,7 @@ const navItems: { id: Tab; label: string; icon: typeof Package }[] = [
   { id: "clients", label: "Clientes", icon: Users },
   { id: "reviews", label: "Avaliacoes", icon: Star },
   { id: "email-marketing", label: "Email Marketing", icon: Mail },
+  { id: "transactional-emails", label: "Emails Transacionais", icon: Send },
   { id: "whatsapp", label: "WhatsApp Cart", icon: MessageCircle },
   { id: "exit-intent", label: "Popup de Saida", icon: MousePointerClick },
   { id: "marketing", label: "Pixels & Analytics", icon: BarChart3 },
@@ -154,7 +156,7 @@ const navSections: NavSection[] = [
   { label: "Vendas", icon: ShoppingCart, items: ["orders", "sales-control", "coupons", "warranty"], collapsible: true },
   { label: "Catalogo", icon: Package, items: ["products", "categories", "attributes", "brands"], collapsible: true },
   { label: "Clientes", icon: Users, items: ["clients", "reviews"], collapsible: true },
-  { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "whatsapp", "exit-intent", "marketing"], collapsible: true },
+  { label: "Marketing", icon: Megaphone, items: ["affiliates", "email-marketing", "transactional-emails", "whatsapp", "exit-intent", "marketing"], collapsible: true },
   { label: "Aparencia", icon: Palette, items: ["reels", "influencers", "banners", "mid-banners", "hp-categories", "super-promo", "footer-badges", "branches", "faq"], collapsible: true },
   { label: "Pagamentos & Frete", icon: Wallet, items: ["paghiper", "mercadopago", "dimensions", "shipping", "sisfrete-wt"], collapsible: true },
   { label: "Integracoes", icon: Plug, items: ["api-sige"], collapsible: true },
@@ -622,6 +624,8 @@ export function AdminPage() {
         return <AdminDimensions />;
       case "sales-control":
         return <AdminSalesControl />;
+      case "transactional-emails":
+        return <AdminTransactionalEmails />;
     }
   };
 
