@@ -20540,10 +20540,22 @@ async function _sendSmtpEmail(cfg: any, opts: { from: string; to: string; subjec
 // ─── TRANSACTIONAL EMAIL HELPERS ────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════
 
-function _emailBaseWrapper(bodyContent: string): string {
+function _emailBaseWrapper(bodyContent: string, logoUrl?: string): string {
+  var logoHtml = '';
+  if (logoUrl) {
+    logoHtml = '<div style="text-align:center;padding:20px 20px 12px;">'
+      + '<img src="' + logoUrl + '" alt="Carretao Auto Pecas" style="max-width:200px;max-height:60px;height:auto;" />'
+      + '</div>';
+  } else {
+    logoHtml = '<div style="text-align:center;padding:20px 20px 12px;">'
+      + '<span style="font-size:20px;font-weight:800;color:#dc2626;letter-spacing:-0.5px;">CARRETAO</span>'
+      + '<span style="font-size:12px;color:#6b7280;display:block;margin-top:2px;">Auto Pecas</span>'
+      + '</div>';
+  }
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>'
     + '<body style="margin:0;padding:0;background:#f4f4f5;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">'
     + '<div style="max-width:600px;margin:0 auto;padding:20px;">'
+    + logoHtml
     + '<div style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">'
     + bodyContent
     + '</div>'
@@ -20554,7 +20566,21 @@ function _emailBaseWrapper(bodyContent: string): string {
     + '</div></body></html>';
 }
 
-function _buildOrderConfirmationHtml(order: any): string {
+// Helper: get logo URL for emails
+async function _getEmailLogoUrl(): Promise<string | null> {
+  try {
+    var meta: any = await kv.get("site_logo");
+    if (!meta || !meta.filename) return null;
+    var url = meta.url || null;
+    try {
+      var signedData = await supabaseAdmin.storage.from(ASSETS_BUCKET).createSignedUrl(meta.filename, 604800);
+      if (signedData.data?.signedUrl) url = signedData.data.signedUrl;
+    } catch (_e) {}
+    return url;
+  } catch (_e) { return null; }
+}
+
+function _buildOrderConfirmationHtml(order: any, logoUrl?: string): string {
   var itemsHtml = "";
   var items = order.items || [];
   for (var ei = 0; ei < items.length; ei++) {
@@ -20633,10 +20659,10 @@ function _buildOrderConfirmationHtml(order: any): string {
     + '</table>'
     + '</div>';
 
-  return _emailBaseWrapper(body);
+  return _emailBaseWrapper(body, logoUrl);
 }
 
-function _buildPaymentApprovedHtml(order: any): string {
+function _buildPaymentApprovedHtml(order: any, logoUrl?: string): string {
   var siteUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(".supabase.co", ".vercel.app");
   var body = ''
     + '<div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:24px 20px;text-align:center;">'
@@ -20658,10 +20684,10 @@ function _buildPaymentApprovedHtml(order: any): string {
     + '</div>'
     + '</div>';
 
-  return _emailBaseWrapper(body);
+  return _emailBaseWrapper(body, logoUrl);
 }
 
-function _buildAdminNewOrderHtml(order: any, userEmail: string): string {
+function _buildAdminNewOrderHtml(order: any, userEmail: string, logoUrl?: string): string {
   var itemsList = "";
   var items = order.items || [];
   for (var ej = 0; ej < items.length; ej++) {
@@ -20699,7 +20725,7 @@ function _buildAdminNewOrderHtml(order: any, userEmail: string): string {
   }
 
   body += '</div>';
-  return _emailBaseWrapper(body);
+  return _emailBaseWrapper(body, logoUrl);
 }
 
 // Helper: get user email from userId via Supabase Auth
@@ -20731,6 +20757,7 @@ async function _sendOrderConfirmationEmail(order: any) {
       console.warn("[Email] Order confirmation: no user email found, skipping.");
       return;
     }
+    var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
@@ -20740,7 +20767,7 @@ async function _sendOrderConfirmationEmail(order: any) {
       from: from,
       to: userEmail,
       subject: "Pedido #" + orderId + " recebido - Carretao Auto Pecas",
-      html: _buildOrderConfirmationHtml(order),
+      html: _buildOrderConfirmationHtml(order, logoUrl || undefined),
     });
     // Email: order confirmation sent
   } catch (err) {
@@ -20764,6 +20791,7 @@ async function _sendPaymentApprovedEmail(order: any) {
       console.warn("[Email] Payment approved: no user email found, skipping.");
       return;
     }
+    var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
@@ -20773,7 +20801,7 @@ async function _sendPaymentApprovedEmail(order: any) {
       from: from,
       to: userEmail,
       subject: "Pagamento confirmado - Pedido #" + orderId + " - Carretao Auto Pecas",
-      html: _buildPaymentApprovedHtml(order),
+      html: _buildPaymentApprovedHtml(order, logoUrl || undefined),
     });
     // Email: payment approved sent
   } catch (err) {
@@ -20794,12 +20822,13 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
       console.warn("[Email] Admin notification: no admin emails found, skipping.");
       return;
     }
+    var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
     var orderId = order.localOrderId || order.sigeOrderId || "N/A";
     var subject = "Novo pedido #" + orderId + " - R$ " + Number(order.total || 0).toFixed(2).replace(".", ",");
-    var html = _buildAdminNewOrderHtml(order, userEmail);
+    var html = _buildAdminNewOrderHtml(order, userEmail, logoUrl || undefined);
 
     for (var ak = 0; ak < adminEmails.length; ak++) {
       try {
@@ -20823,7 +20852,7 @@ async function _sendAdminNewOrderNotification(order: any, userEmail: string) {
 
 // ─── SHIPPING NOTIFICATION EMAIL ───
 
-function _buildShippingNotificationHtml(order: any): string {
+function _buildShippingNotificationHtml(order: any, logoUrl?: string): string {
   var siteUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(".supabase.co", ".vercel.app");
   var trackingCode = order.trackingCode || order.codigoRastreio || "";
   var trackingLink = order.trackingLink || "";
@@ -20868,7 +20897,7 @@ function _buildShippingNotificationHtml(order: any): string {
     + '</div>'
     + '</div>';
 
-  return _emailBaseWrapper(body);
+  return _emailBaseWrapper(body, logoUrl);
 }
 
 async function _sendShippingNotificationEmail(order: any) {
@@ -20886,6 +20915,7 @@ async function _sendShippingNotificationEmail(order: any) {
       console.warn("[Email] Shipping notification: no user email found, skipping.");
       return;
     }
+    var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
@@ -20894,7 +20924,7 @@ async function _sendShippingNotificationEmail(order: any) {
       from: from,
       to: userEmail,
       subject: "Pedido #" + orderId + " enviado! - Carretao Auto Pecas",
-      html: _buildShippingNotificationHtml(order),
+      html: _buildShippingNotificationHtml(order, logoUrl || undefined),
     });
   } catch (err) {
     console.error("[Email] Shipping notification error (non-fatal): " + err);
@@ -20903,7 +20933,7 @@ async function _sendShippingNotificationEmail(order: any) {
 
 // ─── ABANDONED CART EMAIL ───
 
-function _buildAbandonedCartEmailHtml(cart: any): string {
+function _buildAbandonedCartEmailHtml(cart: any, logoUrl?: string): string {
   var siteUrl = String(Deno.env.get("SUPABASE_URL") || "").replace(".supabase.co", ".vercel.app");
   var itemsHtml = "";
   var items = cart.items || [];
@@ -20944,7 +20974,7 @@ function _buildAbandonedCartEmailHtml(cart: any): string {
     + '</div>'
     + '</div>';
 
-  return _emailBaseWrapper(body);
+  return _emailBaseWrapper(body, logoUrl);
 }
 
 async function _sendAbandonedCartEmail(cart: any): Promise<boolean> {
@@ -20953,6 +20983,7 @@ async function _sendAbandonedCartEmail(cart: any): Promise<boolean> {
     if (!smtpCfg) return false;
     var email = cart.email;
     if (!email) return false;
+    var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
     var from = senderName + " <" + senderEmail + ">";
@@ -20960,7 +20991,7 @@ async function _sendAbandonedCartEmail(cart: any): Promise<boolean> {
       from: from,
       to: email,
       subject: "Voce esqueceu itens no carrinho! - Carretao Auto Pecas",
-      html: _buildAbandonedCartEmailHtml(cart),
+      html: _buildAbandonedCartEmailHtml(cart, logoUrl || undefined),
     });
     return true;
   } catch (err) {
@@ -21056,6 +21087,216 @@ app.post(BASE + "/admin/email-marketing/smtp-send-test", async (c) => {
   } catch (e: any) {
     console.error("[SMTP-SendTest] Send test email error:", e);
     return c.json({ error: _safeError("Falha ao enviar email de teste", e) }, 500);
+  }
+});
+
+// TRANSACTIONAL EMAIL TEST — preview & send test for any email type
+// ═══════════════════════════════════════════════════════════════════════
+
+// POST /admin/email-test/send — send a test transactional email
+app.post(BASE + "/admin/email-test/send", async (c) => {
+  try {
+    var userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    var adminResult = await isAdminUser(c.req.raw);
+    if (!adminResult.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+
+    var body = await c.req.json();
+    var etValid = validate(body, {
+      type: { required: true, type: "string", maxLen: 50 },
+      toEmail: { required: true, type: "string", maxLen: 254, custom: validators.email },
+    });
+    if (!etValid.ok) return c.json({ error: etValid.errors[0] || "Dados invalidos." }, 400);
+
+    var emailType = String(body.type).trim();
+    var toEmail = String(etValid.sanitized.toEmail || "").toLowerCase().trim();
+
+    var smtpCfg = await _getSmtpConfig();
+    if (!smtpCfg) return c.json({ error: "SMTP nao configurado. Configure na aba Email Marketing > Config." }, 400);
+
+    var logoUrl = await _getEmailLogoUrl();
+    var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
+    var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+    var from = senderName + " <" + senderEmail + ">";
+
+    // Build mock data for each email type
+    var mockOrder = {
+      localOrderId: "TESTE-" + Date.now().toString(36).toUpperCase(),
+      sigeOrderId: null,
+      createdAt: new Date().toISOString(),
+      total: 487.90,
+      paymentMethod: "pix",
+      status: "awaiting_payment",
+      items: [
+        { sku: "FLT-001", titulo: "Filtro de Oleo Motor Premium", quantidade: 2, valorUnitario: 89.90, precoUnitario: 89.90 },
+        { sku: "PST-045", titulo: "Pastilha de Freio Dianteira Ceramica", quantidade: 1, valorUnitario: 159.90, precoUnitario: 159.90, warranty: { name: "Garantia Estendida 24 meses", durationMonths: 24, price: 29.90, planId: "ge-24m" } },
+        { sku: "COR-012", titulo: "Correia Dentada Sincronizadora", quantidade: 1, valorUnitario: 118.30, precoUnitario: 118.30 },
+      ],
+      shippingAddress: {
+        name: "Joao da Silva (Teste)",
+        address: "Rua das Autopecas, 123 - Centro",
+        city: "Sao Paulo",
+        state: "SP",
+        cep: "01001-000",
+        phone: "(11) 99999-0000",
+      },
+      shippingOption: {
+        carrierName: "Transportadora Exemplo",
+        carrierId: "carrier_teste",
+        carrierType: "manual",
+        price: 29.90,
+        deliveryDays: 5,
+        free: false,
+      },
+      trackingCode: "BR123456789XX",
+      trackingLink: "https://www.linkcorreios.com.br/?id=BR123456789XX",
+      codigoRastreio: "BR123456789XX",
+    };
+
+    var mockCart = {
+      email: toEmail,
+      name: "Joao (Teste)",
+      items: [
+        { sku: "FLT-001", titulo: "Filtro de Oleo Motor Premium", quantidade: 2, precoUnitario: 89.90 },
+        { sku: "PST-045", titulo: "Pastilha de Freio Dianteira Ceramica", quantidade: 1, precoUnitario: 159.90 },
+      ],
+      totalPrice: 339.70,
+    };
+
+    var subject = "";
+    var html = "";
+
+    switch (emailType) {
+      case "order_confirmation":
+        subject = "[TESTE] Pedido #" + mockOrder.localOrderId + " recebido - Carretao Auto Pecas";
+        html = _buildOrderConfirmationHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "payment_approved":
+        subject = "[TESTE] Pagamento confirmado - Pedido #" + mockOrder.localOrderId + " - Carretao Auto Pecas";
+        html = _buildPaymentApprovedHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "admin_new_order":
+        subject = "[TESTE] Novo pedido #" + mockOrder.localOrderId + " - R$ " + Number(mockOrder.total).toFixed(2).replace(".", ",");
+        html = _buildAdminNewOrderHtml(mockOrder, toEmail, logoUrl || undefined);
+        break;
+      case "shipping_notification":
+        subject = "[TESTE] Pedido #" + mockOrder.localOrderId + " enviado! - Carretao Auto Pecas";
+        html = _buildShippingNotificationHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "abandoned_cart":
+        subject = "[TESTE] Voce esqueceu itens no carrinho! - Carretao Auto Pecas";
+        html = _buildAbandonedCartEmailHtml(mockCart, logoUrl || undefined);
+        break;
+      case "warranty_certificate":
+        subject = "[TESTE] Certificado de Garantia Estendida - Pedido " + mockOrder.localOrderId + " - Carretao Auto Pecas";
+        var warrantyItems = mockOrder.items.filter(function(it) { return it.warranty; });
+        if (warrantyItems.length === 0) {
+          warrantyItems = [mockOrder.items[1]]; // has warranty in mock
+        }
+        // Build warranty certificate HTML directly
+        var wcBody = _buildWarrantyCertificateHtml(mockOrder.localOrderId, warrantyItems, "Joao da Silva (Teste)");
+        html = wcBody;
+        break;
+      default:
+        return c.json({ error: "Tipo de email invalido: " + emailType }, 400);
+    }
+
+    await _sendSmtpEmail(smtpCfg, {
+      from: from,
+      to: toEmail,
+      subject: subject,
+      html: html,
+    });
+
+    return c.json({ ok: true, message: "Email de teste (" + emailType + ") enviado para " + toEmail + "!" });
+  } catch (e: any) {
+    console.error("[EmailTest] Error:", e);
+    return c.json({ error: _safeError("Falha ao enviar email de teste", e) }, 500);
+  }
+});
+
+// GET /admin/email-test/preview — get HTML preview of a transactional email
+app.get(BASE + "/admin/email-test/preview/:type", async (c) => {
+  try {
+    var userId = await getAuthUserId(c.req.raw);
+    if (!userId) return c.json({ error: "Nao autorizado." }, 401);
+    var adminResult = await isAdminUser(c.req.raw);
+    if (!adminResult.isAdmin) return c.json({ error: "Acesso restrito a administradores." }, 403);
+
+    var emailType = c.req.param("type") || "";
+    var logoUrl = await _getEmailLogoUrl();
+
+    var mockOrder = {
+      localOrderId: "TESTE-" + Date.now().toString(36).toUpperCase(),
+      sigeOrderId: null,
+      createdAt: new Date().toISOString(),
+      total: 487.90,
+      paymentMethod: "pix",
+      status: "awaiting_payment",
+      items: [
+        { sku: "FLT-001", titulo: "Filtro de Oleo Motor Premium", quantidade: 2, valorUnitario: 89.90, precoUnitario: 89.90 },
+        { sku: "PST-045", titulo: "Pastilha de Freio Dianteira Ceramica", quantidade: 1, valorUnitario: 159.90, precoUnitario: 159.90, warranty: { name: "Garantia Estendida 24 meses", durationMonths: 24, price: 29.90, planId: "ge-24m" } },
+        { sku: "COR-012", titulo: "Correia Dentada Sincronizadora", quantidade: 1, valorUnitario: 118.30, precoUnitario: 118.30 },
+      ],
+      shippingAddress: {
+        name: "Joao da Silva (Teste)",
+        address: "Rua das Autopecas, 123 - Centro",
+        city: "Sao Paulo",
+        state: "SP",
+        cep: "01001-000",
+        phone: "(11) 99999-0000",
+      },
+      shippingOption: {
+        carrierName: "Transportadora Exemplo",
+        carrierId: "carrier_teste",
+        price: 29.90,
+        deliveryDays: 5,
+        free: false,
+      },
+      trackingCode: "BR123456789XX",
+      trackingLink: "https://www.linkcorreios.com.br/?id=BR123456789XX",
+      codigoRastreio: "BR123456789XX",
+    };
+
+    var mockCart = {
+      email: "teste@exemplo.com",
+      name: "Joao (Teste)",
+      items: [
+        { sku: "FLT-001", titulo: "Filtro de Oleo Motor Premium", quantidade: 2, precoUnitario: 89.90 },
+        { sku: "PST-045", titulo: "Pastilha de Freio Dianteira Ceramica", quantidade: 1, precoUnitario: 159.90 },
+      ],
+      totalPrice: 339.70,
+    };
+
+    var html = "";
+    switch (emailType) {
+      case "order_confirmation":
+        html = _buildOrderConfirmationHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "payment_approved":
+        html = _buildPaymentApprovedHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "admin_new_order":
+        html = _buildAdminNewOrderHtml(mockOrder, "cliente@exemplo.com", logoUrl || undefined);
+        break;
+      case "shipping_notification":
+        html = _buildShippingNotificationHtml(mockOrder, logoUrl || undefined);
+        break;
+      case "abandoned_cart":
+        html = _buildAbandonedCartEmailHtml(mockCart, logoUrl || undefined);
+        break;
+      case "warranty_certificate":
+        var warrantyItems = mockOrder.items.filter(function(it) { return it.warranty; });
+        html = _buildWarrantyCertificateHtml(mockOrder.localOrderId, warrantyItems, "Joao da Silva (Teste)");
+        break;
+      default:
+        return c.json({ error: "Tipo de email invalido: " + emailType }, 400);
+    }
+
+    return c.json({ ok: true, html: html });
+  } catch (e: any) {
+    console.error("[EmailTest] Preview error:", e);
+    return c.json({ error: _safeError("Erro ao gerar preview", e) }, 500);
   }
 });
 
@@ -24274,6 +24515,48 @@ app.delete(BASE + "/admin/reviews/:id", async function (c) {
 // ─── WARRANTY CERTIFICATE EMAIL ───
 // ═══════════════════════════════════════════════════════════════════════
 
+function _buildWarrantyCertificateHtml(orderId: string, warrantyItems: any[], customerName: string): string {
+  var paidDate = new Date();
+  var dateStr = paidDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  var itemsHtml = "";
+  for (var i = 0; i < warrantyItems.length; i++) {
+    var wi = warrantyItems[i];
+    var w = wi.warranty;
+    var endDate = new Date(paidDate);
+    endDate.setMonth(endDate.getMonth() + (w.durationMonths || 12));
+    var endDateStr = endDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    var certId = "GE-" + orderId + "-" + String(i + 1).padStart(3, "0");
+    itemsHtml += "<tr>"
+      + "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;\"><strong style=\"color:#1f2937;font-size:14px;\">" + (wi.titulo || wi.sku) + "</strong><br><span style=\"color:#6b7280;font-size:12px;\">SKU: " + wi.sku + "</span></td>"
+      + "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\"><span style=\"color:#2563eb;font-weight:700;font-size:14px;\">" + w.name + "</span><br><span style=\"color:#6b7280;font-size:12px;\">" + w.durationMonths + " meses</span></td>"
+      + "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\"><span style=\"color:#059669;font-weight:600;font-size:13px;\">" + dateStr + "</span><br><span style=\"color:#6b7280;font-size:11px;\">ate " + endDateStr + "</span></td>"
+      + "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\"><code style=\"background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;\">" + certId + "</code></td>"
+      + "</tr>";
+  }
+  return "<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"></head>"
+    + "<body style=\"margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;\">"
+    + "<div style=\"max-width:640px;margin:0 auto;padding:20px;\">"
+    + "<div style=\"background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);\">"
+    + "<div style=\"background:linear-gradient(135deg,#1e40af,#3b82f6);padding:32px 24px;text-align:center;\">"
+    + "<div style=\"width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;\"><span style=\"font-size:28px;\">&#128737;</span></div>"
+    + "<h1 style=\"color:#ffffff;font-size:22px;margin:0 0 6px 0;\">Certificado de Garantia Estendida</h1>"
+    + "<p style=\"color:rgba(255,255,255,0.85);font-size:14px;margin:0;\">Pedido " + orderId + "</p></div>"
+    + "<div style=\"padding:28px 24px;\">"
+    + "<p style=\"color:#374151;font-size:15px;margin:0 0 20px;\">Ola, <strong>" + customerName + "</strong>!</p>"
+    + "<p style=\"color:#374151;font-size:14px;margin:0 0 24px;line-height:1.6;\">Seu pagamento foi confirmado e a garantia estendida dos produtos abaixo ja esta ativa. Guarde este e-mail como comprovante — ele serve como seu certificado de garantia.</p>"
+    + "<div style=\"overflow-x:auto;\"><table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;\">"
+    + "<thead><tr style=\"background:#f9fafb;\"><th style=\"padding:10px 16px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Produto</th><th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Plano</th><th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Vigencia</th><th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Certificado</th></tr></thead>"
+    + "<tbody>" + itemsHtml + "</tbody></table></div>"
+    + "<div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-top:24px;\">"
+    + "<p style=\"color:#1e40af;font-size:13px;font-weight:700;margin:0 0 8px;\">Informacoes importantes:</p>"
+    + "<ul style=\"color:#374151;font-size:13px;margin:0;padding:0 0 0 18px;line-height:1.8;\"><li>A garantia estendida cobre defeitos de fabricacao apos o termino da garantia legal.</li><li>Para acionar a garantia, entre em contato informando o numero do certificado.</li><li>A garantia nao cobre danos por mau uso, acidentes ou desgaste natural.</li></ul></div>"
+    + "</div>"
+    + "<div style=\"background:#f9fafb;padding:20px 24px;text-align:center;border-top:1px solid #e5e7eb;\">"
+    + "<p style=\"color:#9ca3af;font-size:12px;margin:0;\">Carretao Auto Pecas — Garantia Estendida</p>"
+    + "<p style=\"color:#9ca3af;font-size:11px;margin:4px 0 0;\">Este e-mail foi gerado automaticamente. Em caso de duvidas, entre em contato.</p>"
+    + "</div></div></div></body></html>";
+}
+
 async function _sendWarrantyCertificateEmail(toEmail: string, orderId: string, warrantyItems: any[], customerName: string) {
   try {
     var cfg = await _getSmtpConfig();
@@ -24281,86 +24564,7 @@ async function _sendWarrantyCertificateEmail(toEmail: string, orderId: string, w
       console.warn("[Warranty] SMTP not configured — skipping certificate email");
       return;
     }
-    var paidDate = new Date();
-    var dateStr = paidDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-
-    var itemsHtml = "";
-    for (var i = 0; i < warrantyItems.length; i++) {
-      var wi = warrantyItems[i];
-      var w = wi.warranty;
-      var endDate = new Date(paidDate);
-      endDate.setMonth(endDate.getMonth() + (w.durationMonths || 12));
-      var endDateStr = endDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      var certId = "GE-" + orderId + "-" + String(i + 1).padStart(3, "0");
-
-      itemsHtml = itemsHtml +
-        "<tr>" +
-        "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;\">" +
-        "<strong style=\"color:#1f2937;font-size:14px;\">" + (wi.titulo || wi.sku) + "</strong>" +
-        "<br><span style=\"color:#6b7280;font-size:12px;\">SKU: " + wi.sku + "</span>" +
-        "</td>" +
-        "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\">" +
-        "<span style=\"color:#2563eb;font-weight:700;font-size:14px;\">" + w.name + "</span>" +
-        "<br><span style=\"color:#6b7280;font-size:12px;\">" + w.durationMonths + " meses</span>" +
-        "</td>" +
-        "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\">" +
-        "<span style=\"color:#059669;font-weight:600;font-size:13px;\">" + dateStr + "</span>" +
-        "<br><span style=\"color:#6b7280;font-size:11px;\">ate " + endDateStr + "</span>" +
-        "</td>" +
-        "<td style=\"padding:12px 16px;border-bottom:1px solid #e5e7eb;text-align:center;\">" +
-        "<code style=\"background:#eff6ff;color:#2563eb;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;\">" + certId + "</code>" +
-        "</td>" +
-        "</tr>";
-    }
-
-    var html =
-      "<!DOCTYPE html>" +
-      "<html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"></head>" +
-      "<body style=\"margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;\">" +
-      "<div style=\"max-width:640px;margin:0 auto;padding:20px;\">" +
-      "<div style=\"background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);\">" +
-      // Header
-      "<div style=\"background:linear-gradient(135deg,#1e40af,#3b82f6);padding:32px 24px;text-align:center;\">" +
-      "<div style=\"width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;\">" +
-      "<span style=\"font-size:28px;\">&#128737;</span>" +
-      "</div>" +
-      "<h1 style=\"color:#ffffff;font-size:22px;margin:0 0 6px 0;\">Certificado de Garantia Estendida</h1>" +
-      "<p style=\"color:rgba(255,255,255,0.85);font-size:14px;margin:0;\">Pedido " + orderId + "</p>" +
-      "</div>" +
-      // Body
-      "<div style=\"padding:28px 24px;\">" +
-      "<p style=\"color:#374151;font-size:15px;margin:0 0 20px;\">Ola, <strong>" + customerName + "</strong>!</p>" +
-      "<p style=\"color:#374151;font-size:14px;margin:0 0 24px;line-height:1.6;\">Seu pagamento foi confirmado e a garantia estendida dos produtos abaixo ja esta ativa. " +
-      "Guarde este e-mail como comprovante — ele serve como seu certificado de garantia.</p>" +
-      // Table
-      "<div style=\"overflow-x:auto;\">" +
-      "<table style=\"width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;\">" +
-      "<thead><tr style=\"background:#f9fafb;\">" +
-      "<th style=\"padding:10px 16px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Produto</th>" +
-      "<th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Plano</th>" +
-      "<th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Vigencia</th>" +
-      "<th style=\"padding:10px 16px;text-align:center;font-size:12px;color:#6b7280;font-weight:600;border-bottom:1px solid #e5e7eb;\">Certificado</th>" +
-      "</tr></thead>" +
-      "<tbody>" + itemsHtml + "</tbody>" +
-      "</table>" +
-      "</div>" +
-      // Info box
-      "<div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-top:24px;\">" +
-      "<p style=\"color:#1e40af;font-size:13px;font-weight:700;margin:0 0 8px;\">Informacoes importantes:</p>" +
-      "<ul style=\"color:#374151;font-size:13px;margin:0;padding:0 0 0 18px;line-height:1.8;\">" +
-      "<li>A garantia estendida cobre defeitos de fabricacao apos o termino da garantia legal.</li>" +
-      "<li>Para acionar a garantia, entre em contato informando o numero do certificado.</li>" +
-      "<li>A garantia nao cobre danos por mau uso, acidentes ou desgaste natural.</li>" +
-      "</ul>" +
-      "</div>" +
-      "</div>" +
-      // Footer
-      "<div style=\"background:#f9fafb;padding:20px 24px;text-align:center;border-top:1px solid #e5e7eb;\">" +
-      "<p style=\"color:#9ca3af;font-size:12px;margin:0;\">Carretao Auto Pecas — Garantia Estendida</p>" +
-      "<p style=\"color:#9ca3af;font-size:11px;margin:4px 0 0;\">Este e-mail foi gerado automaticamente. Em caso de duvidas, entre em contato.</p>" +
-      "</div>" +
-      "</div></div></body></html>";
-
+    var html = _buildWarrantyCertificateHtml(orderId, warrantyItems, customerName);
     var fromAddr = cfg.fromName ? (cfg.fromName + " <" + cfg.smtpUser + ">") : cfg.smtpUser;
     await _sendSmtpEmail(cfg, {
       from: fromAddr,
@@ -24368,7 +24572,6 @@ async function _sendWarrantyCertificateEmail(toEmail: string, orderId: string, w
       subject: "Certificado de Garantia Estendida - Pedido " + orderId,
       html: html,
     });
-    // Warranty: certificate email sent
   } catch (e) {
     console.error("[Warranty] Certificate email send error: " + e);
   }
