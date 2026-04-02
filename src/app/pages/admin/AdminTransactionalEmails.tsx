@@ -3,10 +3,10 @@
  *
  * Permite ao admin visualizar e testar cada tipo de email que o site envia:
  * confirmacao de pedido, pagamento aprovado, notificacao admin, envio/rastreio,
- * carrinho abandonado, certificado de garantia.
+ * carrinho abandonado, certificado de garantia e recuperacao de senha.
  */
 import { useState, useCallback } from "react";
-import { Mail, Send, Eye, CheckCircle, AlertTriangle, Loader2, ShoppingCart, CreditCard, Bell, Truck, ShoppingBag, ShieldCheck, RefreshCw } from "lucide-react";
+import { Mail, Send, Eye, CheckCircle, AlertTriangle, Loader2, ShoppingCart, CreditCard, Bell, Truck, ShoppingBag, ShieldCheck, RefreshCw, KeyRound } from "lucide-react";
 import * as api from "../../services/api";
 import { getValidAdminToken } from "./adminAuth";
 
@@ -81,6 +81,26 @@ const EMAIL_TYPES: EmailTypeConfig[] = [
     bgColor: "bg-purple-50",
     borderColor: "border-purple-200",
     trigger: "Automatico: pagamento confirmado de pedido com itens com garantia",
+  },
+  {
+    id: "admin_password_recovery",
+    label: "Recuperacao de Senha Admin",
+    description: "Enviado quando um administrador usa o fluxo de 'esqueci minha senha' do painel.",
+    icon: KeyRound,
+    color: "text-slate-700",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    trigger: "Manual: solicitacao de recuperacao na tela /admin",
+  },
+  {
+    id: "user_password_recovery",
+    label: "Recuperacao de Senha Cliente",
+    description: "Enviado quando um cliente solicita recuperacao de senha da propria conta.",
+    icon: KeyRound,
+    color: "text-cyan-700",
+    bgColor: "bg-cyan-50",
+    borderColor: "border-cyan-200",
+    trigger: "Manual: solicitacao de recuperacao em /conta",
   },
 ];
 

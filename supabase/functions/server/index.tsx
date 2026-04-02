@@ -1745,10 +1745,10 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
               console.log("[AdminWhitelist] Created new user for admin: " + emailLower);
               // Generate recovery link so the new admin can set their own password
               try {
-                var sUrl = Deno.env.get("SUPABASE_URL") || "";
                 var rlRes = await supabaseAdmin.auth.admin.generateLink({
                   type: "recovery",
                   email: emailLower,
+                  options: { redirectTo: _getSiteUrl() + "/admin/reset-password" },
                 });
                 if (rlRes.error) {
                   console.error("[AdminWhitelist] Generate recovery link error:", rlRes.error.message);
@@ -1839,6 +1839,7 @@ app.post(BASE + "/auth/admin-whitelist", async (c) => {
       var rlRes2 = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email: emailLower,
+        options: { redirectTo: _getSiteUrl() + "/admin/reset-password" },
       });
       if (rlRes2.error) {
         console.error("[AdminWhitelist] Resend invite - generate link error:", rlRes2.error.message);
@@ -1976,18 +1977,16 @@ app.get(BASE + "/auth/admin-whitelist", async (c) => {
   }
 });
 
-// ──��� Password Recovery (polling last_sign_in_at) ───
-// GoTrue's OTP verification is broken in this project, and the Edge Functions
-// Gateway blocks unauthenticated GET requests (401), so we can't use a server
-// callback to capture redirect tokens either.
+// ─── Password Recovery ───────────────────────────────────────────────
+// Current flow:
+// 1. Generate a secure Supabase recovery link server-side with redirectTo
+// 2. Send the email through the store's own SMTP/domain configuration
+// 3. Supabase verifies the link click and redirects back with recovery tokens
+// 4. The frontend sets the session and calls supabase.auth.updateUser()
 //
-// New approach:
-// 1. Record the user's current last_sign_in_at before sending the email
-// 2. Send recovery email — GoTrue's {{ .ConfirmationURL }} link works fine
-// 3. When the user clicks the link GoTrue verifies it and creates a session,
-//    which updates last_sign_in_at
-// 4. The frontend polls /auth/recovery-status — server detects the change
-// 5. Password is changed via admin API (admin.updateUserById)
+// Legacy recovery-status/reset-password endpoints remain below for backward
+// compatibility, but the active frontend recovery flow now uses the link-based
+// session established by the recovery URL.
 
 // Step 1: Send recovery email
 app.post(BASE + "/auth/forgot-password", async (c) => {
@@ -2005,48 +2004,27 @@ app.post(BASE + "/auth/forgot-password", async (c) => {
     if (!fpValid.valid) {
       return c.json({ error: fpValid.errors[0] || "Dados invalidos." }, 400);
     }
-    var email = fpValid.data.email || "";
+    var email = String(fpValid.data.email || "").toLowerCase().trim();
 
     if (!email) {
       return c.json({ error: "Email é obrigatório." }, 400);
     }
 
-    const recoveryId = crypto.randomUUID();
-    // Recovery initiated
-
-    // Look up user to get their current last_sign_in_at (efficient single-user lookup)
-    let userId: string | null = null;
-    let lastSignInBefore: string | null = null;
+    var user: any = null;
     try {
-      const user = await _findUserByEmail(email);
-      userId = user?.id || null;
-      lastSignInBefore = user?.last_sign_in_at || null;
-      // User lookup complete
+      user = await _findUserByEmail(email);
     } catch (lookupErr) {
       console.error("Forgot-password: user lookup error:", lookupErr);
     }
 
-    await kv.set(`recovery:${recoveryId}`, JSON.stringify({
-      email,
-      userId,
-      lastSignInBefore,
-      status: "pending",
-      created_at: Date.now(),
-    }));
-
-    // Send recovery email — redirect goes to the Figma site (we don't need
-    // to capture the tokens; we detect the click via last_sign_in_at)
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/admin/reset-password",
-    });
-
-    if (error) {
-      console.error("Forgot-password error:", error.message);
-    } else {
-      // Recovery email sent
+    if (user && await _isAdminRecoveryEmail(email)) {
+      var sentOk = await _sendPasswordRecoveryEmail(email, "admin");
+      if (!sentOk) {
+        console.error("[ForgotPassword] Failed to send custom admin recovery email for " + email);
+      }
     }
 
-    // Always respond with sent: true (don't reveal if email exists)
+    // Always respond with sent: true (don't reveal if email exists or SMTP state)
     return c.json({ sent: true });
   } catch (e) {
     console.error("Forgot-password exception:", e);
@@ -3442,43 +3420,27 @@ app.post(BASE + "/auth/user/forgot-password", async (c) => {
     if (!vResult.valid) {
       return c.json({ error: vResult.errors[0] || "Dados invalidos." }, 400);
     }
-    var email = vResult.data.email || "";
+    var email = String(vResult.data.email || "").toLowerCase().trim();
 
     if (!email) {
       return c.json({ error: "Email é obrigatório." }, 400);
     }
 
-    const recoveryId = crypto.randomUUID();
-    // Recovery initiated
-
-    let userId: string | null = null;
-    let lastSignInBefore: string | null = null;
+    var user: any = null;
     try {
-      const user = await _findUserByEmail(email);
-      userId = user?.id || null;
-      lastSignInBefore = user?.last_sign_in_at || null;
+      user = await _findUserByEmail(email);
     } catch (lookupErr) {
       console.error("User forgot-password: user lookup error:", lookupErr);
     }
 
-    await kv.set(`recovery:${recoveryId}`, JSON.stringify({
-      email,
-      userId,
-      lastSignInBefore,
-      status: "pending",
-      created_at: Date.now(),
-      type: "user",
-    }));
-
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-      redirectTo: (Deno.env.get("SITE_URL") || "https://www.carretaoautopecas.com.br") + "/conta/redefinir-senha",
-    });
-
-    if (error) {
-      console.error("User forgot-password error:", error.message);
-      return c.json({ sent: false, error: "Erro ao enviar email de recuperação. Tente novamente em alguns minutos." });
+    if (user) {
+      var sentOk = await _sendPasswordRecoveryEmail(email, "user");
+      if (!sentOk) {
+        console.error("[ForgotPasswordUser] Failed to send custom user recovery email for " + email);
+      }
     }
 
+    // Always respond with sent: true (don't reveal if email exists or SMTP state)
     return c.json({ sent: true });
   } catch (e) {
     console.error("User forgot-password exception:", e);
@@ -20580,6 +20542,102 @@ async function _getEmailLogoUrl(): Promise<string | null> {
   } catch (_e) { return null; }
 }
 
+function _getSiteUrl(): string {
+  var siteUrl = String(Deno.env.get("SITE_URL") || "https://www.autopecascarretao.com.br").trim();
+  if (!siteUrl) siteUrl = "https://www.autopecascarretao.com.br";
+  return siteUrl.replace(/\/+$/, "");
+}
+
+async function _isAdminRecoveryEmail(email: string): Promise<boolean> {
+  var emailLower = String(email || "").toLowerCase().trim();
+  if (!emailLower) return false;
+  if (_isMasterEmail(emailLower)) return true;
+  var adminEmails = await _getAdminWhitelist();
+  for (var ai = 0; ai < adminEmails.length; ai++) {
+    if (String(adminEmails[ai] || "").toLowerCase() === emailLower) return true;
+  }
+  return false;
+}
+
+function _buildPasswordRecoveryHtml(recoveryLink: string, audience: "admin" | "user", logoUrl?: string): string {
+  var isAdmin = audience === "admin";
+  var title = isAdmin ? "Recuperacao de Senha do Painel Admin" : "Recuperacao de Senha";
+  var subtitle = isAdmin
+    ? "Recebemos uma solicitacao para redefinir a senha do seu acesso administrativo."
+    : "Recebemos uma solicitacao para redefinir a senha da sua conta.";
+  var buttonLabel = isAdmin ? "Redefinir Senha do Admin" : "Redefinir Minha Senha";
+  var nextStep = isAdmin
+    ? "Apos redefinir a senha, acesse novamente o painel em " + _getSiteUrl() + "/admin."
+    : "Apos redefinir a senha, voce podera entrar normalmente na sua conta no site.";
+  var body = ''
+    + '<div style="background:linear-gradient(135deg,#dc2626,#991b1b);padding:24px 20px;text-align:center;">'
+    + '<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">' + title + '</h1>'
+    + '<p style="margin:8px 0 0;color:#fecaca;font-size:14px;line-height:1.5;">' + subtitle + '</p>'
+    + '</div>'
+    + '<div style="padding:24px 20px;">'
+    + '<p style="margin:0 0 16px;color:#374151;font-size:14px;line-height:1.6;">Para continuar com seguranca, use o botao abaixo. Este link expira automaticamente e so pode ser usado uma vez.</p>'
+    + '<div style="text-align:center;margin:24px 0;">'
+    + '<a href="' + recoveryLink + '" style="background:#dc2626;color:#ffffff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block;">' + buttonLabel + '</a>'
+    + '</div>'
+    + '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px;">'
+    + '<div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">Dicas de seguranca</div>'
+    + '<ul style="margin:0;padding-left:18px;color:#4b5563;font-size:13px;line-height:1.7;">'
+    + '<li>Confirme que o dominio aberto no navegador e autopecascarretao.com.br.</li>'
+    + '<li>Ignore este email se voce nao solicitou a redefinicao.</li>'
+    + '<li>Nunca pediremos senha atual, codigo por WhatsApp ou qualquer pagamento para liberar acesso.</li>'
+    + '<li>Se tiver duvida, abra o site digitando o dominio manualmente no navegador.</li>'
+    + '</ul>'
+    + '</div>'
+    + '<p style="margin:0 0 12px;color:#4b5563;font-size:13px;line-height:1.6;">' + nextStep + '</p>'
+    + '<p style="margin:0 0 8px;color:#6b7280;font-size:12px;">Se o botao nao funcionar, copie e cole este endereco no navegador:</p>'
+    + '<div style="word-break:break-all;background:#111827;color:#f9fafb;border-radius:8px;padding:12px;font-size:12px;line-height:1.5;">' + recoveryLink + '</div>'
+    + '</div>';
+  return _emailBaseWrapper(body, logoUrl);
+}
+
+async function _sendPasswordRecoveryEmail(toEmail: string, audience: "admin" | "user"): Promise<boolean> {
+  var emailLower = String(toEmail || "").toLowerCase().trim();
+  if (!emailLower) return false;
+  try {
+    var smtpCfg = await _getSmtpConfig();
+    if (!smtpCfg) {
+      console.error("[PasswordRecovery] SMTP not configured for " + audience + " recovery email.");
+      return false;
+    }
+    var redirectPath = audience === "admin" ? "/admin/reset-password" : "/conta/redefinir-senha";
+    var rlRes = await supabaseAdmin.auth.admin.generateLink({
+      type: "recovery",
+      email: emailLower,
+      options: { redirectTo: _getSiteUrl() + redirectPath },
+    });
+    if (rlRes.error) {
+      console.error("[PasswordRecovery] Generate link error for " + audience + " " + emailLower + ":", rlRes.error.message);
+      return false;
+    }
+    var recoveryLink = rlRes.data?.properties?.action_link || "";
+    if (!recoveryLink) {
+      console.error("[PasswordRecovery] Empty recovery link for " + audience + " " + emailLower);
+      return false;
+    }
+    var logoUrl = await _getEmailLogoUrl();
+    var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
+    var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
+    var subject = audience === "admin"
+      ? "Recuperacao de senha do painel admin - Carretao Auto Pecas"
+      : "Recuperacao de senha - Carretao Auto Pecas";
+    await _sendSmtpEmail(smtpCfg, {
+      from: senderName + " <" + senderEmail + ">",
+      to: emailLower,
+      subject: subject,
+      html: _buildPasswordRecoveryHtml(recoveryLink, audience, logoUrl || undefined),
+    });
+    return true;
+  } catch (e) {
+    console.error("[PasswordRecovery] Send custom recovery email error:", e);
+    return false;
+  }
+}
+
 function _buildOrderConfirmationHtml(order: any, logoUrl?: string): string {
   var itemsHtml = "";
   var items = order.items || [];
@@ -21162,6 +21220,8 @@ app.post(BASE + "/admin/email-test/send", async (c) => {
       ],
       totalPrice: 339.70,
     };
+    var mockAdminRecoveryLink = _getSiteUrl() + "/admin/reset-password#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
+    var mockUserRecoveryLink = _getSiteUrl() + "/conta/redefinir-senha#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
 
     var subject = "";
     var html = "";
@@ -21196,6 +21256,14 @@ app.post(BASE + "/admin/email-test/send", async (c) => {
         // Build warranty certificate HTML directly
         var wcBody = _buildWarrantyCertificateHtml(mockOrder.localOrderId, warrantyItems, "Joao da Silva (Teste)");
         html = wcBody;
+        break;
+      case "admin_password_recovery":
+        subject = "[TESTE] Recuperacao de senha do painel admin - Carretao Auto Pecas";
+        html = _buildPasswordRecoveryHtml(mockAdminRecoveryLink, "admin", logoUrl || undefined);
+        break;
+      case "user_password_recovery":
+        subject = "[TESTE] Recuperacao de senha - Carretao Auto Pecas";
+        html = _buildPasswordRecoveryHtml(mockUserRecoveryLink, "user", logoUrl || undefined);
         break;
       default:
         return c.json({ error: "Tipo de email invalido: " + emailType }, 400);
@@ -21267,6 +21335,8 @@ app.get(BASE + "/admin/email-test/preview/:type", async (c) => {
       ],
       totalPrice: 339.70,
     };
+    var mockAdminRecoveryLink = _getSiteUrl() + "/admin/reset-password#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
+    var mockUserRecoveryLink = _getSiteUrl() + "/conta/redefinir-senha#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
 
     var html = "";
     switch (emailType) {
@@ -21288,6 +21358,12 @@ app.get(BASE + "/admin/email-test/preview/:type", async (c) => {
       case "warranty_certificate":
         var warrantyItems = mockOrder.items.filter(function(it) { return it.warranty; });
         html = _buildWarrantyCertificateHtml(mockOrder.localOrderId, warrantyItems, "Joao da Silva (Teste)");
+        break;
+      case "admin_password_recovery":
+        html = _buildPasswordRecoveryHtml(mockAdminRecoveryLink, "admin", logoUrl || undefined);
+        break;
+      case "user_password_recovery":
+        html = _buildPasswordRecoveryHtml(mockUserRecoveryLink, "user", logoUrl || undefined);
         break;
       default:
         return c.json({ error: "Tipo de email invalido: " + emailType }, 400);

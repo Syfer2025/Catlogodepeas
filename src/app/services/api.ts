@@ -4331,7 +4331,7 @@ export const sendSmtpTestEmail = (accessToken: string, to: string) =>
 
 // ─── Transactional Email Testing ───
 
-export type TransactionalEmailType = "order_confirmation" | "payment_approved" | "admin_new_order" | "shipping_notification" | "abandoned_cart" | "warranty_certificate";
+export type TransactionalEmailType = "order_confirmation" | "payment_approved" | "admin_new_order" | "shipping_notification" | "abandoned_cart" | "warranty_certificate" | "admin_password_recovery" | "user_password_recovery";
 
 export const sendTransactionalTestEmail = (accessToken: string, type: TransactionalEmailType, toEmail: string) =>
   request<{ ok: boolean; message: string }>("/admin/email-test/send", {
