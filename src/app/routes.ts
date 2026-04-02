@@ -24,6 +24,9 @@ const HomePage = React.lazy(() =>
 const CatalogPage = React.lazy(() =>
   import("./pages/CatalogPage").then((m) => ({ default: m.CatalogPage }))
 );
+const BannerLandingPage = React.lazy(() =>
+  import("./pages/BannerLandingPage").then((m) => ({ default: m.BannerLandingPage }))
+);
 const ProductDetailPage = React.lazy(() =>
   import("./pages/ProductDetailPage").then((m) => ({ default: m.ProductDetailPage }))
 );
@@ -98,6 +101,11 @@ export const router = createBrowserRouter([
         path: "catalogo",
         errorElement: React.createElement(RouteErrorFallback),
         Component: CatalogPage,
+      },
+      {
+        path: "vitrine/banner/:bannerId",
+        errorElement: React.createElement(RouteErrorFallback),
+        Component: BannerLandingPage,
       },
       {
         path: "produto/:id",

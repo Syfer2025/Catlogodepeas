@@ -420,10 +420,13 @@ function DeferredCartDrawerMount() {
 function MaintenanceGate({ children }: { children: ReactNode }) {
   var [maintenance, setMaintenance] = useState(false);
   var [bypassed, setBypassed] = useState(false);
-  var isDocsPage = typeof window !== "undefined" && window.location.pathname === "/docs";
+  var pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  var isDocsPage = pathname === "/docs";
+  var isPublicRecoveryPage = pathname === "/conta/redefinir-senha";
+  var skipMaintenanceGate = isDocsPage || isPublicRecoveryPage;
 
   useEffect(function () {
-    if (isDocsPage) return;
+    if (skipMaintenanceGate) return;
     var COOKIE_NAME = "maint_bypass";
     try {
       var params = new URLSearchParams(window.location.search);
@@ -516,7 +519,7 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
       </>
     );
   }
-  if (bypassed || isDocsPage) return <>{children}</>;
+  if (bypassed || skipMaintenanceGate) return <>{children}</>;
   if (maintenance) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">

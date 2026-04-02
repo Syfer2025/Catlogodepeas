@@ -146,7 +146,8 @@ const HeroBannerCarousel = React.memo(function HeroBannerCarousel({ banners }: {
       {/* Slides — stacked. Active slide is in normal flow (defines height). Others are absolute + hidden. */}
       {banners.map((b, idx) => {
         const hasOverlay = b.title || b.subtitle || b.buttonText;
-        const isExt = b.buttonLink?.startsWith("http");
+        const targetUrl = api.getBannerTargetUrl(b);
+        const isExt = targetUrl?.startsWith("http");
         const isActive = idx === current;
         return (
           <div
@@ -217,11 +218,11 @@ const HeroBannerCarousel = React.memo(function HeroBannerCarousel({ banners }: {
                         {b.subtitle}
                       </p>
                     )}
-                    {b.buttonText && b.buttonLink && (
+                    {b.buttonText && targetUrl && (
                       <div className="flex flex-wrap gap-3">
                         {isExt ? (
                           <a
-                            href={b.buttonLink}
+                            href={targetUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-red-600 hover:bg-red-700 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-lg flex items-center gap-2 transition-colors"
@@ -232,7 +233,7 @@ const HeroBannerCarousel = React.memo(function HeroBannerCarousel({ banners }: {
                           </a>
                         ) : (
                           <Link
-                            to={b.buttonLink}
+                            to={targetUrl}
                             className="bg-red-600 hover:bg-red-700 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-lg flex items-center gap-2 transition-colors"
                             style={{ fontSize: "clamp(0.8rem, 1.5vw, 0.95rem)", fontWeight: 500 }}
                           >
@@ -248,11 +249,11 @@ const HeroBannerCarousel = React.memo(function HeroBannerCarousel({ banners }: {
             )}
 
             {/* Full-area link when no text overlay */}
-            {!hasOverlay && b.buttonLink && (
+            {targetUrl && (!hasOverlay || !b.buttonText) && (
               isExt ? (
-                <a href={b.buttonLink} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" />
+                <a href={targetUrl} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" />
               ) : (
-                <Link to={b.buttonLink} className="absolute inset-0 z-10" />
+                <Link to={targetUrl} className="absolute inset-0 z-10" />
               )
             )}
           </div>

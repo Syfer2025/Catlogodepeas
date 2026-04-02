@@ -683,6 +683,37 @@ function sanitizeInput(input: string): string {
   return clean;
 }
 
+function normalizeSkuArrayInput(raw: unknown, maxItems = 60): string[] {
+  var values: unknown[] = [];
+
+  if (Array.isArray(raw)) {
+    values = raw;
+  } else if (typeof raw === "string") {
+    var trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      var parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) values = parsed;
+      else values = trimmed.split(/[;,\n]+/g);
+    } catch {
+      values = trimmed.split(/[;,\n]+/g);
+    }
+  } else if (raw != null) {
+    values = [raw];
+  }
+
+  var seen = new Set<string>();
+  var result: string[] = [];
+  for (var i = 0; i < values.length; i++) {
+    var sku = sanitizeInput(String(values[i] || "")).substring(0, 120);
+    if (!sku || seen.has(sku)) continue;
+    seen.add(sku);
+    result.push(sku);
+    if (result.length >= maxItems) break;
+  }
+  return result;
+}
+
 function sanitizeObject(obj: Record<string, any>, fields: string[]): Record<string, any> {
   var result = Object.assign({}, obj);
   for (var i = 0; i < fields.length; i++) {
@@ -938,6 +969,9 @@ var MAINTENANCE_EXEMPT_PATHS = [
   "/admin",                       // Admin panel must remain functional
   "/validate-preview",            // Maintenance bypass token validation must work during maintenance
   "/health",                      // Health check always available
+  "/auth/forgot-password",        // Password recovery email must still work during maintenance
+  "/auth/user/forgot-password",   // Customer password recovery email must still work during maintenance
+  "/produtos/basic/bulk",         // Read-only: curated banner product basics
   "/produtos/saldos",             // Read-only: bulk stock balances (POST with SKU array)
   "/produtos/precos-bulk",        // Read-only: bulk prices
   "/produtos/meta/bulk",          // Read-only: bulk product metadata
@@ -1103,10 +1137,11 @@ app.use(BASE + "/produtos/*", async (c: any, next: any) => {
   if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return next();
   var subpath = c.req.path.substring(c.req.path.indexOf("/produtos/") + 10);
   // Public POST endpoints (used by catalog/checkout):
+  // - basic/bulk: basic product info fetch for curated pages
   // - saldos: balance check
   // - precos-bulk: bulk price fetch for catalog display
   // - meta/bulk: bulk metadata fetch for catalog display
-  if (subpath === "saldos" || subpath === "precos-bulk" || subpath === "meta/bulk") return next();
+  if (subpath === "basic/bulk" || subpath === "saldos" || subpath === "precos-bulk" || subpath === "meta/bulk") return next();
   return adminGuard(c, next);
 });
 
@@ -7003,6 +7038,67 @@ app.get(BASE + "/produtos/autocomplete", async (c) => {
   }
 });
 
+// GET /admin/product-search — admin product picker search across title, SKU, brand and meta descriptions
+app.get(BASE + "/admin/product-search", async (c) => {
+  try {
+    const adminCheck = await isAdminUser(c.req.raw);
+    if (!adminCheck.isAdmin) return c.json({ error: "Acesso restrito." }, 403);
+
+    const query = String(c.req.query("q") || "").substring(0, 200).trim();
+    const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "1000", 10) || 1000, 1), 1000);
+    if (query.length < 2) return c.json({ data: [], total: 0, query });
+
+    const queryNorm = normalizeText(query);
+    const queryPhonetic = phoneticKey(query);
+    const effectiveTokens = getEffectiveSearchTokens(query);
+
+    const [products, allMetas] = await Promise.all([
+      getAllProductsSearchIndex(),
+      getAllProductMetas(),
+    ]);
+
+    const matches: Array<{ sku: string; titulo: string; score: number }> = [];
+
+    for (const product of products) {
+      const meta = allMetas.get(product.sku) || null;
+      if (meta && meta.visible === false) continue;
+
+      const baseScore = scoreProduct(queryNorm, queryPhonetic, effectiveTokens, product.titulo || "", product.sku || "");
+      const brandMatch = matchesSearchableText(meta?.brand, queryNorm, effectiveTokens);
+      const descriptionMatch = matchesSearchableText(
+        [meta?.description, meta?.descricao, meta?.seoDescription, meta?.seo_description]
+          .filter(Boolean)
+          .join(" "),
+        queryNorm,
+        effectiveTokens,
+      );
+
+      if (!baseScore && !brandMatch && !descriptionMatch) continue;
+
+      let totalScore = baseScore;
+      if (brandMatch) totalScore += 350;
+      if (descriptionMatch) totalScore += 180;
+      if (!totalScore) totalScore = 1;
+
+      matches.push({ sku: product.sku, titulo: product.titulo, score: totalScore });
+    }
+
+    matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.titulo || "").localeCompare(b.titulo || "", "pt-BR");
+    });
+
+    return c.json({
+      data: matches.slice(0, limit).map((item) => ({ sku: item.sku, titulo: item.titulo })),
+      total: matches.length,
+      query,
+    });
+  } catch (e) {
+    console.error("Admin product search error:", e);
+    return c.json({ error: "Erro ao buscar produtos." }, 500);
+  }
+});
+
 // ════════════════════════════════════════════���══════
 // ─── CATEGORY-FILTERED CATALOG (public endpoint) ──
 // ═══════════════════════════════════════════════════
@@ -7028,6 +7124,8 @@ function collectDescendantSlugs(nodes: any[], targetSlug: string): string[] {
 // In-memory cache for product metas (category index)
 let metaIndexCache: { data: Map<string, any>; fetchedAt: number; buster: string } | null = null;
 const META_INDEX_CACHE_TTL = 30 * 1000; // 30 seconds (reduced KV reads for CPU savings, but keeping it fresh enough for admin edits)
+let productSearchIndexCache: { data: Array<{ sku: string; titulo: string }>; fetchedAt: number } | null = null;
+const PRODUCT_SEARCH_INDEX_TTL = 5 * 60 * 1000;
 
 async function getAllProductMetas(): Promise<Map<string, any>> {
   const now = Date.now();
@@ -7072,6 +7170,48 @@ async function getAllProductMetas(): Promise<Map<string, any>> {
 
   metaIndexCache = { data: map, fetchedAt: now, buster: currentBuster };
   return map;
+}
+
+async function getAllProductsSearchIndex(): Promise<Array<{ sku: string; titulo: string }>> {
+  const now = Date.now();
+  if (productSearchIndexCache && now - productSearchIndexCache.fetchedAt < PRODUCT_SEARCH_INDEX_TTL) {
+    return productSearchIndexCache.data;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("produtos")
+    .select("sku,titulo")
+    .range(0, 49999);
+
+  if (error) {
+    console.error("[getAllProductsSearchIndex] Error:", error);
+    return productSearchIndexCache?.data || [];
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  const nextData = rows
+    .filter((row: any) => row && row.sku)
+    .map((row: any) => ({ sku: String(row.sku), titulo: String(row.titulo || "") }));
+
+  productSearchIndexCache = { data: nextData, fetchedAt: now };
+  return nextData;
+}
+
+function getEffectiveSearchTokens(searchTerm: string): string[] {
+  const normalized = normalizeText(searchTerm);
+  const allTokens = normalized.split(" ").filter((token) => token.length >= 2);
+  const filteredTokens = allTokens.filter((token) => !PT_STOPWORDS.has(token));
+  return filteredTokens.length > 0 ? filteredTokens : allTokens;
+}
+
+function matchesSearchableText(candidate: unknown, queryNorm: string, effectiveTokens: string[]): boolean {
+  const normalizedCandidate = normalizeText(String(candidate || ""));
+  if (!normalizedCandidate) return false;
+  if (effectiveTokens.length === 0) return normalizedCandidate.includes(queryNorm);
+  for (const token of effectiveTokens) {
+    if (!normalizedCandidate.includes(token)) return false;
+  }
+  return true;
 }
 
 function invalidateMetaCache(): void {
@@ -7837,6 +7977,7 @@ app.put(BASE + "/produtos/:sku/titulo", async (c) => {
       console.error("Error updating titulo:", error.message);
       return c.json({ error: "Erro ao atualizar titulo." }, 500);
     }
+    productSearchIndexCache = null;
     return c.json({ sku, titulo: titulo.trim(), updated: true });
   } catch (e) {
     console.error("Error updating titulo:", e);
@@ -8271,6 +8412,77 @@ app.post(BASE + "/produtos/meta/bulk", async (c) => {
   }
 });
 
+// POST /produtos/basic/bulk — get basic product info for a curated SKU list
+app.post(BASE + "/produtos/basic/bulk", async (c) => {
+  try {
+    var basicBulkBody = await c.req.json();
+    var basicBulkValid = validate(basicBulkBody, {
+      skus: { required: true, type: "array", maxItems: 60 },
+    });
+    if (!basicBulkValid.ok) return c.json({ error: basicBulkValid.errors[0] || "skus deve ser um array." }, 400);
+
+    var skus = normalizeSkuArrayInput(basicBulkBody.skus, 60);
+    if (skus.length === 0) return c.json({ products: [], missingSkus: [] });
+
+    var supabaseUrl = Deno.env.get("SUPABASE_URL");
+    var supabaseKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !supabaseKey) {
+      return c.json({ error: "Configuração do servidor incompleta." }, 500);
+    }
+
+    var visibleSkus: string[] = [];
+    var missingSkus: string[] = [];
+    for (var s = 0; s < skus.length; s++) {
+      var metaRaw = await kv.get("produto_meta:" + skus[s]);
+      var meta = metaRaw ? (typeof metaRaw === "string" ? JSON.parse(metaRaw) : metaRaw) : null;
+      if (meta && meta.visible === false) {
+        missingSkus.push(skus[s]);
+        continue;
+      }
+      visibleSkus.push(skus[s]);
+    }
+
+    if (visibleSkus.length === 0) {
+      return c.json({ products: [], missingSkus: missingSkus });
+    }
+
+    var skuList = visibleSkus.map(function (sku) { return encodeURIComponent(sku); }).join(",");
+    var basicApiUrl = supabaseUrl + "/rest/v1/produtos?select=sku,titulo&sku=in.(" + skuList + ")&limit=" + visibleSkus.length;
+    var basicResponse = await fetch(basicApiUrl, {
+      method: "GET",
+      headers: {
+        apikey: supabaseKey,
+        Authorization: "Bearer " + supabaseKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!basicResponse.ok) {
+      var basicErrorText = await basicResponse.text();
+      console.error("Basic bulk product query error [" + basicResponse.status + "]: " + basicErrorText);
+      return c.json({ error: "Erro ao buscar produtos em lote." }, 502);
+    }
+
+    var basicData = await basicResponse.json() as Array<{ sku: string; titulo: string }>;
+    var productMap: Record<string, { sku: string; titulo: string }> = {};
+    for (var bi = 0; bi < basicData.length; bi++) {
+      if (basicData[bi] && basicData[bi].sku) productMap[basicData[bi].sku] = basicData[bi];
+    }
+
+    var orderedProducts: Array<{ sku: string; titulo: string }> = [];
+    for (var oi = 0; oi < visibleSkus.length; oi++) {
+      var found = productMap[visibleSkus[oi]];
+      if (found) orderedProducts.push(found);
+      else missingSkus.push(visibleSkus[oi]);
+    }
+
+    return c.json({ products: orderedProducts, missingSkus: missingSkus });
+  } catch (e) {
+    console.error("Error fetching basic products in bulk:", e);
+    return c.json({ error: "Erro ao buscar produtos em lote." }, 500);
+  }
+});
+
 // ═══════════════════════════════════════
 // ─── LOGO (Site Assets) ──────────────
 // ═══════════════════════════════════════
@@ -8694,10 +8906,15 @@ app.post(BASE + "/admin/banners", async (c) => {
     const subtitle = sanitizeInput(String(formData.get("subtitle") || "")).substring(0, 500);
     const buttonText = sanitizeInput(String(formData.get("buttonText") || "")).substring(0, 100);
     const buttonLink = sanitizeInput(String(formData.get("buttonLink") || "")).substring(0, 500);
+    const customPageEnabled = String(formData.get("customPageEnabled") || "false") === "true";
+    const selectedProductSkus = normalizeSkuArrayInput(formData.get("selectedProductSkus"), 60);
     const orderStr = String(formData.get("order") || "0");
     const activeStr = String(formData.get("active") || "true");
 
     if (!file) return c.json({ error: "Nenhum arquivo de imagem enviado." }, 400);
+    if (customPageEnabled && selectedProductSkus.length === 0) {
+      return c.json({ error: "Selecione pelo menos um produto para a página personalizada do banner." }, 400);
+    }
 
     const validTypes = ["image/avif", "image/png", "image/jpeg", "image/webp", "image/gif"];
     if (!validTypes.includes(file.type)) {
@@ -8734,6 +8951,8 @@ app.post(BASE + "/admin/banners", async (c) => {
       subtitle: subtitle,
       buttonText: buttonText,
       buttonLink: buttonLink,
+      customPageEnabled: customPageEnabled,
+      selectedProductSkus: selectedProductSkus,
       imageUrl: imageUrl,
       filename: filename,
       order: parseInt(orderStr, 10) || 0,
@@ -8779,8 +8998,13 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
       if (formData.has("subtitle")) banner.subtitle = sanitizeInput(String(formData.get("subtitle") || "")).substring(0, 500);
       if (formData.has("buttonText")) banner.buttonText = sanitizeInput(String(formData.get("buttonText") || "")).substring(0, 100);
       if (formData.has("buttonLink")) banner.buttonLink = sanitizeInput(String(formData.get("buttonLink") || "")).substring(0, 500);
+      if (formData.has("customPageEnabled")) banner.customPageEnabled = String(formData.get("customPageEnabled")) === "true";
+      if (formData.has("selectedProductSkus")) banner.selectedProductSkus = normalizeSkuArrayInput(formData.get("selectedProductSkus"), 60);
       if (formData.has("order")) banner.order = Math.min(Math.max(parseInt(String(formData.get("order") || "0"), 10) || 0, 0), 9999);
       if (formData.has("active")) banner.active = String(formData.get("active")) !== "false";
+      if (banner.customPageEnabled && (!Array.isArray(banner.selectedProductSkus) || banner.selectedProductSkus.length === 0)) {
+        return c.json({ error: "Selecione pelo menos um produto para a página personalizada do banner." }, 400);
+      }
 
       if (file && file.size > 0) {
         const validTypes = ["image/avif", "image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -8826,6 +9050,8 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
         subtitle: { type: "string", maxLen: 500 },
         buttonText: { type: "string", maxLen: 100 },
         buttonLink: { type: "string", maxLen: 2000 },
+        customPageEnabled: { type: "boolean" },
+        selectedProductSkus: { type: "array", maxItems: 60 },
         active: { type: "boolean" },
       });
       if (!bannerUpValid.ok) {
@@ -8835,8 +9061,13 @@ app.put(BASE + "/admin/banners/:id", async (c) => {
       if (body.subtitle !== undefined) banner.subtitle = bannerUpValid.sanitized.subtitle;
       if (body.buttonText !== undefined) banner.buttonText = bannerUpValid.sanitized.buttonText;
       if (body.buttonLink !== undefined) banner.buttonLink = bannerUpValid.sanitized.buttonLink;
+      if (body.customPageEnabled !== undefined) banner.customPageEnabled = !!body.customPageEnabled;
+      if (body.selectedProductSkus !== undefined) banner.selectedProductSkus = normalizeSkuArrayInput(body.selectedProductSkus, 60);
       if (body.order !== undefined) banner.order = parseInt(String(body.order), 10);
       if (body.active !== undefined) banner.active = !!body.active;
+      if (banner.customPageEnabled && (!Array.isArray(banner.selectedProductSkus) || banner.selectedProductSkus.length === 0)) {
+        return c.json({ error: "Selecione pelo menos um produto para a página personalizada do banner." }, 400);
+      }
     }
 
     banner.updatedAt = new Date().toISOString();
@@ -20552,6 +20783,14 @@ function _getSiteUrl(): string {
   return siteUrl.replace(/\/+$/, "");
 }
 
+function _buildPasswordRecoveryUrl(tokenHash: string, audience: "admin" | "user"): string {
+  var redirectPath = audience === "admin" ? "/admin/reset-password" : "/conta/redefinir-senha";
+  var params = new URLSearchParams();
+  params.set("token_hash", String(tokenHash || ""));
+  params.set("type", "recovery");
+  return _getSiteUrl() + redirectPath + "?" + params.toString();
+}
+
 async function _isAdminRecoveryEmail(email: string): Promise<boolean> {
   var emailLower = String(email || "").toLowerCase().trim();
   if (!emailLower) return false;
@@ -20618,11 +20857,12 @@ async function _sendPasswordRecoveryEmail(toEmail: string, audience: "admin" | "
       console.error("[PasswordRecovery] Generate link error for " + audience + " " + emailLower + ":", rlRes.error.message);
       return false;
     }
-    var recoveryLink = rlRes.data?.properties?.action_link || "";
-    if (!recoveryLink) {
-      console.error("[PasswordRecovery] Empty recovery link for " + audience + " " + emailLower);
+    var tokenHash = rlRes.data?.properties?.hashed_token || "";
+    if (!tokenHash) {
+      console.error("[PasswordRecovery] Empty recovery token for " + audience + " " + emailLower);
       return false;
     }
+    var recoveryLink = _buildPasswordRecoveryUrl(tokenHash, audience);
     var logoUrl = await _getEmailLogoUrl();
     var senderEmail = smtpCfg.defaultSenderEmail || smtpCfg.smtpUser;
     var senderName = smtpCfg.defaultSenderName || "Carretao Auto Pecas";
@@ -21225,8 +21465,8 @@ app.post(BASE + "/admin/email-test/send", async (c) => {
       ],
       totalPrice: 339.70,
     };
-    var mockAdminRecoveryLink = _getSiteUrl() + "/admin/reset-password#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
-    var mockUserRecoveryLink = _getSiteUrl() + "/conta/redefinir-senha#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
+    var mockAdminRecoveryLink = _buildPasswordRecoveryUrl("TOKEN_DEMO", "admin");
+    var mockUserRecoveryLink = _buildPasswordRecoveryUrl("TOKEN_DEMO", "user");
 
     var subject = "";
     var html = "";
@@ -21340,8 +21580,8 @@ app.get(BASE + "/admin/email-test/preview/:type", async (c) => {
       ],
       totalPrice: 339.70,
     };
-    var mockAdminRecoveryLink = _getSiteUrl() + "/admin/reset-password#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
-    var mockUserRecoveryLink = _getSiteUrl() + "/conta/redefinir-senha#access_token=TOKEN_DEMO&refresh_token=TOKEN_DEMO&type=recovery";
+    var mockAdminRecoveryLink = _buildPasswordRecoveryUrl("TOKEN_DEMO", "admin");
+    var mockUserRecoveryLink = _buildPasswordRecoveryUrl("TOKEN_DEMO", "user");
 
     var html = "";
     switch (emailType) {

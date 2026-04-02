@@ -1792,12 +1792,138 @@ export interface CatalogResponse {
   categoryBreadcrumb: string[] | null;
 }
 
+interface AdminAutoCategorizeDataResponse {
+  products: ProdutoDB[];
+  metas: Record<string, { category?: string; visible?: boolean }>;
+  attributes: Record<string, Record<string, string | string[]>>;
+}
+
+type AdminProductSearchIndexItem = {
+  sku: string;
+  titulo: string;
+  brand: string;
+  visible: boolean;
+};
+
+let _adminProductSearchIndexPromise: Promise<AdminProductSearchIndexItem[]> | null = null;
+
+function normalizeAdminSearchText(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function scoreAdminSearchItem(item: AdminProductSearchIndexItem, fullQuery: string, tokens: string[]): number {
+  const sku = normalizeAdminSearchText(item.sku);
+  const title = normalizeAdminSearchText(item.titulo);
+  const brand = normalizeAdminSearchText(item.brand);
+  const haystack = [title, brand, sku].filter(Boolean).join(" ");
+
+  let score = 0;
+  if (title === fullQuery || brand === fullQuery || sku === fullQuery) score += 1000;
+  if (title.startsWith(fullQuery)) score += 350;
+  if (brand.startsWith(fullQuery)) score += 320;
+  if (sku.startsWith(fullQuery.replace(/\s/g, ""))) score += 400;
+  if (title.includes(fullQuery)) score += 240;
+  if (brand.includes(fullQuery)) score += 260;
+  if (sku.includes(fullQuery.replace(/\s/g, ""))) score += 280;
+
+  for (const token of tokens) {
+    if (title.includes(token)) score += 80;
+    if (brand.includes(token)) score += 90;
+    if (sku.includes(token)) score += 110;
+  }
+
+  if (tokens.length > 1) {
+    const allTokensMatch = tokens.every((token) => haystack.includes(token));
+    if (allTokensMatch) score += 220;
+  }
+
+  return score;
+}
+
+async function getAdminAutoCategorizeData(accessToken: string) {
+  return request<AdminAutoCategorizeDataResponse>("/admin/auto-categorize-data", {
+    headers: { "X-User-Token": accessToken },
+  });
+}
+
+async function getAdminProductSearchFallbackIndex(accessToken: string): Promise<AdminProductSearchIndexItem[]> {
+  if (!_adminProductSearchIndexPromise) {
+    _adminProductSearchIndexPromise = Promise.all([
+      getAdminAutoCategorizeData(accessToken),
+      getMetaAllCompact(accessToken),
+    ]).then(([autoData, compactMeta]) => {
+      const metaBySku = new Map<string, { brand: string; visible: boolean }>();
+      for (const item of compactMeta.items || []) {
+        metaBySku.set(item.sku, {
+          brand: String(item.brand || ""),
+          visible: item.visible !== false,
+        });
+      }
+
+      return (autoData.products || []).map((product) => {
+        const compact = metaBySku.get(product.sku);
+        const meta = autoData.metas?.[product.sku] || {};
+        return {
+          sku: product.sku,
+          titulo: product.titulo || "",
+          brand: compact?.brand || "",
+          visible: compact ? compact.visible : meta.visible !== false,
+        };
+      });
+    }).catch((error) => {
+      _adminProductSearchIndexPromise = null;
+      throw error;
+    });
+  }
+  return _adminProductSearchIndexPromise;
+}
+
 export const getCatalog = (page = 1, limit = 24, search = "", categoria = "", sort = "") => {
   const params = new URLSearchParams({ page: String(page), limit: String(limit), public: "1" });
   if (search.trim()) params.set("search", search.trim());
   if (categoria.trim()) params.set("categoria", categoria.trim());
   if (sort.trim()) params.set("sort", sort.trim());
   return request<CatalogResponse>(`/produtos?${params.toString()}`);
+};
+
+export const searchAdminProducts = async (accessToken: string, query: string, limit = 1000) => {
+  const params = new URLSearchParams({ q: query.trim(), limit: String(limit) });
+  try {
+    return await request<{ data: ProdutoDB[]; total: number; query: string }>(`/admin/product-search?${params.toString()}`, {
+      headers: { "X-User-Token": accessToken },
+    });
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    if (!/HTTP 404/i.test(message)) throw error;
+
+    const normalizedQuery = normalizeAdminSearchText(query);
+    const tokens = normalizedQuery.split(" ").filter((token) => token.length >= 2);
+    if (!normalizedQuery || tokens.length === 0) {
+      return { data: [], total: 0, query: query.trim() };
+    }
+
+    const index = await getAdminProductSearchFallbackIndex(accessToken);
+    const ranked = index
+      .filter((item) => item.visible !== false)
+      .map((item) => ({ item, score: scoreAdminSearchItem(item, normalizedQuery, tokens) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.item.titulo.localeCompare(b.item.titulo, "pt-BR");
+      });
+
+    return {
+      data: ranked.slice(0, limit).map((entry) => ({ sku: entry.item.sku, titulo: entry.item.titulo })),
+      total: ranked.length,
+      query: query.trim(),
+    };
+  }
 };
 
 /** Random visible products for the homepage — different on each page load */
@@ -2407,6 +2533,12 @@ export const getProductMetaBulk = (skus: string[]) =>
     body: JSON.stringify({ skus }),
   });
 
+export const getProductsBasicBulk = (skus: string[]) =>
+  request<{ products: ProdutoDB[]; missingSkus: string[] }>("/produtos/basic/bulk", {
+    method: "POST",
+    body: JSON.stringify({ skus }),
+  });
+
 // ─── Attributes Upload (Admin) ───
 
 export interface UploadAttributesResult {
@@ -2588,6 +2720,8 @@ export interface BannerItem {
   subtitle: string;
   buttonText: string;
   buttonLink: string;
+  customPageEnabled?: boolean;
+  selectedProductSkus?: string[];
   imageUrl: string;
   filename: string;
   order: number;
@@ -2611,7 +2745,16 @@ export const getAdminBanners = (accessToken: string) =>
 // Create banner (FormData with image)
 export const createBanner = async (
   file: File,
-  meta: { title: string; subtitle: string; buttonText: string; buttonLink: string; order: number; active: boolean },
+  meta: {
+    title: string;
+    subtitle: string;
+    buttonText: string;
+    buttonLink: string;
+    order: number;
+    active: boolean;
+    customPageEnabled?: boolean;
+    selectedProductSkus?: string[];
+  },
   accessToken: string
 ): Promise<{ created: boolean; banner: BannerItem }> => {
   const formData = new FormData();
@@ -2622,6 +2765,8 @@ export const createBanner = async (
   formData.append("buttonLink", meta.buttonLink);
   formData.append("order", String(meta.order));
   formData.append("active", String(meta.active));
+  formData.append("customPageEnabled", String(meta.customPageEnabled === true));
+  formData.append("selectedProductSkus", JSON.stringify(meta.selectedProductSkus || []));
 
   const res = await fetch(_authUrl("/admin/banners", accessToken), {
     method: "POST",
@@ -2650,7 +2795,16 @@ export const updateBanner = (
 export const updateBannerWithImage = async (
   bannerId: string,
   file: File,
-  meta: { title: string; subtitle: string; buttonText: string; buttonLink: string; order: number; active: boolean },
+  meta: {
+    title: string;
+    subtitle: string;
+    buttonText: string;
+    buttonLink: string;
+    order: number;
+    active: boolean;
+    customPageEnabled?: boolean;
+    selectedProductSkus?: string[];
+  },
   accessToken: string
 ): Promise<{ updated: boolean; banner: BannerItem }> => {
   const formData = new FormData();
@@ -2661,6 +2815,8 @@ export const updateBannerWithImage = async (
   formData.append("buttonLink", meta.buttonLink);
   formData.append("order", String(meta.order));
   formData.append("active", String(meta.active));
+  formData.append("customPageEnabled", String(meta.customPageEnabled === true));
+  formData.append("selectedProductSkus", JSON.stringify(meta.selectedProductSkus || []));
 
   const res = await fetch(_authUrl("/admin/banners/" + bannerId, accessToken), {
     method: "PUT",
@@ -4003,6 +4159,13 @@ export interface HomepageInitData {
 /** Fetches all homepage data in a single API call */
 export const getHomepageInit = () =>
   request<HomepageInitData>("/homepage-init");
+
+export function getBannerTargetUrl(banner: BannerItem): string {
+  if (banner.customPageEnabled) {
+    return "/vitrine/banner/" + encodeURIComponent(banner.id);
+  }
+  return banner.buttonLink || "";
+}
 
 // ─── Exit Intent Popup ───
 

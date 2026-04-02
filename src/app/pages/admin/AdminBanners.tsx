@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Image as ImageIcon, Plus, Trash2, Edit3, Eye, EyeOff, GripVertical, ChevronUp, ChevronDown, Save, X, Upload, Loader2, ExternalLink, AlertTriangle, Check, Monitor, Smartphone, Link2, Type, FileText, Maximize2 } from "lucide-react";
+import { Image as ImageIcon, Plus, Trash2, Edit3, Eye, EyeOff, GripVertical, ChevronUp, ChevronDown, Save, X, Upload, Loader2, ExternalLink, AlertTriangle, Check, Monitor, Smartphone, Link2, Type, FileText, Maximize2, Search } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { getValidAdminToken } from "./adminAuth";
 import * as api from "../../services/api";
 import type { BannerItem } from "../../services/api";
+
+type CuratedBannerProduct = {
+  sku: string;
+  title: string;
+  imageUrl: string;
+};
 
 export function AdminBanners() {
   const [banners, setBanners] = useState<BannerItem[]>([]);
@@ -18,12 +24,23 @@ export function AdminBanners() {
   const [formSubtitle, setFormSubtitle] = useState("");
   const [formButtonText, setFormButtonText] = useState("");
   const [formButtonLink, setFormButtonLink] = useState("");
+  const [formCustomPageEnabled, setFormCustomPageEnabled] = useState(false);
+  const [formSelectedProducts, setFormSelectedProducts] = useState<CuratedBannerProduct[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [productSearchResults, setProductSearchResults] = useState<CuratedBannerProduct[]>([]);
+  const [productSearchSelection, setProductSearchSelection] = useState<Record<string, boolean>>({});
+  const [productSearchTotal, setProductSearchTotal] = useState(0);
+  const [productPickerFeedback, setProductPickerFeedback] = useState<{ tone: "neutral" | "warning"; text: string } | null>(null);
+  const [searchingProducts, setSearchingProducts] = useState(false);
   const [formActive, setFormActive] = useState(true);
   const [formFile, setFormFile] = useState<File | null>(null);
   const [formPreview, setFormPreview] = useState<string | null>(null);
   const [formDimensions, setFormDimensions] = useState<{ w: number; h: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const productSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const productSearchRequestRef = useRef(0);
+  const selectedProductsRequestRef = useRef(0);
 
   // Image dimensions cache for banner list
   const [dimCache, setDimCache] = useState<Record<string, { w: number; h: number }>>({});
@@ -34,6 +51,28 @@ export function AdminBanners() {
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const selectedProductSkuSet = useMemo(() => {
+    const skuSet = new Set<string>();
+    for (const product of formSelectedProducts) skuSet.add(product.sku);
+    return skuSet;
+  }, [formSelectedProducts]);
+
+  const selectableSearchResultCount = useMemo(() => {
+    let count = 0;
+    for (const product of productSearchResults) {
+      if (!selectedProductSkuSet.has(product.sku)) count++;
+    }
+    return count;
+  }, [productSearchResults, selectedProductSkuSet]);
+
+  const searchSelectionCount = useMemo(() => {
+    let count = 0;
+    for (const product of productSearchResults) {
+      if (productSearchSelection[product.sku] && !selectedProductSkuSet.has(product.sku)) count++;
+    }
+    return count;
+  }, [productSearchResults, productSearchSelection, selectedProductSkuSet]);
 
   const getToken = useCallback(async () => {
     return await getValidAdminToken() || "";
@@ -82,11 +121,210 @@ export function AdminBanners() {
     img.src = formPreview;
   }, [formPreview]);
 
+  useEffect(() => {
+    return () => {
+      productSearchRequestRef.current++;
+      if (productSearchTimerRef.current) clearTimeout(productSearchTimerRef.current);
+    };
+  }, []);
+
+  const clearProductSearchState = useCallback((options?: { keepQuery?: boolean }) => {
+    productSearchRequestRef.current++;
+    if (productSearchTimerRef.current) {
+      clearTimeout(productSearchTimerRef.current);
+      productSearchTimerRef.current = null;
+    }
+    setSearchingProducts(false);
+    setProductSearchResults([]);
+    setProductSearchSelection({});
+    setProductSearchTotal(0);
+    setProductPickerFeedback(null);
+    if (!options?.keepQuery) setProductSearch("");
+  }, []);
+
+  const hydrateSelectedProducts = useCallback(async (skus: string[]) => {
+    const requestId = ++selectedProductsRequestRef.current;
+    if (skus.length === 0) {
+      setFormSelectedProducts([]);
+      return;
+    }
+
+    setFormSelectedProducts(skus.map((sku) => ({
+      sku,
+      title: sku,
+      imageUrl: api.getProductMainImageUrl(sku),
+    })));
+
+    try {
+      const result = await api.getProductsBasicBulk(skus);
+      if (selectedProductsRequestRef.current !== requestId) return;
+      const bySku: Record<string, { sku: string; titulo: string }> = {};
+      for (const product of result.products || []) {
+        bySku[product.sku] = product;
+      }
+      setFormSelectedProducts(skus.map((sku) => ({
+        sku,
+        title: bySku[sku]?.titulo || sku,
+        imageUrl: api.getProductMainImageUrl(sku),
+      })));
+    } catch {
+      // Keep SKU placeholders if hydration fails.
+    }
+  }, []);
+
+  const searchProducts = useCallback(async (query: string) => {
+    const requestId = ++productSearchRequestRef.current;
+    setSearchingProducts(true);
+    setProductSearchResults([]);
+    setProductSearchSelection({});
+    setProductSearchTotal(0);
+    try {
+      const token = await getToken();
+      const result = await api.searchAdminProducts(token, query, 1000);
+      if (productSearchRequestRef.current !== requestId) return;
+
+      const seenSkus = new Set<string>();
+      const nextResults: CuratedBannerProduct[] = [];
+      for (const product of result.data || []) {
+        if (!product?.sku || seenSkus.has(product.sku)) continue;
+        seenSkus.add(product.sku);
+        nextResults.push({
+          sku: product.sku,
+          title: product.titulo,
+          imageUrl: api.getProductMainImageUrl(product.sku),
+        });
+      }
+
+      setProductSearchResults(nextResults);
+      setProductSearchTotal(result.total || nextResults.length);
+      setProductPickerFeedback(null);
+    } catch (e: any) {
+      if (productSearchRequestRef.current !== requestId) return;
+      setProductSearchResults([]);
+      setProductSearchTotal(0);
+      setProductPickerFeedback({
+        tone: "warning",
+        text: e?.message || "Erro ao buscar produtos para a vitrine.",
+      });
+    } finally {
+      if (productSearchRequestRef.current === requestId) {
+        setSearchingProducts(false);
+      }
+    }
+  }, [getToken]);
+
+  const handleProductSearchChange = (value: string) => {
+    setProductSearch(value);
+    setProductPickerFeedback(null);
+    productSearchRequestRef.current++;
+    if (productSearchTimerRef.current) clearTimeout(productSearchTimerRef.current);
+    if (!value.trim() || value.trim().length < 2) {
+      setSearchingProducts(false);
+      setProductSearchResults([]);
+      setProductSearchSelection({});
+      setProductSearchTotal(0);
+      return;
+    }
+    setSearchingProducts(true);
+    setProductSearchResults([]);
+    setProductSearchSelection({});
+    setProductSearchTotal(0);
+    productSearchTimerRef.current = setTimeout(() => {
+      productSearchTimerRef.current = null;
+      searchProducts(value.trim());
+    }, 300);
+  };
+
+  const appendProductsToBanner = useCallback((productsToAdd: CuratedBannerProduct[]) => {
+    if (productsToAdd.length === 0) return;
+
+    const existingSkus = new Set(formSelectedProducts.map((product) => product.sku));
+    const uniqueProducts: CuratedBannerProduct[] = [];
+    for (const product of productsToAdd) {
+      if (!product?.sku || existingSkus.has(product.sku)) continue;
+      existingSkus.add(product.sku);
+      uniqueProducts.push(product);
+    }
+
+    if (uniqueProducts.length === 0) {
+      setProductPickerFeedback({ tone: "neutral", text: "Os produtos escolhidos já estão na vitrine." });
+      return;
+    }
+
+    const remainingSlots = Math.max(0, 60 - formSelectedProducts.length);
+    if (remainingSlots === 0) {
+      setProductPickerFeedback({
+        tone: "warning",
+        text: "Cada banner aceita no máximo 60 produtos na página personalizada.",
+      });
+      return;
+    }
+
+    const acceptedProducts = uniqueProducts.slice(0, remainingSlots);
+    const skippedCount = uniqueProducts.length - acceptedProducts.length;
+
+    setFormSelectedProducts((current) => [...current, ...acceptedProducts]);
+    setProductSearchSelection((current) => {
+      const nextSelection = { ...current };
+      for (const product of acceptedProducts) delete nextSelection[product.sku];
+      return nextSelection;
+    });
+    setProductPickerFeedback({
+      tone: skippedCount > 0 ? "warning" : "neutral",
+      text:
+        skippedCount > 0
+          ? `Foram adicionados ${acceptedProducts.length} produtos. ${skippedCount} ficaram de fora porque o limite da vitrine é 60.`
+          : acceptedProducts.length === 1
+            ? "1 produto adicionado à vitrine."
+            : `${acceptedProducts.length} produtos adicionados à vitrine.`,
+    });
+  }, [formSelectedProducts]);
+
+  const addSelectedProduct = (product: CuratedBannerProduct) => {
+    appendProductsToBanner([product]);
+  };
+
+  const toggleSearchProduct = (sku: string) => {
+    if (selectedProductSkuSet.has(sku)) return;
+    setProductSearchSelection((current) => ({
+      ...current,
+      [sku]: !current[sku],
+    }));
+  };
+
+  const selectAllSearchResults = () => {
+    const nextSelection: Record<string, boolean> = {};
+    for (const product of productSearchResults) {
+      if (!selectedProductSkuSet.has(product.sku)) nextSelection[product.sku] = true;
+    }
+    setProductSearchSelection(nextSelection);
+  };
+
+  const addCheckedSearchResults = () => {
+    appendProductsToBanner(productSearchResults.filter((product) => productSearchSelection[product.sku]));
+  };
+
+  const removeSelectedProduct = (sku: string) => {
+    setFormSelectedProducts((current) => current.filter((product) => product.sku !== sku));
+  };
+
+  const moveSelectedProduct = (index: number, direction: "up" | "down") => {
+    const nextProducts = [...formSelectedProducts];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= nextProducts.length) return;
+    [nextProducts[index], nextProducts[targetIndex]] = [nextProducts[targetIndex], nextProducts[index]];
+    setFormSelectedProducts(nextProducts);
+  };
+
   const resetForm = () => {
+    selectedProductsRequestRef.current++;
     setFormTitle("");
     setFormSubtitle("");
     setFormButtonText("");
     setFormButtonLink("");
+    setFormCustomPageEnabled(false);
+    setFormSelectedProducts([]);
+    clearProductSearchState();
     setFormActive(true);
     setFormFile(null);
     setFormPreview(null);
@@ -105,10 +343,14 @@ export function AdminBanners() {
     setFormSubtitle(banner.subtitle);
     setFormButtonText(banner.buttonText);
     setFormButtonLink(banner.buttonLink);
+    setFormCustomPageEnabled(!!banner.customPageEnabled);
+    clearProductSearchState();
     setFormActive(banner.active);
     setFormFile(null);
     setFormPreview(banner.imageUrl);
     setShowForm(true);
+    const selectedSkus = banner.selectedProductSkus || [];
+    hydrateSelectedProducts(selectedSkus);
   };
 
   const handleFileSelect = (file: File) => {
@@ -138,6 +380,10 @@ export function AdminBanners() {
       setError("Selecione uma imagem para o banner.");
       return;
     }
+    if (formCustomPageEnabled && formSelectedProducts.length === 0) {
+      setError("Selecione pelo menos um produto para a página personalizada do banner.");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -148,8 +394,10 @@ export function AdminBanners() {
         subtitle: formSubtitle,
         buttonText: formButtonText,
         buttonLink: formButtonLink,
-        order: banners.length,
+        order: editingId ? (banners.find((banner) => banner.id === editingId)?.order ?? 0) : banners.length,
         active: formActive,
+        customPageEnabled: formCustomPageEnabled,
+        selectedProductSkus: formCustomPageEnabled ? formSelectedProducts.map((product) => product.sku) : [],
       };
 
       if (editingId) {
@@ -161,6 +409,8 @@ export function AdminBanners() {
             subtitle: formSubtitle,
             buttonText: formButtonText,
             buttonLink: formButtonLink,
+            customPageEnabled: formCustomPageEnabled,
+            selectedProductSkus: formCustomPageEnabled ? formSelectedProducts.map((product) => product.sku) : [],
             active: formActive,
           }, token);
         }
@@ -229,7 +479,7 @@ export function AdminBanners() {
     var active = 0, linked = 0;
     for (var i = 0; i < banners.length; i++) {
       if (banners[i].active) active++;
-      if (banners[i].buttonLink) linked++;
+      if (banners[i].buttonLink || banners[i].customPageEnabled) linked++;
     }
     return { activeCount: active, linkedCount: linked };
   }, [banners]);
@@ -433,11 +683,258 @@ export function AdminBanners() {
                   type="text"
                   value={formButtonLink}
                   onChange={(e) => setFormButtonLink(e.target.value)}
-                  placeholder="Ex: /catalogo ou https://..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 focus:bg-white transition-all"
+                  placeholder={formCustomPageEnabled ? "Link preservado para uso manual futuro" : "Ex: /catalogo ou https://..."}
+                  disabled={formCustomPageEnabled}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 focus:bg-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ fontSize: "0.85rem" }}
                 />
+                {formCustomPageEnabled && (
+                  <p className="text-gray-400 mt-1.5" style={{ fontSize: "0.72rem" }}>
+                    Com a página personalizada ativa, o clique do banner vai para a vitrine curada automaticamente.
+                  </p>
+                )}
               </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/80">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <h4 className="text-gray-800" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                    Página personalizada do banner
+                  </h4>
+                  <p className="text-gray-500 mt-1" style={{ fontSize: "0.78rem" }}>
+                    Quando ativada, o clique do banner leva o cliente para uma vitrine própria com os produtos que você escolher.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormCustomPageEnabled((current) => {
+                      const next = !current;
+                      if (!next) {
+                        clearProductSearchState();
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${formCustomPageEnabled ? "bg-blue-600" : "bg-gray-300"}`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                      formCustomPageEnabled ? "translate-x-5" : ""
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {formCustomPageEnabled && (
+                <>
+                  <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+                    <p className="text-gray-500" style={{ fontSize: "0.72rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      URL da vitrine
+                    </p>
+                    <p className="text-gray-700 font-mono mt-1 break-all" style={{ fontSize: "0.8rem" }}>
+                      {editingId ? "/vitrine/banner/" + editingId : "Será gerada assim que o banner for salvo."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <label className="text-gray-700" style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                        Produtos da vitrine
+                      </label>
+                      <span className="text-gray-400" style={{ fontSize: "0.75rem" }}>
+                        {formSelectedProducts.length}/60 itens
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={productSearch}
+                        onChange={(e) => handleProductSearchChange(e.target.value)}
+                        placeholder="Digite SKU ou nome do produto para adicionar"
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg bg-white text-gray-800 placeholder-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all"
+                        style={{ fontSize: "0.85rem" }}
+                      />
+                      {searchingProducts && <Loader2 className="w-4 h-4 animate-spin text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />}
+                    </div>
+
+                    <p className="text-gray-400 mt-2" style={{ fontSize: "0.74rem", lineHeight: 1.5 }}>
+                      Digite pelo menos 2 caracteres. A busca traz todos os itens que combinarem com o termo escrito para você marcar vários de uma vez.
+                    </p>
+
+                    {productPickerFeedback && (
+                      <div className={`mt-3 rounded-lg border px-3 py-2.5 ${productPickerFeedback.tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-gray-200 bg-white text-gray-600"}`}>
+                        <p style={{ fontSize: "0.78rem", lineHeight: 1.5 }}>{productPickerFeedback.text}</p>
+                      </div>
+                    )}
+
+                    {searchingProducts && (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                        <span style={{ fontSize: "0.78rem" }}>Buscando todos os produtos que correspondem a "{productSearch.trim()}"...</span>
+                      </div>
+                    )}
+
+                    {!searchingProducts && productSearchResults.length > 0 && (
+                      <div className="mt-3 bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="px-3 py-3 border-b border-gray-100 bg-gray-50/80 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-gray-700" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                              {productSearchTotal || productSearchResults.length} resultado{(productSearchTotal || productSearchResults.length) === 1 ? "" : "s"} para "{productSearch.trim()}"
+                            </p>
+                            <p className="text-gray-400 mt-1" style={{ fontSize: "0.72rem" }}>
+                              {selectableSearchResultCount} disponível{selectableSearchResultCount === 1 ? "" : "is"} para adicionar • {searchSelectionCount} marcado{searchSelectionCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={selectAllSearchResults}
+                              disabled={selectableSearchResultCount === 0}
+                              className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ fontSize: "0.76rem", fontWeight: 600 }}
+                            >
+                              Selecionar todos
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setProductSearchSelection({})}
+                              disabled={searchSelectionCount === 0}
+                              className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ fontSize: "0.76rem", fontWeight: 600 }}
+                            >
+                              Limpar seleção
+                            </button>
+                            <button
+                              type="button"
+                              onClick={addCheckedSearchResults}
+                              disabled={searchSelectionCount === 0}
+                              className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ fontSize: "0.76rem", fontWeight: 600 }}
+                            >
+                              Adicionar selecionados
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto">
+                        {productSearchResults.map((product) => {
+                          const isAdded = selectedProductSkuSet.has(product.sku);
+                          const isChecked = !!productSearchSelection[product.sku] && !isAdded;
+                          return (
+                            <div
+                              key={product.sku}
+                              onClick={() => toggleSearchProduct(product.sku)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left border-b last:border-b-0 border-gray-100 transition-colors ${
+                                isAdded ? "bg-gray-50 text-gray-400" : isChecked ? "bg-red-50" : "hover:bg-red-50/70 cursor-pointer"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                disabled={isAdded}
+                                onChange={() => toggleSearchProduct(product.sku)}
+                                onClick={(event) => event.stopPropagation()}
+                                className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed"
+                              />
+                              <img src={product.imageUrl} alt="" className="w-10 h-10 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-gray-800 truncate" style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                                  {product.title}
+                                </p>
+                                <p className="text-gray-400 font-mono truncate" style={{ fontSize: "0.7rem" }}>
+                                  SKU: {product.sku}
+                                </p>
+                              </div>
+                              {isAdded ? (
+                                <span className="text-xs font-semibold text-gray-400">
+                                  Já na vitrine
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    addSelectedProduct(product);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                                  style={{ fontSize: "0.72rem", fontWeight: 700 }}
+                                >
+                                  Adicionar
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        </div>
+                      </div>
+                    )}
+
+                    {!searchingProducts && productSearch.trim().length >= 2 && productSearchResults.length === 0 && !productPickerFeedback?.text && (
+                      <div className="mt-3 border border-dashed border-gray-300 rounded-lg px-4 py-5 text-center bg-white">
+                        <p className="text-gray-500" style={{ fontSize: "0.8rem" }}>
+                          Nenhum produto encontrado para "{productSearch.trim()}".
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {formSelectedProducts.length === 0 ? (
+                    <div className="border border-dashed border-gray-300 rounded-lg px-4 py-5 text-center bg-white">
+                      <p className="text-gray-500" style={{ fontSize: "0.82rem" }}>
+                        Busque e adicione os produtos que devem aparecer nessa subpágina.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {formSelectedProducts.map((product, index) => (
+                        <div key={product.sku} className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2.5">
+                          <img src={product.imageUrl} alt="" className="w-12 h-12 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-gray-800 truncate" style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                              {product.title}
+                            </p>
+                            <p className="text-gray-400 font-mono truncate" style={{ fontSize: "0.7rem" }}>
+                              SKU: {product.sku}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => moveSelectedProduct(index, "up")}
+                              disabled={index === 0}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md disabled:opacity-30 transition-colors"
+                              title="Mover para cima"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveSelectedProduct(index, "down")}
+                              disabled={index === formSelectedProducts.length - 1}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md disabled:opacity-30 transition-colors"
+                              title="Mover para baixo"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedProduct(product.sku)}
+                              className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="Remover produto"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Active toggle */}
@@ -564,9 +1061,14 @@ export function AdminBanners() {
                           {banner.buttonText}
                         </span>
                       )}
-                      {banner.buttonLink && (
+                      {banner.customPageEnabled && (
+                        <span className="text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                          Página personalizada • {(banner.selectedProductSkus || []).length} itens
+                        </span>
+                      )}
+                      {api.getBannerTargetUrl(banner) && (
                         <span className="text-gray-400 truncate max-w-[200px]" style={{ fontSize: "0.72rem" }}>
-                          {banner.buttonLink}
+                          {api.getBannerTargetUrl(banner)}
                         </span>
                       )}
                       {banner.fileSize && (

@@ -31,6 +31,32 @@ export function UserResetPasswordPage() {
     let cancelled = false;
 
     async function detectRecoverySession() {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tokenHash = searchParams.get("token_hash");
+      const recoveryType = searchParams.get("type");
+
+      if (tokenHash && recoveryType === "recovery") {
+        const { error: verifyErr } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
+        });
+
+        if (!cancelled && !verifyErr) {
+          searchParams.delete("token_hash");
+          searchParams.delete("type");
+          const cleanSearch = searchParams.toString();
+          window.history.replaceState(null, "", window.location.pathname + (cleanSearch ? "?" + cleanSearch : "") + window.location.hash);
+          setMode("password");
+          return;
+        }
+
+        if (!cancelled) {
+          setError(verifyErr?.message || "Link de recuperacao invalido ou expirado.");
+          setMode("no-session");
+          return;
+        }
+      }
+
       const hash = window.location.hash;
       if (hash) {
         const params = new URLSearchParams(hash.replace("#", ""));
